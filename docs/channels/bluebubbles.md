@@ -189,15 +189,17 @@ Per-group configuration:
 
 ## Typing + read receipts
 
-- **Typing indicators**: Sent automatically before and during response generation.
+- **Typing indicators**: Sent automatically before and during response generation (controlled by `channels.bluebubbles.sendTypingIndicators`, default: `true`). OpenClaw sends typing start events; BlueBubbles clears typing automatically on send or timeout (manual stop via DELETE is unreliable).
 - **Read receipts**: Controlled by `channels.bluebubbles.sendReadReceipts` (default: `true`).
-- **Typing indicators**: OpenClaw sends typing start events; BlueBubbles clears typing automatically on send or timeout (manual stop via DELETE is unreliable).
+
+Both require the BlueBubbles Private API. If you do not use the Private API, set both to `false` to avoid 500 errors and log noise:
 
 ```json5
 {
   channels: {
     bluebubbles: {
-      sendReadReceipts: false, // disable read receipts
+      sendReadReceipts: false,
+      sendTypingIndicators: false,
     },
   },
 }
@@ -295,7 +297,8 @@ Provider options:
 - `channels.bluebubbles.groupPolicy`: `open | allowlist | disabled` (default: `allowlist`).
 - `channels.bluebubbles.groupAllowFrom`: Group sender allowlist.
 - `channels.bluebubbles.groups`: Per-group config (`requireMention`, etc.).
-- `channels.bluebubbles.sendReadReceipts`: Send read receipts (default: `true`).
+- `channels.bluebubbles.sendReadReceipts`: Send read receipts (default: `true`). Requires Private API.
+- `channels.bluebubbles.sendTypingIndicators`: Send typing indicators while replying (default: `true`). Requires Private API. Set to `false` to avoid 500s when Private API is not enabled.
 - `channels.bluebubbles.blockStreaming`: Enable block streaming (default: `false`; required for streaming replies).
 - `channels.bluebubbles.textChunkLimit`: Outbound chunk size in chars (default: 4000).
 - `channels.bluebubbles.chunkMode`: `length` (default) splits only when exceeding `textChunkLimit`; `newline` splits on blank lines (paragraph boundaries) before length chunking.
@@ -320,6 +323,26 @@ Prefer `chat_guid` for stable routing:
 - Direct handles: `+15555550123`, `user@example.com`
   - If a direct handle does not have an existing DM chat, OpenClaw will create one via `POST /api/v1/chat/new`. This requires the BlueBubbles Private API to be enabled.
 
+## Reducing latency
+
+If replies feel slow (e.g. 10+ seconds for a short message), try:
+
+1. **Turn off inbound debounce for BlueBubbles**  
+   By default, inbound messages are debounced by 500ms to coalesce URL + link preview events. For faster response, set debounce to 0 for this channel:
+   ```json5
+   {
+     messages: {
+       inbound: {
+         byChannel: { bluebubbles: 0 },
+       },
+     },
+   }
+   ```
+2. **Keep human delay off**  
+   If you have `agents.defaults.humanDelay` set to `natural` or `custom`, that adds 0.8–2.5s between reply chunks. For minimum latency use `humanDelay: { mode: "off" }` or omit it.
+3. **Model and prompt**  
+   Local models (e.g. Ollama) add inference time; smaller/faster models (e.g. 3B) reply quicker. Large system prompts or context also increase time-to-first-token.
+
 ## Security
 
 - Webhook requests are authenticated by comparing `guid`/`password` query params or headers against `channels.bluebubbles.password`. Requests from `localhost` are also accepted.
@@ -329,6 +352,13 @@ Prefer `chat_guid` for stable routing:
 
 ## Troubleshooting
 
+- **401 Unauthorized** when OpenClaw calls BlueBubbles (e.g. mark read, typing): The password sent to the BlueBubbles API must **exactly** match the Server Password in BlueBubbles Server (Settings). If you use `${BLUEBUBBLES_PASSWORD}` in config, the gateway process must have that env var when it loads config. When the gateway runs under the **Mac app (launchd)**, the launchd environment does not load `~/.openclaw/.env` in all cases, so the substitution can be empty or literal. **Fix:** Set the password directly in config so it does not depend on env:
+  ```bash
+  openclaw config set channels.bluebubbles.password "YOUR_EXACT_BLUEBUBBLES_SERVER_PASSWORD"
+  ```
+  Then restart the gateway (quit and reopen the OpenClaw Mac app, or run `openclaw gateway restart`). Copy the password from BlueBubbles Server Settings with no extra spaces; if it has special characters, set it via the command above or edit `~/.openclaw/openclaw.json` and restart.
+- **`webhook rejected: unauthorized guid=...`**: BlueBubbles Server is calling OpenClaw’s webhook, but the `password` or `guid` it sends does not match `channels.bluebubbles.password` in OpenClaw. Use **one** password everywhere: (1) BlueBubbles Server Settings → Server Password, (2) OpenClaw `channels.bluebubbles.password`, and (3) the webhook URL in BlueBubbles (e.g. `http://127.0.0.1:18789/bluebubbles-webhook?password=YOUR_PASSWORD`). If the webhook URL has a different value (e.g. a placeholder like `openclaw`), change it to the same password as in OpenClaw config.
+- **500 "iMessage Private API is not enabled!"** (mark read failed / typing failed): These features need the **BlueBubbles Private API** enabled and the helper connected. In the BlueBubbles Server app: enable the Private API in Settings, complete the helper setup (see [BlueBubbles Private API docs](https://docs.bluebubbles.app/private-api)), and confirm the Private API status shows connected. Without that, sending and receiving still work; only mark-read, typing, reactions, and some advanced actions will return 500 until the Private API is set up.
 - If typing/read events stop working, check the BlueBubbles webhook logs and verify the gateway path matches `channels.bluebubbles.webhookPath`.
 - Pairing codes expire after one hour; use `openclaw pairing list bluebubbles` and `openclaw pairing approve bluebubbles <code>`.
 - Reactions require the BlueBubbles private API (`POST /api/v1/message/react`); ensure the server version exposes it.

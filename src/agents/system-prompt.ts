@@ -108,6 +108,7 @@ function buildMessagingSection(params: {
   return [
     "## Messaging",
     "- Reply in current session → automatically routes to the source channel (Signal, Telegram, etc.)",
+    "- For normal conversational messages, reply briefly and naturally; do not output JSON, code blocks, or meta-commentary about conversation metadata unless the user explicitly asks.",
     "- Cross-session messaging → use sessions_send(sessionKey, message)",
     "- Never use exec/curl for provider messaging; OpenClaw handles all routing internally.",
     params.availableTools.has("message")

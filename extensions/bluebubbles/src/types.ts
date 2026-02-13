@@ -47,6 +47,8 @@ export type BlueBubblesAccountConfig = {
   mediaMaxMb?: number;
   /** Send read receipts for incoming messages (default: true). */
   sendReadReceipts?: boolean;
+  /** Send typing indicators while replying (default: true). Requires BlueBubbles Private API. */
+  sendTypingIndicators?: boolean;
   /** Per-group configuration keyed by chat GUID or identifier. */
   groups?: Record<string, BlueBubblesGroupConfig>;
 };

@@ -2070,8 +2070,9 @@ async function processMessage(
         )
       : null;
 
-  // Respect sendReadReceipts config (parity with WhatsApp)
+  // Respect sendReadReceipts / sendTypingIndicators (avoid 500s when Private API is off)
   const sendReadReceipts = account.config.sendReadReceipts !== false;
+  const sendTypingIndicators = account.config.sendTypingIndicators !== false;
   if (chatGuidForActions && baseUrl && password && sendReadReceipts) {
     try {
       await markBlueBubblesChatRead(chatGuidForActions, {
@@ -2172,7 +2173,7 @@ async function processMessage(
     }
   };
   const restartTypingSoon = () => {
-    if (!streamingActive || !chatGuidForActions || !baseUrl || !password) {
+    if (!streamingActive || !chatGuidForActions || !baseUrl || !password || !sendTypingIndicators) {
       return;
     }
     clearTypingRestartTimer();
@@ -2280,7 +2281,7 @@ async function processMessage(
           }
         },
         onReplyStart: async () => {
-          if (!chatGuidForActions) {
+          if (!chatGuidForActions || !sendTypingIndicators) {
             return;
           }
           if (!baseUrl || !password) {
@@ -2321,7 +2322,8 @@ async function processMessage(
     });
   } finally {
     const shouldStopTyping =
-      Boolean(chatGuidForActions && baseUrl && password) && (streamingActive || !sentMessage);
+      Boolean(chatGuidForActions && baseUrl && password && sendTypingIndicators) &&
+      (streamingActive || !sentMessage);
     streamingActive = false;
     clearTypingRestartTimer();
     if (sentMessage && chatGuidForActions && ackMessageId) {

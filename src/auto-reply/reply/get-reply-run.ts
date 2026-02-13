@@ -217,9 +217,10 @@ export async function runPreparedReply(
         }
       : { ...sessionCtx, ThreadStarterBody: undefined },
   );
+  // Put the user's message first so the model is primed to reply to it; metadata after as context only.
   const baseBodyForPrompt = isBareSessionReset
     ? baseBodyFinal
-    : [inboundUserContext, baseBodyFinal].filter(Boolean).join("\n\n");
+    : [baseBodyFinal, inboundUserContext].filter(Boolean).join("\n\n");
   const baseBodyTrimmed = baseBodyForPrompt.trim();
   if (!baseBodyTrimmed) {
     await typing.onReplyStart();

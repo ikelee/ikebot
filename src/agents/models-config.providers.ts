@@ -133,8 +133,8 @@ async function discoverOllamaModels(baseUrl?: string): Promise<ModelDefinitionCo
   if (process.env.VITEST || process.env.NODE_ENV === "test") {
     return [];
   }
+  const apiBase = resolveOllamaApiBase(baseUrl);
   try {
-    const apiBase = resolveOllamaApiBase(baseUrl);
     const response = await fetch(`${apiBase}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
@@ -167,9 +167,22 @@ async function discoverOllamaModels(baseUrl?: string): Promise<ModelDefinitionCo
       };
     });
   } catch (error) {
-    console.warn(`Failed to discover Ollama models: ${String(error)}`);
+    const message = formatOllamaDiscoveryError(apiBase, error);
+    console.warn(`Failed to discover Ollama models: ${message}`);
     return [];
   }
+}
+
+/** User-friendly message when Ollama fetch fails (e.g. not running or unreachable). */
+function formatOllamaDiscoveryError(apiBase: string, error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg === "fetch failed" || msg.toLowerCase().includes("fetch failed")) {
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+    if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|network|timeout/i.test(cause || msg)) {
+      return `Ollama is not reachable at ${apiBase} (connection refused or timed out). Start Ollama or ignore if you don't use local models.`;
+    }
+  }
+  return String(error);
 }
 
 function normalizeApiKeyConfig(value: string): string {

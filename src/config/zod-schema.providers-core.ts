@@ -835,6 +835,7 @@ export const BlueBubblesAccountSchemaBase = z
     chunkMode: z.enum(["length", "newline"]).optional(),
     mediaMaxMb: z.number().int().positive().optional(),
     sendReadReceipts: z.boolean().optional(),
+    sendTypingIndicators: z.boolean().optional(),
     blockStreaming: z.boolean().optional(),
     blockStreamingCoalesce: BlockStreamingCoalesceSchema.optional(),
     groups: z.record(z.string(), BlueBubblesGroupConfigSchema.optional()).optional(),

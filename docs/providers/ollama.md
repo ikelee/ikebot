@@ -249,6 +249,25 @@ ollama pull gpt-oss:20b  # Pull a tool-capable model
 ollama pull llama3.3     # Or another model
 ```
 
+### ollama list empty but models exist under shared path
+
+If you use a shared model directory (e.g. `OLLAMA_MODELS`) and `ollama list` shows nothing:
+
+1. **Restart the Ollama server** after setting the variable; it only reads `OLLAMA_MODELS` at startup.
+2. Set the variable in the same environment that starts the server (e.g. in the same terminal, or in the service file that runs `ollama serve`).
+3. Ensure only one Ollama server is running (e.g. quit the Ollama app if you also run `ollama serve` from the CLI, or vice versa).
+4. Check permissions: the process running Ollama must be able to read the shared directory.
+
+Example (CLI, same shell):
+
+```bash
+export OLLAMA_MODELS=/path/to/shared/models
+# If a server is already running, stop it (e.g. quit the Ollama app or kill the serve process)
+ollama serve
+# In another terminal:
+ollama list
+```
+
 ### Connection refused
 
 Check that Ollama is running on the correct port:
