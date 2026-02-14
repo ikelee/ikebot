@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MsgContext } from "../src/auto-reply/templating.js";
-import type { OpenClawConfig } from "../src/config/config.js";
+import type { MsgContext } from "../gateway/auto-reply/templating.js";
+import type { OpenClawConfig } from "../gateway/config/config.js";
 
 const makeTempDir = async (prefix: string) => await fs.mkdtemp(path.join(os.tmpdir(), prefix));
 
@@ -22,7 +22,7 @@ const makeTempMedia = async (ext: string) => {
 
 const loadApply = async () => {
   vi.resetModules();
-  return await import("../src/media-understanding/apply.js");
+  return await import("../gateway/media-understanding/apply.js");
 };
 
 const envSnapshot = () => ({

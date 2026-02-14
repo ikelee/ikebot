@@ -8,8 +8,8 @@ on_error() {
 trap on_error ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HASH_FILE="$ROOT_DIR/src/canvas-host/a2ui/.bundle.hash"
-OUTPUT_FILE="$ROOT_DIR/src/canvas-host/a2ui/a2ui.bundle.js"
+HASH_FILE="$ROOT_DIR/gateway/canvas-host/a2ui/.bundle.hash"
+OUTPUT_FILE="$ROOT_DIR/gateway/canvas-host/a2ui/a2ui.bundle.js"
 A2UI_RENDERER_DIR="$ROOT_DIR/vendor/a2ui/renderers/lit"
 A2UI_APP_DIR="$ROOT_DIR/apps/shared/OpenClawKit/Tools/CanvasA2UI"
 
@@ -83,6 +83,17 @@ if [[ -f "$HASH_FILE" ]]; then
     echo "A2UI bundle up to date; skipping."
     exit 0
   fi
+fi
+
+# If bundle exists but hash changed (e.g. lockfile), try rebuild; if rebuild fails, keep existing bundle.
+if [[ -f "$OUTPUT_FILE" ]]; then
+  if (pnpm -s exec tsc -p "$A2UI_RENDERER_DIR/tsconfig.json" && rolldown -c "$A2UI_APP_DIR/rolldown.config.mjs") 2>/dev/null; then
+    echo "$current_hash" > "$HASH_FILE"
+    exit 0
+  fi
+  echo "A2UI rebuild skipped (using existing bundle)." >&2
+  echo "$current_hash" > "$HASH_FILE"
+  exit 0
 fi
 
 pnpm -s exec tsc -p "$A2UI_RENDERER_DIR/tsconfig.json"

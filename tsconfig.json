@@ -19,9 +19,9 @@
     "useDefineForClassFields": false,
     "paths": {
       "*": ["./*"],
-      "openclaw/plugin-sdk": ["./src/plugin-sdk/index.ts"]
+      "openclaw/plugin-sdk": ["./gateway/extensibility/plugin-sdk/index.ts"]
     }
   },
-  "include": ["src/**/*", "ui/**/*", "extensions/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "extensions/**/*.test.ts"]
+  "include": ["gateway/**/*", "ui/**/*", "extensions/**/*"],
+  "exclude": ["node_modules", "dist", "gateway/**/*.test.ts", "extensions/**/*.test.ts"]
 }

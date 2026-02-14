@@ -6,38 +6,41 @@ const env = {
 
 export default defineConfig([
   {
-    entry: "src/index.ts",
+    entry: "gateway/index.ts",
     env,
     fixedExtension: false,
     platform: "node",
   },
   {
-    entry: "src/entry.ts",
+    entry: "gateway/entry.ts",
     env,
     fixedExtension: false,
     platform: "node",
   },
   {
-    entry: "src/infra/warning-filter.ts",
+    entry: "gateway/infra/warning-filter.ts",
     env,
     fixedExtension: false,
     platform: "node",
   },
   {
-    entry: "src/plugin-sdk/index.ts",
+    entry: "gateway/extensibility/plugin-sdk/index.ts",
     outDir: "dist/plugin-sdk",
     env,
     fixedExtension: false,
     platform: "node",
   },
   {
-    entry: "src/extensionAPI.ts",
+    entry: "gateway/extensionAPI.ts",
     env,
     fixedExtension: false,
     platform: "node",
   },
   {
-    entry: ["src/hooks/bundled/*/handler.ts", "src/hooks/llm-slug-generator.ts"],
+    entry: [
+      "gateway/extensibility/hooks/bundled/*/handler.ts",
+      "gateway/extensibility/hooks/llm-slug-generator.ts",
+    ],
     env,
     fixedExtension: false,
     platform: "node",

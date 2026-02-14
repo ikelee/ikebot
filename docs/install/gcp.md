@@ -329,7 +329,7 @@ RUN curl -L https://github.com/steipete/wacli/releases/latest/download/wacli_Lin
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY ui/package.json ./ui/package.json
+COPY ui/web/package.json ./ui/web/package.json
 COPY scripts ./scripts
 
 RUN corepack enable

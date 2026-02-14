@@ -14,7 +14,7 @@ export default defineConfig({
   test: {
     ...baseTest,
     maxWorkers: e2eWorkers,
-    include: ["test/**/*.e2e.test.ts", "src/**/*.e2e.test.ts"],
+    include: ["test/**/*.e2e.test.ts", "gateway/**/*.e2e.test.ts"],
     exclude,
   },
 });

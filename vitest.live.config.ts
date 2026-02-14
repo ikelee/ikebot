@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     ...baseTest,
     maxWorkers: 1,
-    include: ["src/**/*.live.test.ts"],
+    include: ["gateway/**/*.live.test.ts"],
     exclude,
   },
 });

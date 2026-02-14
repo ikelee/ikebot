@@ -1,4 +1,4 @@
-import { stripAnsi } from "../../src/terminal/ansi.js";
+import { stripAnsi } from "../../gateway/terminal/ansi.js";
 
 export function normalizeTestText(input: string): string {
   return stripAnsi(input)

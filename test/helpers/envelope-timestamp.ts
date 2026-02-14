@@ -1,9 +1,9 @@
 import {
   formatUtcTimestamp,
   formatZonedTimestamp,
-} from "../../src/infra/format-time/format-datetime.js";
+} from "../../gateway/infra/format-time/format-datetime.js";
 
-export { escapeRegExp } from "../../src/utils.js";
+export { escapeRegExp } from "../../gateway/utils.js";
 
 type EnvelopeTimestampZone = string;
 

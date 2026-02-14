@@ -3,7 +3,7 @@ import baseConfig from "./vitest.config.ts";
 
 const baseTest = (baseConfig as { test?: { include?: string[]; exclude?: string[] } }).test ?? {};
 const include = baseTest.include ?? [
-  "src/**/*.test.ts",
+  "gateway/**/*.test.ts",
   "extensions/**/*.test.ts",
   "test/format-error.test.ts",
 ];
@@ -14,6 +14,6 @@ export default defineConfig({
   test: {
     ...baseTest,
     include,
-    exclude: [...exclude, "src/gateway/**", "extensions/**"],
+    exclude: [...exclude, "gateway/server/**", "extensions/**"],
   },
 });

@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
-import type { MsgContext } from "../src/auto-reply/templating.js";
-import { finalizeInboundContext } from "../src/auto-reply/reply/inbound-context.js";
+import type { MsgContext } from "../gateway/auto-reply/templating.js";
+import { finalizeInboundContext } from "../gateway/auto-reply/reply/inbound-context.js";
 import { expectInboundContextContract } from "./helpers/inbound-contract.js";
 
 describe("inbound context contract (providers + extensions)", () => {

@@ -7,9 +7,9 @@
     "noEmit": false,
     "noEmitOnError": true,
     "outDir": "dist/plugin-sdk",
-    "rootDir": "src",
+    "rootDir": "gateway",
     "tsBuildInfoFile": "dist/plugin-sdk/.tsbuildinfo"
   },
-  "include": ["src/plugin-sdk/index.ts", "src/types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "include": ["gateway/extensibility/plugin-sdk/index.ts", "gateway/types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "gateway/**/*.test.ts"]
 }

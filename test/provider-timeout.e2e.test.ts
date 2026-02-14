@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GatewayClient } from "../src/gateway/client.js";
-import { startGatewayServer } from "../src/gateway/server.js";
-import { getDeterministicFreePortBlock } from "../src/test-utils/ports.js";
-import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../src/utils/message-channel.js";
+import { GatewayClient } from "../gateway/server/client.js";
+import { startGatewayServer } from "../gateway/server/server.js";
+import { getDeterministicFreePortBlock } from "../gateway/test-utils/ports.js";
+import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../gateway/utils/message-channel.js";
 
 type OpenAIResponseStreamEvent =
   | { type: "response.output_item.added"; item: Record<string, unknown> }

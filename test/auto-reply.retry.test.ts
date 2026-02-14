@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/web/media.js", () => ({
+vi.mock("../gateway/web/media.js", () => ({
   loadWebMedia: vi.fn(async () => ({
     buffer: Buffer.from("img"),
     contentType: "image/jpeg",
@@ -9,9 +9,9 @@ vi.mock("../src/web/media.js", () => ({
   })),
 }));
 
-import type { WebInboundMessage } from "../src/web/inbound.js";
-import { defaultRuntime } from "../src/runtime.js";
-import { deliverWebReply } from "../src/web/auto-reply.js";
+import type { WebInboundMessage } from "../gateway/web/inbound.js";
+import { defaultRuntime } from "../gateway/runtime.js";
+import { deliverWebReply } from "../gateway/web/auto-reply.js";
 
 const noopLogger = {
   info: vi.fn(),

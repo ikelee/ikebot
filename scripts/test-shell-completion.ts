@@ -26,13 +26,13 @@
 import { confirm, isCancel } from "@clack/prompts";
 import os from "node:os";
 import path from "node:path";
-import { installCompletion } from "../src/cli/completion-cli.js";
+import { installCompletion } from "../gateway/entry/cli/completion-cli.js";
 import {
   checkShellCompletionStatus,
   ensureCompletionCacheExists,
-} from "../src/commands/doctor-completion.js";
-import { stylePromptMessage } from "../src/terminal/prompt-style.js";
-import { theme } from "../src/terminal/theme.js";
+} from "../gateway/entry/commands/doctor-completion.js";
+import { stylePromptMessage } from "../gateway/terminal/prompt-style.js";
+import { theme } from "../gateway/terminal/theme.js";
 
 const CLI_NAME = "openclaw";
 
