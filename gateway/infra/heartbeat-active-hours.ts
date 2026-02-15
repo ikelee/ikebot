@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "./config/config.js";
 import type { AgentDefaultsConfig } from "./config/types.agent-defaults.js";
-import { resolveUserTimezone } from "../agents/date-time.js";
+import { resolveUserTimezone } from "../runtime/date-time.js";
 
 type HeartbeatConfig = AgentDefaultsConfig["heartbeat"];
 

@@ -32,7 +32,7 @@ describe("getApiKeyForModel", () => {
       );
 
       vi.resetModules();
-      const { ensureAuthProfileStore } = await import("../agents/auth-profiles.js");
+      const { ensureAuthProfileStore } = await import("../runtime/auth-profiles.js");
       const { getApiKeyForModel } = await import("./model-auth.js");
 
       const model = {

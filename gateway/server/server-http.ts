@@ -10,16 +10,16 @@ import { createServer as createHttpsServer } from "node:https";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
-import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import {
   A2UI_PATH,
   CANVAS_HOST_PATH,
   CANVAS_WS_PATH,
   handleA2uiHttpRequest,
 } from "../canvas-host/a2ui.js";
+import { handleSlackHttpRequest } from "../entrypoints/slack/http/index.js";
 import { loadConfig } from "../infra/config/config.js";
+import { resolveAgentAvatar } from "../runtime/identity-avatar.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
-import { handleSlackHttpRequest } from "../slack/http/index.js";
 import { authorizeGatewayConnect, isLocalDirectRequest, type ResolvedGatewayAuth } from "./auth.js";
 import {
   handleControlUiAvatarRequest,

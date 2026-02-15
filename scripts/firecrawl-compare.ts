@@ -1,7 +1,7 @@
 import {
   extractReadableContent,
   fetchFirecrawlContent,
-} from "../gateway/agents/tools/web-tools.js";
+} from "../gateway/runtime/tools/web-tools.js";
 
 const DEFAULT_URLS = [
   "https://en.wikipedia.org/wiki/Web_scraping",

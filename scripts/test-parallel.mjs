@@ -6,15 +6,15 @@ import path from "node:path";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 const unitIsolatedFiles = [
-  "gateway/plugins/loader.test.ts",
-  "gateway/plugins/tools.optional.test.ts",
-  "gateway/agents/session-tool-result-guard.tool-result-persist-hook.test.ts",
+  "gateway/extensibility/plugins/loader.test.ts",
+  "gateway/extensibility/plugins/tools.optional.test.ts",
+  "gateway/runtime/session-tool-result-guard.tool-result-persist-hook.test.ts",
   "gateway/security/fix.test.ts",
   "gateway/security/audit.test.ts",
   "gateway/utils.test.ts",
-  "gateway/pipeline/tool-meta.test.ts",
-  "gateway/pipeline/envelope.test.ts",
-  "gateway/entry/commands/auth-choice.test.ts",
+  "gateway/agent/pipeline/tool-meta.test.ts",
+  "gateway/agent/pipeline/envelope.test.ts",
+  "gateway/entrypoints/entry/commands/auth-choice.test.ts",
   "gateway/media/store.header-ext.test.ts",
   "gateway/browser/server.covers-additional-endpoint-branches.test.ts",
   "gateway/browser/server.post-tabs-open-profile-unknown-returns-404.test.ts",

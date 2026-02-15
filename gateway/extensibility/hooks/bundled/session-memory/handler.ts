@@ -10,11 +10,11 @@ import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "../../../../infra/config/config.js";
 import type { HookHandler } from "../../hooks.js";
-import { resolveAgentWorkspaceDir } from "../../../../agents/agent-scope.js";
 import { resolveStateDir } from "../../../../infra/config/paths.js";
 import { resolveAgentIdFromSessionKey } from "../../../../infra/routing/session-key.js";
 import { hasInterSessionUserProvenance } from "../../../../infra/sessions/input-provenance.js";
 import { createSubsystemLogger } from "../../../../logging/subsystem.js";
+import { resolveAgentWorkspaceDir } from "../../../../runtime/agent-scope.js";
 import { resolveHookConfig } from "../../config.js";
 import { generateSlugViaLLM } from "../../llm-slug-generator.js";
 

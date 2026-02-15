@@ -1,24 +1,30 @@
-import type { ChatType } from "../../channels/chat-type.js";
-import type { ChannelId } from "../../channels/plugins/types.js";
-import type { MsgContext } from "../../pipeline/templating.js";
+import type { MsgContext } from "../../agent/pipeline/templating.js";
+import type { ChatType } from "../../entrypoints/channels/chat-type.js";
+import type { ChannelId } from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ResolvedMessagingTarget } from "./target-resolver.js";
-import { getChannelPlugin } from "../../channels/plugins/index.js";
-import { parseDiscordTarget } from "../../discord/targets.js";
-import { parseIMessageTarget, normalizeIMessageHandle } from "../../imessage/targets.js";
+import { getChannelPlugin } from "../../entrypoints/channels/plugins/index.js";
+import { parseDiscordTarget } from "../../entrypoints/discord/targets.js";
+import {
+  parseIMessageTarget,
+  normalizeIMessageHandle,
+} from "../../entrypoints/imessage/targets.js";
 import {
   resolveSignalPeerId,
   resolveSignalRecipient,
   resolveSignalSender,
-} from "../../signal/identity.js";
-import { resolveSlackAccount } from "../../slack/accounts.js";
-import { createSlackWebClient } from "../../slack/client.js";
-import { normalizeAllowListLower } from "../../slack/monitor/allow-list.js";
-import { parseSlackTarget } from "../../slack/targets.js";
-import { buildTelegramGroupPeerId } from "../../telegram/bot/helpers.js";
-import { resolveTelegramTargetChatType } from "../../telegram/inline-buttons.js";
-import { parseTelegramTarget } from "../../telegram/targets.js";
-import { isWhatsAppGroupJid, normalizeWhatsAppTarget } from "../../whatsapp/normalize.js";
+} from "../../entrypoints/signal/identity.js";
+import { resolveSlackAccount } from "../../entrypoints/slack/accounts.js";
+import { createSlackWebClient } from "../../entrypoints/slack/client.js";
+import { normalizeAllowListLower } from "../../entrypoints/slack/monitor/allow-list.js";
+import { parseSlackTarget } from "../../entrypoints/slack/targets.js";
+import { buildTelegramGroupPeerId } from "../../entrypoints/telegram/bot/helpers.js";
+import { resolveTelegramTargetChatType } from "../../entrypoints/telegram/inline-buttons.js";
+import { parseTelegramTarget } from "../../entrypoints/telegram/targets.js";
+import {
+  isWhatsAppGroupJid,
+  normalizeWhatsAppTarget,
+} from "../../entrypoints/whatsapp/normalize.js";
 import { recordSessionMetaFromInbound, resolveStorePath } from "../config/sessions.js";
 import { buildAgentSessionKey, type RoutePeer } from "../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../routing/session-key.js";

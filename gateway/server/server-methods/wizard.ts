@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GatewayRequestHandlers } from "./types.js";
-import { WizardSession } from "../../entry/wizard/session.js";
+import { WizardSession } from "../../entrypoints/entry/wizard/session.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   ErrorCodes,

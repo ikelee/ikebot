@@ -1,5 +1,5 @@
-import type { NormalizedUsage } from "../agents/usage.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
+import type { NormalizedUsage } from "../runtime/usage.js";
 
 export type ModelCostConfig = {
   input: number;

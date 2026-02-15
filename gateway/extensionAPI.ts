@@ -1,11 +1,11 @@
-export { resolveAgentDir, resolveAgentWorkspaceDir } from "./agents/agent-scope.ts";
+export { resolveAgentDir, resolveAgentWorkspaceDir } from "./runtime/agent-scope.ts";
 
-export { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./agents/defaults.ts";
-export { resolveAgentIdentity } from "./agents/identity.ts";
+export { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./runtime/defaults.ts";
+export { resolveAgentIdentity } from "./runtime/identity.ts";
 export { resolveThinkingDefault } from "./models/model-selection.ts";
-export { runEmbeddedPiAgent } from "./agents/pi-embedded.ts";
-export { resolveAgentTimeoutMs } from "./agents/timeout.ts";
-export { ensureAgentWorkspace } from "./agents/workspace.ts";
+export { runEmbeddedPiAgent } from "./runtime/pi-embedded.ts";
+export { resolveAgentTimeoutMs } from "./runtime/timeout.ts";
+export { ensureAgentWorkspace } from "./runtime/workspace.ts";
 export {
   resolveStorePath,
   loadSessionStore,

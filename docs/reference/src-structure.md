@@ -12,16 +12,16 @@ This doc groups all top-level folders under **gateway/** (the server and pipelin
 
 ---
 
-## 1. Reply pipeline (core flow)
+## 1. Agent and reply pipeline (core flow)
 
 **Input → dispatch → phases → output.** Single place the “message in, reply out” flow lives.
 
-| Folder       | Purpose                                                                                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **pipeline** | Reply pipeline: runner, shared helpers, phases (directives, routing, run), skills/commands. Entry: `runner.ts`, `dispatch.ts`, `reply/get-reply.ts`.                                    |
-| **agents**   | Agent runtime: system prompt, Pi embedded runner (model selection in **models/**), tools, auth, workspace, sandbox. Used by the “run” phase.                                            |
-| **models**   | Remote model interfacing: providers, model-selection, model-auth, models-config. Used by agents and pipeline.                                                                           |
-| **routing**  | Session/agent routing (not phase routing): session keys, `resolveAgentRoute`, channel–account bindings. Used by channels and pipeline to resolve which agent/session handles a message. |
+| Folder       | Purpose                                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **pipeline** | Reply pipeline: runner, shared helpers, phases (directives, routing, run), skills/commands. Entry: `runner.ts`, `dispatch.ts`, `reply/get-reply.ts`. Lives under **gateway/agent/pipeline/**.                                        |
+| **runtime**  | Agent execution and understanding: system prompt, Pi embedded runner (model selection in **models/**), tools, auth, workspace, sandbox, link-understanding, media-understanding, TTS. Used by the “run” phase. **gateway/runtime/**. |
+| **models**   | Remote model interfacing: providers, model-selection, model-auth, models-config. Used by agents and pipeline.                                                                                                                        |
+| **routing**  | Session/agent routing (not phase routing): session keys, `resolveAgentRoute`, channel–account bindings. Used by channels and pipeline to resolve which agent/session handles a message.                                              |
 
 ---
 
@@ -59,16 +59,16 @@ This doc groups all top-level folders under **gateway/** (the server and pipelin
 
 ## 4. CLI and entrypoints
 
-**User-facing commands and program entry.** All live under **gateway/entry/**.
+**User-facing commands and program entry.** All live under **gateway/entrypoints/entry/** (channels live under **gateway/entrypoints/** as telegram, discord, slack, etc.).
 
-| Folder             | Purpose                                                                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **entry/cli**      | CLI wiring: program builder, subcommand registration (gateway, cron, update, etc.), deps, prompts, ports, route. **gateway/entry/cli/**.      |
-| **entry/commands** | Implementation of high-level commands (agent, channels, health, onboard, status, sandbox, etc.) used by the CLI. **gateway/entry/commands/**. |
-| **entry/wizard**   | Onboarding / first-run setup. **gateway/entry/wizard/**.                                                                                      |
-| **entry/acp**      | Agent Control Protocol (IDE integration). **gateway/entry/acp/**.                                                                             |
-| **entry.ts**       | Main CLI entry (invoked by `openclaw.mjs`): env, profile, then `run-main` → program. **gateway/entry.ts**.                                    |
-| **index.ts**       | Legacy/bundled entry: exports and program run used by some builds. **gateway/index.ts**.                                                      |
+| Folder                         | Purpose                                                                                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **entrypoints/entry/cli**      | CLI wiring: program builder, subcommand registration (gateway, cron, update, etc.), deps, prompts, ports, route. **gateway/entrypoints/entry/cli/**.      |
+| **entrypoints/entry/commands** | Implementation of high-level commands (agent, channels, health, onboard, status, sandbox, etc.) used by the CLI. **gateway/entrypoints/entry/commands/**. |
+| **entrypoints/entry/wizard**   | Onboarding / first-run setup. **gateway/entrypoints/entry/wizard/**.                                                                                      |
+| **entrypoints/entry/acp**      | Agent Control Protocol (IDE integration). **gateway/entrypoints/entry/acp/**.                                                                             |
+| **entry.ts**                   | Main CLI entry (invoked by `openclaw.mjs`): env, profile, then `run-main` → program. **gateway/entry.ts**.                                                |
+| **index.ts**                   | Legacy/bundled entry: exports and program run used by some builds. **gateway/index.ts**.                                                                  |
 
 ---
 
@@ -86,17 +86,18 @@ This doc groups all top-level folders under **gateway/** (the server and pipelin
 
 ---
 
-## 6. Understanding and media
+## 6. Runtime (execution) and agent understanding
 
-**Link/media understanding and TTS.**
+**Execution:** Pi runner, tools, sandbox, auth, workspace, TTS live under **gateway/runtime/**. **Understanding:** link and media understanding live under **gateway/agent/** (link-understanding, media-understanding).
 
-| Folder                  | Purpose                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------ |
-| **link-understanding**  | Link unfurling / understanding pipeline.                                                         |
-| **media-understanding** | Media (image/audio) understanding: providers (Anthropic, Google, Deepgram, etc.), runner, apply. |
-| **tts**                 | Text-to-speech integration.                                                                      |
-| **media**               | Shared media utilities (if any) used across understanding and channels.                          |
-| **markdown**            | Markdown parsing/formatting shared by config and UI.                                             |
+| Folder                        | Purpose                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **runtime/** (top-level)      | Agent scope, workspace, Pi embedded runner, tools, sandbox, auth-profiles, skills, bootstrap, CLI runner, etc. |
+| **agent/link-understanding**  | Link unfurling / understanding pipeline.                                                                       |
+| **agent/media-understanding** | Media (image/audio) understanding: providers (Anthropic, Google, Deepgram, etc.), runner, apply.               |
+| **runtime/tts**               | Text-to-speech integration.                                                                                    |
+| **media**                     | Shared media utilities (if any) used across understanding and channels.                                        |
+| **markdown**                  | Markdown parsing/formatting shared by config and UI.                                                           |
 
 ---
 
@@ -170,16 +171,18 @@ This doc groups all top-level folders under **gateway/** (the server and pipelin
 ## Quick hierarchy (grouped)
 
 ```
-Reply pipeline      pipeline, agents, routing
+Agent & pipeline    agent (pipeline, system-prompts-by-stage), runtime (Pi, tools, sandbox, understanding, TTS), models
 Channels            telegram, discord, signal, slack, line, web, imessage, whatsapp, channels
-Gateway/runtime     gateway, macos, daemon, tui
-CLI                 cli, commands
-Config & infra      config, infra, sessions, pairing, memory
-Understanding       link-understanding, media-understanding, tts, media, markdown
+Entrypoints         entrypoints/ (docs); channels and entry at gateway root
+Gateway/runtime     server, macos, daemon; TUI under ui/tui
+CLI                 entry/cli, entry/commands, entry.ts
+Config & infra      infra/config, infra (sessions, pairing, memory, routing, etc.)
+Runtime             runtime/ (execution + understanding: link, media, tts, pi-embedded-runner, tools, sandbox, auth, skills)
+Jobs                jobs/ (non-cron); cron under cron/
 Extensibility       extensibility/plugins, extensibility/plugin-sdk, extensibility/hooks
-Integrations        acp, cron, wizard, security, docs, providers
+Integrations        entry/acp, entry/wizard, cron, security, docs, models/providers
 Hosts & UI          browser, node-host, canvas-host
-Shared              utils, shared, types, logging, terminal, process, compat
+Shared              utils, shared, logging, terminal, process, compat
 Test                test-helpers, test-utils, scripts
 ```
 
@@ -187,10 +190,10 @@ Test                test-helpers, test-utils, scripts
 
 ## Where things live (quick lookup)
 
-- **“Where is the reply pipeline?”** → **gateway/pipeline/** (runner, phases), **gateway/agents/** (model, prompt, run).
-- **“Where is Phase 1 / request router?”** → **gateway/pipeline/reply/phases/routing/**, **gateway/pipeline/reply/request-router.ts**.
+- **“Where is the reply pipeline?”** → **gateway/agent/pipeline/** (runner, phases); **gateway/runtime/** (model, prompt, run: Pi, tools, sandbox, understanding, TTS).
+- **“Where is Phase 1 / request router?”** → **gateway/agent/pipeline/reply/phases/routing/**, **gateway/agent/pipeline/reply/request-router.ts**.
 - **“Where do Telegram/Discord/etc. live?”** → **gateway/telegram/**, **gateway/discord/**, etc.; shared layer in **gateway/channels/**.
-- **“Where is session key / resolve route?”** → **gateway/routing/** (session-key, resolve-route, bindings).
+- **“Where is session key / resolve route?”** → **gateway/infra/routing/** (session-key, resolve-route, bindings).
 - **“Where is the gateway server?”** → **gateway/server/**.
 - **“Where is the CLI built?”** → **gateway/entry/cli/**, **gateway/entry/commands/**, **gateway/entry.ts**.
 - **“Where are plugins loaded?”** → **gateway/extensibility/plugins/runtime/**; public API in **gateway/extensibility/plugin-sdk/**.

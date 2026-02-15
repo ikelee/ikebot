@@ -4,7 +4,7 @@ import type {
   ConfigFileSnapshot,
   GatewayReloadMode,
 } from "../infra/config/config.js";
-import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
+import { type ChannelId, listChannelPlugins } from "../entrypoints/channels/plugins/index.js";
 import { getActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { isPlainObject } from "../utils.js";
 

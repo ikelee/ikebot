@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { listChatCommands } from "../agent/pipeline/commands-registry.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
-import { listChatCommands } from "../pipeline/commands-registry.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 
 beforeEach(() => {

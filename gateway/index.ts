@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { getReplyFromConfig } from "./agent/pipeline/reply.js";
+import { applyTemplate } from "./agent/pipeline/templating.js";
 import { monitorWebChannel } from "./channel-web.js";
-import { createDefaultDeps } from "./entry/cli/deps.js";
-import { promptYesNo } from "./entry/cli/prompt.js";
-import { waitForever } from "./entry/cli/wait.js";
+import { createDefaultDeps } from "./entrypoints/entry/cli/deps.js";
+import { promptYesNo } from "./entrypoints/entry/cli/prompt.js";
+import { waitForever } from "./entrypoints/entry/cli/wait.js";
 import { ensureBinary } from "./infra/binaries.js";
 import { loadConfig } from "./infra/config/config.js";
 import {
@@ -28,8 +30,6 @@ import {
 import { assertSupportedRuntime } from "./infra/runtime-guard.js";
 import { installUnhandledRejectionHandler } from "./infra/unhandled-rejections.js";
 import { enableConsoleCapture } from "./logging.js";
-import { getReplyFromConfig } from "./pipeline/reply.js";
-import { applyTemplate } from "./pipeline/templating.js";
 import { runCommandWithTimeout, runExec } from "./process/exec.js";
 import { assertWebChannel, normalizeE164, toWhatsappJid } from "./utils.js";
 
@@ -43,7 +43,7 @@ enableConsoleCapture();
 // Enforce the minimum supported runtime before doing any work.
 assertSupportedRuntime();
 
-import { buildProgram } from "./entry/cli/program.js";
+import { buildProgram } from "./entrypoints/entry/cli/program.js";
 
 const program = buildProgram();
 

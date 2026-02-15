@@ -3,7 +3,7 @@ import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../extensibility/plugins/services.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
-import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
+import { type ChannelId, listChannelPlugins } from "../entrypoints/channels/plugins/index.js";
 import { stopGmailWatcher } from "../extensibility/hooks/gmail-watcher.js";
 
 export function createGatewayCloseHandler(params: {

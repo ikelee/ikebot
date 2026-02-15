@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { CliDeps } from "../entry/cli/deps.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
-import { agentCommand } from "../entry/commands/agent.js";
+import { SILENT_REPLY_TOKEN } from "../agent/pipeline/tokens.js";
+import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { resolveMainSessionKey } from "../infra/config/sessions/main-session.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { SILENT_REPLY_TOKEN } from "../pipeline/tokens.js";
 import { type RuntimeEnv, defaultRuntime } from "../runtime.js";
 
 function generateBootSessionId(): string {

@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "../config/config.js";
 import type { SessionChatType, SessionEntry } from "../config/sessions.js";
-import { normalizeChatType } from "../../channels/chat-type.js";
+import { normalizeChatType } from "../../entrypoints/channels/chat-type.js";
 
 export type SessionSendPolicyDecision = "allow" | "deny";
 

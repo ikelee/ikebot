@@ -1,4 +1,4 @@
-import type { ReplyPayload } from "../../pipeline/types.js";
+import type { ReplyPayload } from "../../agent/pipeline/types.js";
 import type { OutboundDeliveryJson } from "./format.js";
 import { normalizeOutboundPayloadsForJson, type OutboundPayloadJson } from "./payloads.js";
 

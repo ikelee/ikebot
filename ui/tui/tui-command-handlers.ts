@@ -9,13 +9,13 @@ import type {
   TuiOptions,
   TuiStateAccess,
 } from "./tui-types.js";
-import { formatRelativeTimestamp } from "../../gateway/infra/format-time/format-relative.ts";
-import { normalizeAgentId } from "../../gateway/infra/routing/session-key.js";
 import {
   formatThinkingLevels,
   normalizeUsageDisplay,
   resolveResponseUsageMode,
-} from "../../gateway/pipeline/thinking.js";
+} from "../../gateway/agent/pipeline/thinking.js";
+import { formatRelativeTimestamp } from "../../gateway/infra/format-time/format-relative.ts";
+import { normalizeAgentId } from "../../gateway/infra/routing/session-key.js";
 import { helpText, parseCommand } from "./commands.js";
 import {
   createFilterableSelectList,

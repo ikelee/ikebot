@@ -8,11 +8,15 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import type { ClientToolDefinition } from "../agents/pi-embedded-runner/run/params.js";
-import type { ImageContent } from "../entry/commands/agent/types.js";
+import type { ImageContent } from "../entrypoints/entry/commands/agent/types.js";
 import type { GatewayHttpResponsesConfig } from "../infra/config/types.gateway.js";
-import { createDefaultDeps } from "../entry/cli/deps.js";
-import { agentCommand } from "../entry/commands/agent.js";
+import type { ClientToolDefinition } from "../runtime/pi-embedded-runner/run/params.js";
+import {
+  buildHistoryContextFromEntries,
+  type HistoryEntry,
+} from "../agent/pipeline/reply/history.js";
+import { createDefaultDeps } from "../entrypoints/entry/cli/deps.js";
+import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
 import {
   DEFAULT_INPUT_FILE_MAX_BYTES,
@@ -32,7 +36,6 @@ import {
   type InputImageLimits,
   type InputImageSource,
 } from "../media/input-files.js";
-import { buildHistoryContextFromEntries, type HistoryEntry } from "../pipeline/reply/history.js";
 import { defaultRuntime } from "../runtime.js";
 import { authorizeGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
 import {

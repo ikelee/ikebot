@@ -1,7 +1,7 @@
+import { normalizeVerboseLevel } from "../agent/pipeline/thinking.js";
 import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
 import { loadConfig } from "../infra/config/config.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
-import { normalizeVerboseLevel } from "../pipeline/thinking.js";
 import { loadSessionEntry } from "./session-utils.js";
 import { formatForLog } from "./ws-log.js";
 

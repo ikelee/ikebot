@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
-import { applyCliProfileEnv, parseCliProfileArgs } from "./entry/cli/profile.js";
+import { applyCliProfileEnv, parseCliProfileArgs } from "./entrypoints/entry/cli/profile.js";
 import { isTruthyEnvValue, normalizeEnv } from "./infra/env.js";
 import { installProcessWarningFilter } from "./infra/warning-filter.js";
 import { attachChildProcessBridge } from "./process/child-process-bridge.js";
@@ -159,7 +159,7 @@ if (!ensureExperimentalWarningSuppressed()) {
     process.argv = parsed.argv;
   }
 
-  import("./entry/cli/run-main.js")
+  import("./entrypoints/entry/cli/run-main.js")
     .then(({ runCli }) => runCli(process.argv))
     .catch((error) => {
       console.error(

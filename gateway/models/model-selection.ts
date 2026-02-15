@@ -1,7 +1,7 @@
-import type { ModelCatalogEntry } from "../agents/model-catalog.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
-import { resolveAgentModelPrimary } from "../agents/agent-scope.js";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import type { ModelCatalogEntry } from "../runtime/model-catalog.js";
+import { resolveAgentModelPrimary } from "../runtime/agent-scope.js";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../runtime/defaults.js";
 import { normalizeGoogleModelId } from "./models-config.providers.js";
 
 export type ModelRef = {

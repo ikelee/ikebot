@@ -8,7 +8,7 @@ const agentCommand = vi.fn();
 vi.mock("../commands/agent.js", () => ({ agentCommand }));
 
 const { runBootOnce } = await import("./boot.js");
-const { resolveMainSessionKey } = await import("../config/sessions/main-session.js");
+const { resolveMainSessionKey } = await import("../infra/config/sessions/main-session.js");
 
 describe("runBootOnce", () => {
   beforeEach(() => {

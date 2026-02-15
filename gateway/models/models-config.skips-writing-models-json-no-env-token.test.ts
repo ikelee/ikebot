@@ -131,7 +131,7 @@ describe("models-config", () => {
     await withTempHome(async () => {
       vi.resetModules();
       const { ensureOpenClawModelsJson } = await import("./models-config.js");
-      const { resolveOpenClawAgentDir } = await import("../agents/agent-paths.js");
+      const { resolveOpenClawAgentDir } = await import("../runtime/agent-paths.js");
 
       await ensureOpenClawModelsJson(MODELS_CONFIG);
 
@@ -151,7 +151,7 @@ describe("models-config", () => {
       process.env.MINIMAX_API_KEY = "sk-minimax-test";
       try {
         const { ensureOpenClawModelsJson } = await import("./models-config.js");
-        const { resolveOpenClawAgentDir } = await import("../agents/agent-paths.js");
+        const { resolveOpenClawAgentDir } = await import("../runtime/agent-paths.js");
 
         await ensureOpenClawModelsJson({});
 
@@ -188,7 +188,7 @@ describe("models-config", () => {
       process.env.SYNTHETIC_API_KEY = "sk-synthetic-test";
       try {
         const { ensureOpenClawModelsJson } = await import("./models-config.js");
-        const { resolveOpenClawAgentDir } = await import("../agents/agent-paths.js");
+        const { resolveOpenClawAgentDir } = await import("../runtime/agent-paths.js");
 
         await ensureOpenClawModelsJson({});
 

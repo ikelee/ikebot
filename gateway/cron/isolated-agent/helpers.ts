@@ -1,4 +1,7 @@
-import { DEFAULT_HEARTBEAT_ACK_MAX_CHARS, stripHeartbeatToken } from "../../pipeline/heartbeat.js";
+import {
+  DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+  stripHeartbeatToken,
+} from "../../agent/pipeline/heartbeat.js";
 import { truncateUtf16Safe } from "../../utils.js";
 
 type DeliveryPayload = {

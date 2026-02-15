@@ -53,8 +53,8 @@ export default defineConfig({
         "gateway/entry.ts",
         "gateway/index.ts",
         "gateway/runtime.ts",
-        "gateway/entry/cli/**",
-        "gateway/entry/commands/**",
+        "gateway/entrypoints/entry/cli/**",
+        "gateway/entrypoints/entry/commands/**",
         "gateway/daemon/**",
         "gateway/extensibility/hooks/**",
         "gateway/macos/**",
@@ -86,7 +86,7 @@ export default defineConfig({
         "gateway/process/exec.ts",
         // Interactive UIs/flows are intentionally validated via manual/e2e runs.
         "ui/tui/**",
-        "gateway/entry/wizard/**",
+        "gateway/entrypoints/entry/wizard/**",
         // Channel surfaces are largely integration-tested (or manually validated).
         "gateway/discord/**",
         "gateway/imessage/**",

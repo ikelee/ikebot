@@ -31,7 +31,7 @@ describe("after_tool_call hook wiring", () => {
     hookMocks.runner.hasHooks.mockReturnValue(true);
 
     const { handleToolExecutionEnd, handleToolExecutionStart } =
-      await import("../../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../../runtime/pi-embedded-subscribe.handlers.tools.js");
 
     const ctx = {
       params: {
@@ -99,7 +99,7 @@ describe("after_tool_call hook wiring", () => {
     hookMocks.runner.hasHooks.mockReturnValue(true);
 
     const { handleToolExecutionEnd, handleToolExecutionStart } =
-      await import("../../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../../runtime/pi-embedded-subscribe.handlers.tools.js");
 
     const ctx = {
       params: {
@@ -161,7 +161,7 @@ describe("after_tool_call hook wiring", () => {
     hookMocks.runner.hasHooks.mockReturnValue(false);
 
     const { handleToolExecutionEnd } =
-      await import("../../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../../runtime/pi-embedded-subscribe.handlers.tools.js");
 
     const ctx = {
       params: { runId: "r", session: { messages: [] } },

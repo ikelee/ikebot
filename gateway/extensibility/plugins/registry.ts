@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { AnyAgentTool } from "../../agents/tools/common.js";
-import type { ChannelDock } from "../../channels/dock.js";
-import type { ChannelPlugin } from "../../channels/plugins/types.js";
+import type { ChannelDock } from "../../entrypoints/channels/dock.js";
+import type { ChannelPlugin } from "../../entrypoints/channels/plugins/types.js";
+import type { AnyAgentTool } from "../../runtime/tools/common.js";
 import type {
   GatewayRequestHandler,
   GatewayRequestHandlers,

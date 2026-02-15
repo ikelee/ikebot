@@ -1,5 +1,5 @@
 import type { PairingChannel } from "./pairing-store.js";
-import { formatCliCommand } from "../../entry/cli/command-format.js";
+import { formatCliCommand } from "../../entrypoints/entry/cli/command-format.js";
 
 export function buildPairingReply(params: {
   channel: PairingChannel;

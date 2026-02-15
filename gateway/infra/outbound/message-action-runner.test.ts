@@ -2,19 +2,19 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChannelPlugin } from "../../channels/plugins/types.js";
+import type { ChannelPlugin } from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { slackPlugin } from "../../../extensions/slack/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
 import { whatsappPlugin } from "../../../extensions/whatsapp/src/channel.js";
-import { jsonResult } from "../../agents/tools/common.js";
+import { loadWebMedia } from "../../entrypoints/web/media.js";
 import { setActivePluginRegistry } from "../../extensibility/plugins/runtime.js";
+import { jsonResult } from "../../runtime/tools/common.js";
 import {
   createIMessageTestPlugin,
   createOutboundTestPlugin,
   createTestRegistry,
 } from "../../test-utils/channel-plugins.js";
-import { loadWebMedia } from "../../web/media.js";
 import { runMessageAction } from "./message-action-runner.js";
 
 vi.mock("../../web/media.js", async () => {

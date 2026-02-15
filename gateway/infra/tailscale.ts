@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { formatCliCommand } from "../entry/cli/command-format.js";
-import { promptYesNo } from "../entry/cli/prompt.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
+import { promptYesNo } from "../entrypoints/entry/cli/prompt.js";
 import { danger, info, logVerbose, shouldLogVerbose, warn } from "../globals.js";
 import { runExec } from "../process/exec.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";

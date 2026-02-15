@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { formatCliCommand } from "../entry/cli/command-format.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
 import { resolveStateDir } from "./config/paths.js";
 
 export type RestartSentinelLog = {

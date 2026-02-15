@@ -1,11 +1,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
+import { movePathToTrash } from "../../browser/trash.js";
+import {
+  applyAgentConfig,
+  findAgentEntryIndex,
+  listAgentEntries,
+  pruneAgentConfig,
+} from "../../entrypoints/entry/commands/agents.config.js";
+import { loadConfig, writeConfigFile } from "../../infra/config/config.js";
+import { resolveSessionTranscriptsDirForAgent } from "../../infra/config/sessions/paths.js";
+import { DEFAULT_AGENT_ID, normalizeAgentId } from "../../infra/routing/session-key.js";
 import {
   listAgentIds,
   resolveAgentDir,
   resolveAgentWorkspaceDir,
-} from "../../agents/agent-scope.js";
+} from "../../runtime/agent-scope.js";
 import {
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_BOOTSTRAP_FILENAME,
@@ -17,17 +27,7 @@ import {
   DEFAULT_TOOLS_FILENAME,
   DEFAULT_USER_FILENAME,
   ensureAgentWorkspace,
-} from "../../agents/workspace.js";
-import { movePathToTrash } from "../../browser/trash.js";
-import {
-  applyAgentConfig,
-  findAgentEntryIndex,
-  listAgentEntries,
-  pruneAgentConfig,
-} from "../../entry/commands/agents.config.js";
-import { loadConfig, writeConfigFile } from "../../infra/config/config.js";
-import { resolveSessionTranscriptsDirForAgent } from "../../infra/config/sessions/paths.js";
-import { DEFAULT_AGENT_ID, normalizeAgentId } from "../../infra/routing/session-key.js";
+} from "../../runtime/workspace.js";
 import { resolveUserPath } from "../../utils.js";
 import {
   ErrorCodes,

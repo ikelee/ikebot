@@ -1,35 +1,115 @@
 import { createRequire } from "node:module";
 import type { PluginRuntime } from "./types.js";
 import {
-  resolveEffectiveMessagesConfig,
-  resolveHumanDelayConfig,
-} from "../../../agents/identity.js";
-import { createMemoryGetTool, createMemorySearchTool } from "../../../agents/tools/memory-tool.js";
-import { handleSlackAction } from "../../../agents/tools/slack-actions.js";
-import { handleWhatsAppAction } from "../../../agents/tools/whatsapp-actions.js";
-import { removeAckReactionAfterReply, shouldAckReaction } from "../../../channels/ack-reactions.js";
-import { resolveCommandAuthorizedFromAuthorizers } from "../../../channels/command-gating.js";
-import { discordMessageActions } from "../../../channels/plugins/actions/discord.js";
-import { signalMessageActions } from "../../../channels/plugins/actions/signal.js";
-import { telegramMessageActions } from "../../../channels/plugins/actions/telegram.js";
-import { createWhatsAppLoginTool } from "../../../channels/plugins/agent-tools/whatsapp-login.js";
-import { recordInboundSession } from "../../../channels/session.js";
-import { monitorWebChannel } from "../../../channels/web/index.js";
-import { auditDiscordChannelPermissions } from "../../../discord/audit.js";
+  chunkByNewline,
+  chunkMarkdownText,
+  chunkMarkdownTextWithMode,
+  chunkText,
+  chunkTextWithMode,
+  resolveChunkMode,
+  resolveTextChunkLimit,
+} from "../../../agent/pipeline/chunk.js";
+import {
+  hasControlCommand,
+  isControlCommandMessage,
+  shouldComputeCommandAuthorized,
+} from "../../../agent/pipeline/command-detection.js";
+import { shouldHandleTextCommands } from "../../../agent/pipeline/commands-registry.js";
+import {
+  formatAgentEnvelope,
+  formatInboundEnvelope,
+  resolveEnvelopeFormatOptions,
+} from "../../../agent/pipeline/envelope.js";
+import {
+  createInboundDebouncer,
+  resolveInboundDebounceMs,
+} from "../../../agent/pipeline/inbound-debounce.js";
+import { dispatchReplyFromConfig } from "../../../agent/pipeline/reply/dispatch-from-config.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
+import {
+  buildMentionRegexes,
+  matchesMentionPatterns,
+  matchesMentionWithExplicit,
+} from "../../../agent/pipeline/reply/mentions.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../../agent/pipeline/reply/provider-dispatcher.js";
+import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-dispatcher.js";
+import {
+  removeAckReactionAfterReply,
+  shouldAckReaction,
+} from "../../../entrypoints/channels/ack-reactions.js";
+import { resolveCommandAuthorizedFromAuthorizers } from "../../../entrypoints/channels/command-gating.js";
+import { discordMessageActions } from "../../../entrypoints/channels/plugins/actions/discord.js";
+import { signalMessageActions } from "../../../entrypoints/channels/plugins/actions/signal.js";
+import { telegramMessageActions } from "../../../entrypoints/channels/plugins/actions/telegram.js";
+import { createWhatsAppLoginTool } from "../../../entrypoints/channels/plugins/agent-tools/whatsapp-login.js";
+import { recordInboundSession } from "../../../entrypoints/channels/session.js";
+import { monitorWebChannel } from "../../../entrypoints/channels/web/index.js";
+import { auditDiscordChannelPermissions } from "../../../entrypoints/discord/audit.js";
 import {
   listDiscordDirectoryGroupsLive,
   listDiscordDirectoryPeersLive,
-} from "../../../discord/directory-live.js";
-import { monitorDiscordProvider } from "../../../discord/monitor.js";
-import { probeDiscord } from "../../../discord/probe.js";
-import { resolveDiscordChannelAllowlist } from "../../../discord/resolve-channels.js";
-import { resolveDiscordUserAllowlist } from "../../../discord/resolve-users.js";
-import { sendMessageDiscord, sendPollDiscord } from "../../../discord/send.js";
-import { registerMemoryCli } from "../../../entry/cli/memory-cli.js";
+} from "../../../entrypoints/discord/directory-live.js";
+import { monitorDiscordProvider } from "../../../entrypoints/discord/monitor.js";
+import { probeDiscord } from "../../../entrypoints/discord/probe.js";
+import { resolveDiscordChannelAllowlist } from "../../../entrypoints/discord/resolve-channels.js";
+import { resolveDiscordUserAllowlist } from "../../../entrypoints/discord/resolve-users.js";
+import { sendMessageDiscord, sendPollDiscord } from "../../../entrypoints/discord/send.js";
+import { registerMemoryCli } from "../../../entrypoints/entry/cli/memory-cli.js";
+import { monitorIMessageProvider } from "../../../entrypoints/imessage/monitor.js";
+import { probeIMessage } from "../../../entrypoints/imessage/probe.js";
+import { sendMessageIMessage } from "../../../entrypoints/imessage/send.js";
+import {
+  listLineAccountIds,
+  normalizeAccountId as normalizeLineAccountId,
+  resolveDefaultLineAccountId,
+  resolveLineAccount,
+} from "../../../entrypoints/line/accounts.js";
+import { monitorLineProvider } from "../../../entrypoints/line/monitor.js";
+import { probeLineBot } from "../../../entrypoints/line/probe.js";
+import {
+  createQuickReplyItems,
+  pushMessageLine,
+  pushMessagesLine,
+  pushFlexMessage,
+  pushTemplateMessage,
+  pushLocationMessage,
+  pushTextMessageWithQuickReplies,
+  sendMessageLine,
+} from "../../../entrypoints/line/send.js";
+import { buildTemplateMessageFromPayload } from "../../../entrypoints/line/template-messages.js";
+import { monitorSignalProvider } from "../../../entrypoints/signal/index.js";
+import { probeSignal } from "../../../entrypoints/signal/probe.js";
+import { sendMessageSignal } from "../../../entrypoints/signal/send.js";
+import {
+  listSlackDirectoryGroupsLive,
+  listSlackDirectoryPeersLive,
+} from "../../../entrypoints/slack/directory-live.js";
+import { monitorSlackProvider } from "../../../entrypoints/slack/index.js";
+import { probeSlack } from "../../../entrypoints/slack/probe.js";
+import { resolveSlackChannelAllowlist } from "../../../entrypoints/slack/resolve-channels.js";
+import { resolveSlackUserAllowlist } from "../../../entrypoints/slack/resolve-users.js";
+import { sendMessageSlack } from "../../../entrypoints/slack/send.js";
+import {
+  auditTelegramGroupMembership,
+  collectTelegramUnmentionedGroupIds,
+} from "../../../entrypoints/telegram/audit.js";
+import { monitorTelegramProvider } from "../../../entrypoints/telegram/monitor.js";
+import { probeTelegram } from "../../../entrypoints/telegram/probe.js";
+import { sendMessageTelegram } from "../../../entrypoints/telegram/send.js";
+import { resolveTelegramToken } from "../../../entrypoints/telegram/token.js";
+import { getActiveWebListener } from "../../../entrypoints/web/active-listener.js";
+import {
+  getWebAuthAgeMs,
+  logoutWeb,
+  logWebSelfId,
+  readWebSelfId,
+  webAuthExists,
+} from "../../../entrypoints/web/auth-store.js";
+import { startWebLoginWithQr, waitForWebLogin } from "../../../entrypoints/web/login-qr.js";
+import { loginWeb } from "../../../entrypoints/web/login.js";
+import { loadWebMedia } from "../../../entrypoints/web/media.js";
+import { sendMessageWhatsApp, sendPollWhatsApp } from "../../../entrypoints/web/outbound.js";
 import { shouldLogVerbose } from "../../../globals.js";
-import { monitorIMessageProvider } from "../../../imessage/monitor.js";
-import { probeIMessage } from "../../../imessage/probe.js";
-import { sendMessageIMessage } from "../../../imessage/send.js";
 import { getChannelActivity, recordChannelActivity } from "../../../infra/channel-activity.js";
 import { loadConfig, writeConfigFile } from "../../../infra/config/config.js";
 import {
@@ -51,25 +131,6 @@ import {
 } from "../../../infra/pairing/pairing-store.js";
 import { resolveAgentRoute } from "../../../infra/routing/resolve-route.js";
 import { enqueueSystemEvent } from "../../../infra/system-events.js";
-import {
-  listLineAccountIds,
-  normalizeAccountId as normalizeLineAccountId,
-  resolveDefaultLineAccountId,
-  resolveLineAccount,
-} from "../../../line/accounts.js";
-import { monitorLineProvider } from "../../../line/monitor.js";
-import { probeLineBot } from "../../../line/probe.js";
-import {
-  createQuickReplyItems,
-  pushMessageLine,
-  pushMessagesLine,
-  pushFlexMessage,
-  pushTemplateMessage,
-  pushLocationMessage,
-  pushTextMessageWithQuickReplies,
-  sendMessageLine,
-} from "../../../line/send.js";
-import { buildTemplateMessageFromPayload } from "../../../line/template-messages.js";
 import { getChildLogger } from "../../../logging.js";
 import { normalizeLogLevel } from "../../../logging/levels.js";
 import { convertMarkdownTables } from "../../../markdown/tables.js";
@@ -79,73 +140,15 @@ import { fetchRemoteMedia } from "../../../media/fetch.js";
 import { getImageMetadata, resizeToJpeg } from "../../../media/image-ops.js";
 import { detectMime } from "../../../media/mime.js";
 import { saveMediaBuffer } from "../../../media/store.js";
-import {
-  chunkByNewline,
-  chunkMarkdownText,
-  chunkMarkdownTextWithMode,
-  chunkText,
-  chunkTextWithMode,
-  resolveChunkMode,
-  resolveTextChunkLimit,
-} from "../../../pipeline/chunk.js";
-import {
-  hasControlCommand,
-  isControlCommandMessage,
-  shouldComputeCommandAuthorized,
-} from "../../../pipeline/command-detection.js";
-import { shouldHandleTextCommands } from "../../../pipeline/commands-registry.js";
-import {
-  formatAgentEnvelope,
-  formatInboundEnvelope,
-  resolveEnvelopeFormatOptions,
-} from "../../../pipeline/envelope.js";
-import {
-  createInboundDebouncer,
-  resolveInboundDebounceMs,
-} from "../../../pipeline/inbound-debounce.js";
-import { dispatchReplyFromConfig } from "../../../pipeline/reply/dispatch-from-config.js";
-import { finalizeInboundContext } from "../../../pipeline/reply/inbound-context.js";
-import {
-  buildMentionRegexes,
-  matchesMentionPatterns,
-  matchesMentionWithExplicit,
-} from "../../../pipeline/reply/mentions.js";
-import { dispatchReplyWithBufferedBlockDispatcher } from "../../../pipeline/reply/provider-dispatcher.js";
-import { createReplyDispatcherWithTyping } from "../../../pipeline/reply/reply-dispatcher.js";
 import { runCommandWithTimeout } from "../../../process/exec.js";
-import { monitorSignalProvider } from "../../../signal/index.js";
-import { probeSignal } from "../../../signal/probe.js";
-import { sendMessageSignal } from "../../../signal/send.js";
 import {
-  listSlackDirectoryGroupsLive,
-  listSlackDirectoryPeersLive,
-} from "../../../slack/directory-live.js";
-import { monitorSlackProvider } from "../../../slack/index.js";
-import { probeSlack } from "../../../slack/probe.js";
-import { resolveSlackChannelAllowlist } from "../../../slack/resolve-channels.js";
-import { resolveSlackUserAllowlist } from "../../../slack/resolve-users.js";
-import { sendMessageSlack } from "../../../slack/send.js";
-import {
-  auditTelegramGroupMembership,
-  collectTelegramUnmentionedGroupIds,
-} from "../../../telegram/audit.js";
-import { monitorTelegramProvider } from "../../../telegram/monitor.js";
-import { probeTelegram } from "../../../telegram/probe.js";
-import { sendMessageTelegram } from "../../../telegram/send.js";
-import { resolveTelegramToken } from "../../../telegram/token.js";
-import { textToSpeechTelephony } from "../../../tts/tts.js";
-import { getActiveWebListener } from "../../../web/active-listener.js";
-import {
-  getWebAuthAgeMs,
-  logoutWeb,
-  logWebSelfId,
-  readWebSelfId,
-  webAuthExists,
-} from "../../../web/auth-store.js";
-import { startWebLoginWithQr, waitForWebLogin } from "../../../web/login-qr.js";
-import { loginWeb } from "../../../web/login.js";
-import { loadWebMedia } from "../../../web/media.js";
-import { sendMessageWhatsApp, sendPollWhatsApp } from "../../../web/outbound.js";
+  resolveEffectiveMessagesConfig,
+  resolveHumanDelayConfig,
+} from "../../../runtime/identity.js";
+import { createMemoryGetTool, createMemorySearchTool } from "../../../runtime/tools/memory-tool.js";
+import { handleSlackAction } from "../../../runtime/tools/slack-actions.js";
+import { handleWhatsAppAction } from "../../../runtime/tools/whatsapp-actions.js";
+import { textToSpeechTelephony } from "../../../runtime/tts/tts.js";
 import { formatNativeDependencyHint } from "./native-deps.js";
 
 let cachedVersion: string | null = null;

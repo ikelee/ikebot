@@ -1,5 +1,5 @@
 import type { PortListener, PortListenerKind, PortUsage } from "./ports-types.js";
-import { formatCliCommand } from "../entry/cli/command-format.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
 
 export function classifyPortListener(listener: PortListener, port: number): PortListenerKind {
   const raw = `${listener.commandLine ?? ""} ${listener.command ?? ""}`.trim().toLowerCase();

@@ -1,19 +1,19 @@
+import type { OpenClawConfig } from "../infra/config/config.js";
+import type { AgentToolsConfig } from "../infra/config/types.tools.js";
 /**
  * Synchronous security audit collector functions.
  *
  * These functions analyze config-based security properties without I/O.
  */
-import type { SandboxToolPolicy } from "../agents/sandbox/types.js";
-import type { OpenClawConfig } from "../infra/config/config.js";
-import type { AgentToolsConfig } from "../infra/config/types.tools.js";
-import { isToolAllowedByPolicies } from "../agents/pi-tools.policy.js";
+import type { SandboxToolPolicy } from "../runtime/sandbox/types.js";
+import { resolveBrowserConfig } from "../browser/config.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
+import { isToolAllowedByPolicies } from "../runtime/pi-tools.policy.js";
 import {
   resolveSandboxConfigForAgent,
   resolveSandboxToolPolicyForAgent,
-} from "../agents/sandbox.js";
-import { resolveToolProfilePolicy } from "../agents/tool-policy.js";
-import { resolveBrowserConfig } from "../browser/config.js";
-import { formatCliCommand } from "../entry/cli/command-format.js";
+} from "../runtime/sandbox.js";
+import { resolveToolProfilePolicy } from "../runtime/tool-policy.js";
 import { resolveGatewayAuth } from "../server/auth.js";
 
 export type SecurityAuditFinding = {

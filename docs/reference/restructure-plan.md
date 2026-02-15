@@ -9,7 +9,7 @@ title: "Restructure plan (gateway + ui)"
 
 This doc proposes a **top-to-bottom hierarchical layout** with **gateway** and **ui** at the highest level. Use it to iterate on the shape; implementation will follow without breaking features.
 
-**Status (done):** Top-level layout is in place: **gateway/** holds all former `src/` code; **ui/web/** holds the control UI (former `ui/`); **ui/tui/** holds the terminal UI (moved from `gateway/tui/`). **Infra consolidation done:** config, routing, sessions, pairing, and memory now live under **gateway/infra/** (e.g. **gateway/infra/config/**, **gateway/infra/routing/**). All imports, mocks, and UI (web + tui) have been updated. **Build and relevant tests:** `pnpm build`, `pnpm ui:build`, and gateway/infra config tests pass; path/mock-related test fixes are in place. **Server rename done:** gateway/gateway → gateway/server. **Entry move done:** cli, commands, wizard, acp now live under **gateway/entry/** (gateway/entry/cli/, gateway/entry/commands/, gateway/entry/wizard/, gateway/entry/acp/). Remaining: extensibility (plugins, hooks, plugin-sdk) under gateway/extensibility/, pipeline/channels reorg, models under gateway/models/, optional understanding grouping and Phase 5 (docs under gateway/ui).
+**Status (done):** Top-level layout is in place: **gateway/** holds all former `src/` code; **ui/web/** holds the control UI (former `ui/`); **ui/tui/** holds the terminal UI (moved from `gateway/tui/`). **Infra consolidation done:** config, routing, sessions, pairing, and memory now live under **gateway/infra/** (e.g. **gateway/infra/config/**, **gateway/infra/routing/**). All imports, mocks, and UI (web + tui) have been updated. **Build and relevant tests:** `pnpm build`, `pnpm ui:build`, and gateway/infra config tests pass; path/mock-related test fixes are in place. **Server rename done:** gateway/gateway → gateway/server. **Channels and entry under entrypoints:** channels (telegram, discord, signal, slack, web, imessage, **whatsapp** helpers, etc.) and **entry** (cli, commands, wizard, acp) now live under **gateway/entrypoints/** as **gateway/entrypoints/channels/**, **gateway/entrypoints/entry/**, etc. **Runtime consolidation done:** **gateway/agents/** has been removed; all its contents (Pi embedded runner, tools, sandbox, auth-profiles, skills, workspace, etc.) now live under **gateway/runtime/** alongside link-understanding, media-understanding, and TTS. Single **gateway/agent/** holds pipeline and system prompts. Remaining: optional Phase 5 (docs under gateway/ui).
 
 ---
 
@@ -24,14 +24,20 @@ openclaw/
 │   │   ├── phases/                  # directives, routing, run
 │   │   ├── channels/                # telegram, discord, signal, slack, line, web, imessage, whatsapp + shared
 │   │   └── docs/
-│   ├── entry/                       # How users and tools get into the system
-│   │   ├── cli/                     # Terminal CLI: openclaw <subcommand>
-│   │   ├── wizard/                  # Onboarding / first-run setup
-│   │   └── acp/                     # Agent Control Protocol (IDE integration)
+│   ├── entrypoints/                 # Channels + CLI/entry
+│   │   ├── entry/                   # How users and tools get into the system
+│   │   │   ├── cli/                 # Terminal CLI: openclaw <subcommand>
+│   │   │   ├── commands/
+│   │   │   ├── wizard/              # Onboarding / first-run setup
+│   │   │   └── acp/                 # Agent Control Protocol (IDE integration)
+│   │   ├── channels/                # Shared channel layer
+│   │   ├── whatsapp/                # WhatsApp helpers (JID normalization, target parsing); used by web + channels
+│   │   ├── telegram/, discord/, slack/, signal/, web/, imessage/, ...
 │   ├── extensibility/               # Plugins (mechanism) + skills (what the agent can run)
 │   │   ├── plugins/                 # Plugin runtime, hooks, plugin-sdk
 │   │   └── skills/                 # In-chat command registry, skill-commands
-│   ├── agents/                      # Agent runtime: prompt, Pi runner, tools, workspace (uses skills; extended by plugins)
+│   ├── agent/                       # Core agent: pipeline, system prompts (reply lifecycle)
+│   ├── runtime/                     # Execution + understanding: Pi runner, tools, sandbox, auth, link/media understanding, TTS
 │   ├── models/                      # Remote model interfacing: providers, selection, auth
 │   ├── infra/                       # Config, ports, binaries, env, errors, heartbeat, outbound, migrations
 │   │   ├── config/                 # Config load/save, sessions store, schema
@@ -70,14 +76,18 @@ flowchart TB
   subgraph gateway_content["gateway/"]
     server["server/"]
     pipeline["pipeline/"]
-    entry["entry/"]
+    entrypoints["entrypoints/"]
     extensibility["extensibility/"]
-    agents["agents/"]
+    agent["agent/"]
+    runtime["runtime/"]
     models["models/"]
     infra["infra/"]
     cron["cron/"]
   end
 
+  subgraph entrypoints_content["entrypoints/"]
+    entry["entry/"]
+  end
   subgraph entry_content["entry/"]
     cli["cli/"]
     wizard["wizard/"]
@@ -128,9 +138,9 @@ flowchart TB
 | **gateway/pipeline/phases/routing/**    | `src/auto-reply/reply/phases/routing/`, `request-router.ts`                                                                              | Phase 1 + request router                                                                                                             |
 | **gateway/pipeline/phases/run/**        | `src/auto-reply/reply/get-reply-run.ts`, `agent-runner*.ts`, `followup-runner.ts`, `queue/`, typing, etc.                                | Run phase                                                                                                                            |
 | **gateway/pipeline/channels/**          | `src/telegram/`, `src/discord/`, `src/signal/`, `src/slack/`, `src/line/`, `src/web/`, `src/imessage/`, `src/whatsapp/`, `src/channels/` | All channel adapters and shared channel layer                                                                                        |
-| **gateway/entry/cli/**                  | `src/cli/`, `src/commands/`, `src/entry.ts`, `src/index.ts`                                                                              | Terminal CLI: `openclaw gateway run`, `openclaw agent`, etc.                                                                         |
-| **gateway/entry/wizard/**               | `src/wizard/`                                                                                                                            | Onboarding / first-run setup                                                                                                         |
-| **gateway/entry/acp/**                  | `src/acp/`                                                                                                                               | Agent Control Protocol (IDE)                                                                                                         |
+| **gateway/entrypoints/entry/cli/**      | `src/cli/`, `src/commands/`, `src/entry.ts`, `src/index.ts`                                                                              | Terminal CLI: `openclaw gateway run`, `openclaw agent`, etc.                                                                         |
+| **gateway/entrypoints/entry/wizard/**   | `src/wizard/`                                                                                                                            | Onboarding / first-run setup                                                                                                         |
+| **gateway/entrypoints/entry/acp/**      | `src/acp/`                                                                                                                               | Agent Control Protocol (IDE)                                                                                                         |
 | **gateway/extensibility/plugins/**      | `src/plugins/`, `src/hooks/`, `src/plugin-sdk/`                                                                                          | Plugin runtime, hooks, public SDK. _Mechanism_ for extending the product.                                                            |
 | **gateway/extensibility/skills/**       | `src/auto-reply/commands-registry*.ts`, `skill-commands.ts`                                                                              | In-chat command registry (/new, /reset, etc.) and skill-command resolution. _What_ the agent can run.                                |
 | **gateway/agents/**                     | `src/agents/` (except model-selection → models): system-prompt, pi-embedded-runner, tools, workspace, sandbox, auth, timeout             | Agent runtime. _Uses_ skills; _extended by_ plugins.                                                                                 |
@@ -265,9 +275,46 @@ Tests that mock gateway modules must use the **post-refactor paths**, or the moc
 - **gateway/server/server-startup-memory.test.ts** (2 failures): `spawn qmd ENOENT` — `qmd` binary not installed. Pre-existing env dependency.
 - **gateway/server/tools-invoke-http.test.ts**: 9 tests skipped (integration-style; not refactor-related).
 
+**Post–Phase 2 (channels → entrypoints) test run:**
+
+- **Full suite:** May hit JavaScript heap OOM when run in parallel (`pnpm test`); use `NODE_OPTIONS=--max-old-space-size=8192` or run unit/gateway/extensions in separate invocations if needed.
+- **Unit-isolated list:** `scripts/test-parallel.mjs` uses `gateway/extensibility/plugins/` paths (not `gateway/plugins/`) for isolated files.
+- **Gateway tests:** Some failures may be env or mock-related (e.g. telegram send timeoutSeconds/link_preview, discord monitor DM reactions, qmd-manager scope log, extensions that import gateway). Fix mock paths to use `gateway/entrypoints/...` where channels moved; other failures align with pre-existing list above where applicable.
+
 ---
 
-## 10. Summary
+## 10. Gateway folders: roles and where they could live
+
+Below are **gateway/** folders that are not the main “high level” buckets (server, agent, runtime, models, infra, extensibility, entrypoints, cron). For each we describe what it does and whether it fits better at **top level** or under another folder.
+
+| Folder                            | What it does                                                                                                                                                | Suggestion                                                                                                           |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **browser**                       | Playwright/browser automation: control service, CDP, client, routes (agent act/storage/tabs), profiles, screenshots. Used by **node-host** and agent tools. | **Top level** – major capability; could be grouped under **runtime** as “browser execution” if you want fewer roots. |
+| **canvas-host**                   | Serves the A2UI canvas bundle over HTTP/WebSocket; live reload, state dir. Used by server to expose the canvas UI.                                          | **Top level** or under **server** (serving) / **infra** (assets).                                                    |
+| **compat**                        | Legacy names (project name, manifest keys, macOS app paths). Single small file.                                                                             | **infra** or keep at top level.                                                                                      |
+| **cron**                          | Scheduled jobs: service, store, delivery, isolated-agent, session-reaper, parse/schedule.                                                                   | **Top level** (already in plan).                                                                                     |
+| **daemon**                        | Cross-platform service install/control: launchd, systemd, schtasks, service runtime, paths, audit.                                                          | **Top level** or **infra** (platform ops).                                                                           |
+| **docs**                          | Gateway-internal docs.                                                                                                                                      | Keep or align with root **docs/**.                                                                                   |
+| **jobs**                          | README only; “long-running jobs and orchestration (non-cron)”.                                                                                              | Merge into **cron** or remove if unused.                                                                             |
+| **logging**                       | Logger, levels, console prefix/timestamp, redact, parse-log-line, subsystem.                                                                                | **infra** (cross-cutting).                                                                                           |
+| **macos**                         | macOS-specific: gateway daemon (version/args), relay to menubar app.                                                                                        | **Top level** (platform entrypoint) or **entrypoints** (platform-specific).                                          |
+| **markdown**                      | Markdown parsing: render, fences, tables, frontmatter, WhatsApp formatting.                                                                                 | **utils** or **infra** (formatting for channels).                                                                    |
+| **media**                         | Media hosting server, fetch, store, mime, image/audio ops, parse. Used for agent media and webhooks.                                                        | **Top level** or **server** (serving) / **runtime** (agent media).                                                   |
+| **node-host**                     | Headless node runner: runs agent with browser control (Playwright), exec approval, config. “openclaw node” entrypoint.                                      | **Top level** or **runtime** (execution env) / **entrypoints** (alternative host).                                   |
+| **process**                       | Process execution: exec, spawn-utils, command-queue, child-process-bridge.                                                                                  | **infra** or **runtime**.                                                                                            |
+| **security**                      | Audit (FS, skills, secrets), fix footguns, external-content, channel-metadata.                                                                              | **Top level** or **infra** (cross-cutting).                                                                          |
+| **shared**                        | Shared text utilities (e.g. reasoning-tags).                                                                                                                | **utils** or **agent**.                                                                                              |
+| **terminal**                      | TUI/CLI output: theme, palette, table, links, progress-line, stream-writer, ansi, note. Used by CLI and entry.                                              | **Top level** (CLI surface) or **entrypoints/entry** / **utils**.                                                    |
+| **test-helpers** / **test-utils** | Test-only utilities.                                                                                                                                        | Keep at top level or under a single **test-utils** root.                                                             |
+| **types**                         | Third-party `.d.ts` declarations (e.g. node-llama-cpp, qrcode-terminal).                                                                                    | Keep at top level.                                                                                                   |
+| **utils**                         | General utilities (ensureDir, pathExists, clamp, etc.).                                                                                                     | **Top level** or **infra**.                                                                                          |
+| **whatsapp**                      | JID normalization and target parsing for WhatsApp. Used by **entrypoints/web** and **entrypoints/channels**.                                                | **Moved to entrypoints/whatsapp/** so it sits with channels and web.                                                 |
+
+**Summary:** **cron**, **daemon**, **security**, **media**, **browser**, **node-host**, **terminal**, **utils**, **types** are all reasonable as top-level gateway folders. **logging**, **process**, **compat**, **markdown**, **shared** are good candidates to live under **infra** or **utils**. **canvas-host** and **macos** can stay top-level or be grouped under **server** / **entrypoints** depending on how you want to emphasize “platform” vs “serving.”
+
+---
+
+## 11. Summary
 
 - **Top level:** **gateway** (all server and pipeline code, steps/phases, skills, models, CLI) and **ui** (TUI + web).
 - **Gateway** is hierarchical: server, pipeline (runner + phases + channels), skills, models, agents, config, infra, plugins, cli, cron, acp, wizard, plus any other current `src/` areas.

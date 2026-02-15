@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   pruneAgentConfig: vi.fn(() => ({ config: {}, removedBindings: 0 })),
   writeConfigFile: vi.fn(async () => {}),
   ensureAgentWorkspace: vi.fn(async () => {}),
-  resolveAgentDir: vi.fn(() => "/agents/test-agent"),
+  resolveAgentDir: vi.fn(() => "/runtime/test-agent"),
   resolveAgentWorkspaceDir: vi.fn(() => "/workspace/test-agent"),
   resolveSessionTranscriptsDirForAgent: vi.fn(() => "/transcripts/test-agent"),
   listAgentsForGateway: vi.fn(() => ({
@@ -39,7 +39,7 @@ vi.mock("../../entry/commands/agents.config.js", () => ({
   pruneAgentConfig: mocks.pruneAgentConfig,
 }));
 
-vi.mock("../../agents/agent-scope.js", () => ({
+vi.mock("../../runtime/agent-scope.js", () => ({
   listAgentIds: () => ["main"],
   resolveDefaultAgentId: (cfg: { agents?: Array<{ id: string }> }) =>
     cfg?.agents?.[0]?.id ?? "main",
@@ -47,9 +47,9 @@ vi.mock("../../agents/agent-scope.js", () => ({
   resolveAgentWorkspaceDir: mocks.resolveAgentWorkspaceDir,
 }));
 
-vi.mock("../../agents/workspace.js", async () => {
-  const actual = await vi.importActual<typeof import("../../agents/workspace.js")>(
-    "../../agents/workspace.js",
+vi.mock("../../runtime/workspace.js", async () => {
+  const actual = await vi.importActual<typeof import("../../runtime/workspace.js")>(
+    "../../runtime/workspace.js",
   );
   return {
     ...actual,
@@ -126,7 +126,7 @@ describe("agents.create", () => {
   it("creates a new agent successfully", async () => {
     const { respond, promise } = makeCall("agents.create", {
       name: "Test Agent",
-      workspace: "/home/user/agents/test",
+      workspace: "/home/user/runtime/test",
     });
     await promise;
 

@@ -2,6 +2,8 @@ import { type Api, getEnvApiKey, type Model } from "@mariozechner/pi-ai";
 import path from "node:path";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../infra/config/types.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
+import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import {
   type AuthProfileStore,
   ensureAuthProfileStore,
@@ -9,16 +11,14 @@ import {
   resolveApiKeyForProfile,
   resolveAuthProfileOrder,
   resolveAuthStorePathForDisplay,
-} from "../agents/auth-profiles.js";
-import { formatCliCommand } from "../entry/cli/command-format.js";
-import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
+} from "../runtime/auth-profiles.js";
 import {
   normalizeOptionalSecretInput,
   normalizeSecretInput,
 } from "../utils/normalize-secret-input.js";
 import { normalizeProviderId } from "./model-selection.js";
 
-export { ensureAuthProfileStore, resolveAuthProfileOrder } from "../agents/auth-profiles.js";
+export { ensureAuthProfileStore, resolveAuthProfileOrder } from "../runtime/auth-profiles.js";
 
 const AWS_BEARER_ENV = "AWS_BEARER_TOKEN_BEDROCK";
 const AWS_ACCESS_KEY_ENV = "AWS_ACCESS_KEY_ID";

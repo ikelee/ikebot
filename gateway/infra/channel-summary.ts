@@ -1,5 +1,8 @@
-import type { ChannelAccountSnapshot, ChannelPlugin } from "../channels/plugins/types.js";
-import { listChannelPlugins } from "../channels/plugins/index.js";
+import type {
+  ChannelAccountSnapshot,
+  ChannelPlugin,
+} from "../entrypoints/channels/plugins/types.js";
+import { listChannelPlugins } from "../entrypoints/channels/plugins/index.js";
 import { theme } from "../terminal/theme.js";
 import { type OpenClawConfig, loadConfig } from "./config/config.js";
 import { formatTimeAgo } from "./format-time/format-relative.ts";

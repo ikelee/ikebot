@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveOpenClawAgentDir } from "../agents/agent-paths.js";
 import { type OpenClawConfig, loadConfig } from "../infra/config/config.js";
+import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
 import { isRecord } from "../utils.js";
 import {
   normalizeProviders,

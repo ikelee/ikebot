@@ -8,7 +8,7 @@
 
 import type { CronConfig } from "../infra/config/types.cron.js";
 import type { Logger } from "./service/state.js";
-import { parseDurationMs } from "../entry/cli/parse-duration.js";
+import { parseDurationMs } from "../entrypoints/entry/cli/parse-duration.js";
 import { updateSessionStore } from "../infra/config/sessions.js";
 import { isCronRunSessionKey } from "../infra/sessions/session-key-utils.js";
 

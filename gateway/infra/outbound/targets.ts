@@ -1,4 +1,4 @@
-import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
+import type { ChannelOutboundTargetMode } from "../../entrypoints/channels/plugins/types.js";
 import type {
   DeliverableMessageChannel,
   GatewayMessageChannel,
@@ -6,8 +6,8 @@ import type {
 import type { OpenClawConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
-import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
-import { formatCliCommand } from "../../entry/cli/command-format.js";
+import { getChannelPlugin, normalizeChannelId } from "../../entrypoints/channels/plugins/index.js";
+import { formatCliCommand } from "../../entrypoints/entry/cli/command-format.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,

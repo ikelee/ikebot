@@ -1,9 +1,9 @@
-import type { MsgContext } from "../../../pipeline/templating.js";
+import type { MsgContext } from "../../../agent/pipeline/templating.js";
 import type { GroupKeyResolution, SessionEntry, SessionOrigin } from "./types.js";
-import { normalizeChatType } from "../../../channels/chat-type.js";
-import { resolveConversationLabel } from "../../../channels/conversation-label.js";
-import { getChannelDock } from "../../../channels/dock.js";
-import { normalizeChannelId } from "../../../channels/plugins/index.js";
+import { normalizeChatType } from "../../../entrypoints/channels/chat-type.js";
+import { resolveConversationLabel } from "../../../entrypoints/channels/conversation-label.js";
+import { getChannelDock } from "../../../entrypoints/channels/dock.js";
+import { normalizeChannelId } from "../../../entrypoints/channels/plugins/index.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { buildGroupDisplayName, resolveGroupSessionKey } from "./group.js";
 

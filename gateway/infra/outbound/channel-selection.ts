@@ -1,6 +1,6 @@
-import type { ChannelPlugin } from "../../channels/plugins/types.js";
+import type { ChannelPlugin } from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { listChannelPlugins } from "../../entrypoints/channels/plugins/index.js";
 import {
   listDeliverableMessageChannels,
   type DeliverableMessageChannel,

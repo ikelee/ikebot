@@ -5,29 +5,29 @@ import type {
   ChannelId,
   ChannelMessageActionName,
   ChannelThreadingToolContext,
-} from "../../channels/plugins/types.js";
+} from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { OutboundSendDeps } from "./deliver.js";
 import type { MessagePollResult, MessageSendResult } from "./message.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { assertMediaNotDataUrl, resolveSandboxedMediaSource } from "../../agents/sandbox-paths.js";
+import { parseReplyDirectives } from "../../agent/pipeline/reply/reply-directives.js";
+import { dispatchChannelMessageAction } from "../../entrypoints/channels/plugins/message-actions.js";
+import { parseSlackTarget } from "../../entrypoints/slack/targets.js";
+import { parseTelegramTarget } from "../../entrypoints/telegram/targets.js";
+import { loadWebMedia } from "../../entrypoints/web/media.js";
+import { extensionForMime } from "../../media/mime.js";
+import { resolveSessionAgentId } from "../../runtime/agent-scope.js";
+import { assertMediaNotDataUrl, resolveSandboxedMediaSource } from "../../runtime/sandbox-paths.js";
 import {
   readNumberParam,
   readStringArrayParam,
   readStringParam,
-} from "../../agents/tools/common.js";
-import { dispatchChannelMessageAction } from "../../channels/plugins/message-actions.js";
-import { extensionForMime } from "../../media/mime.js";
-import { parseReplyDirectives } from "../../pipeline/reply/reply-directives.js";
-import { parseSlackTarget } from "../../slack/targets.js";
-import { parseTelegramTarget } from "../../telegram/targets.js";
+} from "../../runtime/tools/common.js";
 import {
   isDeliverableMessageChannel,
   normalizeMessageChannel,
   type GatewayClientMode,
   type GatewayClientName,
 } from "../../utils/message-channel.js";
-import { loadWebMedia } from "../../web/media.js";
 import { throwIfAborted } from "./abort.js";
 import {
   listConfiguredMessageChannels,

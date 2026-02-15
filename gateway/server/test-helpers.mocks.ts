@@ -4,7 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Mock, vi } from "vitest";
-import type { ChannelPlugin, ChannelOutboundAdapter } from "../channels/plugins/types.js";
+import type {
+  ChannelPlugin,
+  ChannelOutboundAdapter,
+} from "../entrypoints/channels/plugins/types.js";
 import type { PluginRegistry } from "../extensibility/plugins/registry.js";
 import type { AgentBinding } from "../infra/config/types.agents.js";
 import type { HooksConfig } from "../infra/config/types.hooks.js";
@@ -229,9 +232,9 @@ export const testIsNixMode = hoisted.testIsNixMode;
 export const sessionStoreSaveDelayMs = hoisted.sessionStoreSaveDelayMs;
 export const embeddedRunMock = hoisted.embeddedRunMock;
 
-vi.mock("../agents/pi-model-discovery.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-model-discovery.js")>(
-    "../agents/pi-model-discovery.js",
+vi.mock("../runtime/pi-model-discovery.js", async () => {
+  const actual = await vi.importActual<typeof import("../runtime/pi-model-discovery.js")>(
+    "../runtime/pi-model-discovery.js",
   );
 
   class MockModelRegistry extends actual.ModelRegistry {
@@ -534,9 +537,9 @@ vi.mock("../infra/config/config.js", async () => {
   };
 });
 
-vi.mock("../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded.js")>(
-    "../agents/pi-embedded.js",
+vi.mock("../runtime/pi-embedded.js", async () => {
+  const actual = await vi.importActual<typeof import("../runtime/pi-embedded.js")>(
+    "../runtime/pi-embedded.js",
   );
   return {
     ...actual,

@@ -2,7 +2,7 @@ import type {
   ChannelId,
   ChannelMessageActionName,
   ChannelThreadingToolContext,
-} from "../../channels/plugins/types.js";
+} from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { getChannelMessageAdapter } from "./channel-adapters.js";
 import { normalizeTargetForProvider } from "./target-normalization.js";

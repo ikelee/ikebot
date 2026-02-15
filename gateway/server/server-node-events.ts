@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { NodeEvent, NodeEventContext } from "./server-node-events-types.js";
-import { normalizeChannelId } from "../channels/plugins/index.js";
-import { agentCommand } from "../entry/commands/agent.js";
+import { normalizeChannelId } from "../entrypoints/channels/plugins/index.js";
+import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { loadConfig } from "../infra/config/config.js";
 import { updateSessionStore } from "../infra/config/sessions.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";

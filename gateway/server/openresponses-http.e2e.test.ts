@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { HISTORY_CONTEXT_MARKER } from "../agent/pipeline/reply/history.js";
+import { CURRENT_MESSAGE_MARKER } from "../agent/pipeline/reply/mentions.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
-import { HISTORY_CONTEXT_MARKER } from "../pipeline/reply/history.js";
-import { CURRENT_MESSAGE_MARKER } from "../pipeline/reply/mentions.js";
 import { agentCommand, getFreePort, installGatewayTestHooks } from "./test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });

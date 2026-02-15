@@ -26,11 +26,11 @@
 import { confirm, isCancel } from "@clack/prompts";
 import os from "node:os";
 import path from "node:path";
-import { installCompletion } from "../gateway/entry/cli/completion-cli.js";
+import { installCompletion } from "../gateway/entrypoints/entry/cli/completion-cli.js";
 import {
   checkShellCompletionStatus,
   ensureCompletionCacheExists,
-} from "../gateway/entry/commands/doctor-completion.js";
+} from "../gateway/entrypoints/entry/commands/doctor-completion.js";
 import { stylePromptMessage } from "../gateway/terminal/prompt-style.js";
 import { theme } from "../gateway/terminal/theme.js";
 

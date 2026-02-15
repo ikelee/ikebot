@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
-import type { ChannelOutboundAdapter } from "../channels/plugins/types.js";
+import type { ChannelOutboundAdapter } from "../entrypoints/channels/plugins/types.js";
 import type { PluginRegistry } from "../extensibility/plugins/registry.js";
-import { getChannelPlugin } from "../channels/plugins/index.js";
+import { getChannelPlugin } from "../entrypoints/channels/plugins/index.js";
 import {
   getActivePluginRegistry,
   setActivePluginRegistry,

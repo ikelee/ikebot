@@ -4,8 +4,8 @@ import path from "node:path";
 import type { OpenClawConfig } from "./config/config.js";
 import type { SessionEntry } from "./config/sessions.js";
 import type { SessionScope } from "./config/sessions/types.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { resolveDefaultAgentId } from "../runtime/agent-scope.js";
 import {
   resolveLegacyStateDirs,
   resolveNewStateDir,

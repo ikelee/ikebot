@@ -349,7 +349,7 @@ describe("real-world config patterns", () => {
     };
 
     const obj = {
-      $include: ["./gateway.json", "./channels/whatsapp.json", "./agents/defaults.json"],
+      $include: ["./gateway.json", "./channels/whatsapp.json", "./runtime/defaults.json"],
     };
 
     expect(resolve(obj, files)).toEqual({

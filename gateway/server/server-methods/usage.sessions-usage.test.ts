@@ -33,7 +33,7 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
         return [
           {
             sessionId: "s-main",
-            sessionFile: "/tmp/agents/main/sessions/s-main.jsonl",
+            sessionFile: "/tmp/runtime/main/sessions/s-main.jsonl",
             mtime: 100,
             firstUserMessage: "hello",
           },
@@ -43,7 +43,7 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
         return [
           {
             sessionId: "s-opus",
-            sessionFile: "/tmp/agents/opus/sessions/s-opus.jsonl",
+            sessionFile: "/tmp/runtime/opus/sessions/s-opus.jsonl",
             mtime: 200,
             firstUserMessage: "hi",
           },

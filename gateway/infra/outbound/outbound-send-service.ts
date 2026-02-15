@@ -1,10 +1,13 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ChannelId, ChannelThreadingToolContext } from "../../channels/plugins/types.js";
+import type {
+  ChannelId,
+  ChannelThreadingToolContext,
+} from "../../entrypoints/channels/plugins/types.js";
 import type { GatewayClientMode, GatewayClientName } from "../../utils/message-channel.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { OutboundSendDeps } from "./deliver.js";
 import type { MessagePollResult, MessageSendResult } from "./message.js";
-import { dispatchChannelMessageAction } from "../../channels/plugins/message-actions.js";
+import { dispatchChannelMessageAction } from "../../entrypoints/channels/plugins/message-actions.js";
 import { appendAssistantMessageToSessionTranscript } from "../config/sessions.js";
 import { throwIfAborted } from "./abort.js";
 import { sendMessage, sendPoll } from "./message.js";

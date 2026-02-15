@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseDurationMs } from "../../entry/cli/parse-duration.js";
+import { parseDurationMs } from "../../entrypoints/entry/cli/parse-duration.js";
 import {
   GroupChatSchema,
   HumanDelaySchema,

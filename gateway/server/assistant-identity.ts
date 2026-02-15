@@ -1,8 +1,8 @@
 import type { OpenClawConfig } from "../infra/config/config.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveAgentIdentity } from "../agents/identity.js";
-import { loadAgentIdentity } from "../entry/commands/agents.config.js";
+import { loadAgentIdentity } from "../entrypoints/entry/commands/agents.config.js";
 import { normalizeAgentId } from "../infra/routing/session-key.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../runtime/agent-scope.js";
+import { resolveAgentIdentity } from "../runtime/identity.js";
 
 const MAX_ASSISTANT_NAME = 50;
 const MAX_ASSISTANT_AVATAR = 200;

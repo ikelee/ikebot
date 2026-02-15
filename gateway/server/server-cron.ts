@@ -1,5 +1,4 @@
-import type { CliDeps } from "../entry/cli/deps.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import { runCronIsolatedAgentTurn } from "../cron/isolated-agent.js";
 import { appendCronRunLog, resolveCronRunLogPath } from "../cron/run-log.js";
 import { CronService } from "../cron/service.js";
@@ -13,6 +12,7 @@ import { normalizeAgentId } from "../infra/routing/session-key.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { getChildLogger } from "../logging.js";
 import { defaultRuntime } from "../runtime.js";
+import { resolveDefaultAgentId } from "../runtime/agent-scope.js";
 
 export type GatewayCronState = {
   cron: CronService;

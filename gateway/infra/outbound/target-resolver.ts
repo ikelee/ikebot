@@ -2,9 +2,9 @@ import type {
   ChannelDirectoryEntry,
   ChannelDirectoryEntryKind,
   ChannelId,
-} from "../../channels/plugins/types.js";
+} from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { getChannelPlugin } from "../../channels/plugins/index.js";
+import { getChannelPlugin } from "../../entrypoints/channels/plugins/index.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { buildDirectoryCacheKey, DirectoryCache } from "./directory-cache.js";
 import { ambiguousTargetError, unknownTargetError } from "./target-errors.js";

@@ -1,9 +1,9 @@
 import { intro, note, outro, spinner } from "@clack/prompts";
 import type { RuntimeEnv } from "../../runtime.js";
-import { ensureAuthProfileStore, upsertAuthProfile } from "../../agents/auth-profiles.js";
-import { updateConfig } from "../../entry/commands/models/shared.js";
-import { applyAuthProfileConfig } from "../../entry/commands/onboard-auth.js";
+import { updateConfig } from "../../entrypoints/entry/commands/models/shared.js";
+import { applyAuthProfileConfig } from "../../entrypoints/entry/commands/onboard-auth.js";
 import { logConfigUpdated } from "../../infra/config/logging.js";
+import { ensureAuthProfileStore, upsertAuthProfile } from "../../runtime/auth-profiles.js";
 import { stylePromptTitle } from "../../terminal/prompt-style.js";
 
 const CLIENT_ID = "Iv1.b507a08c87ecfe98";

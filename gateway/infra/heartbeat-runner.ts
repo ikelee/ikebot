@@ -1,33 +1,33 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ChannelHeartbeatDeps } from "../channels/plugins/types.js";
-import type { ReplyPayload } from "../pipeline/types.js";
+import type { ReplyPayload } from "../agent/pipeline/types.js";
+import type { ChannelHeartbeatDeps } from "../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "./config/config.js";
 import type { AgentDefaultsConfig } from "./config/types.agent-defaults.js";
 import type { OutboundSendDeps } from "./outbound/deliver.js";
-import {
-  resolveAgentConfig,
-  resolveAgentWorkspaceDir,
-  resolveDefaultAgentId,
-} from "../agents/agent-scope.js";
-import { appendCronStyleCurrentTimeLine } from "../agents/current-time.js";
-import { resolveEffectiveMessagesConfig } from "../agents/identity.js";
-import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
-import { getChannelPlugin } from "../channels/plugins/index.js";
-import { parseDurationMs } from "../entry/cli/parse-duration.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
   DEFAULT_HEARTBEAT_EVERY,
   isHeartbeatContentEffectivelyEmpty,
   resolveHeartbeatPrompt as resolveHeartbeatPromptText,
   stripHeartbeatToken,
-} from "../pipeline/heartbeat.js";
-import { getReplyFromConfig } from "../pipeline/reply.js";
-import { HEARTBEAT_TOKEN } from "../pipeline/tokens.js";
+} from "../agent/pipeline/heartbeat.js";
+import { getReplyFromConfig } from "../agent/pipeline/reply.js";
+import { HEARTBEAT_TOKEN } from "../agent/pipeline/tokens.js";
+import { getChannelPlugin } from "../entrypoints/channels/plugins/index.js";
+import { parseDurationMs } from "../entrypoints/entry/cli/parse-duration.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
+import {
+  resolveAgentConfig,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../runtime/agent-scope.js";
+import { appendCronStyleCurrentTimeLine } from "../runtime/current-time.js";
+import { resolveEffectiveMessagesConfig } from "../runtime/identity.js";
+import { DEFAULT_HEARTBEAT_FILENAME } from "../runtime/workspace.js";
 import { loadConfig } from "./config/config.js";
 import {
   canonicalizeMainSessionAlias,

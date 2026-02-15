@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { MsgContext } from "../../../pipeline/templating.js";
+import type { MsgContext } from "../../../agent/pipeline/templating.js";
 import type { SessionMaintenanceConfig, SessionMaintenanceMode } from "../types.base.js";
-import { acquireSessionWriteLock } from "../../../agents/session-write-lock.js";
-import { parseByteSize } from "../../../entry/cli/parse-bytes.js";
-import { parseDurationMs } from "../../../entry/cli/parse-duration.js";
+import { parseByteSize } from "../../../entrypoints/entry/cli/parse-bytes.js";
+import { parseDurationMs } from "../../../entrypoints/entry/cli/parse-duration.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { acquireSessionWriteLock } from "../../../runtime/session-write-lock.js";
 import {
   deliveryContextFromSession,
   mergeDeliveryContext,

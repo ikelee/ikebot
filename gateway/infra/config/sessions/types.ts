@@ -1,7 +1,7 @@
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import crypto from "node:crypto";
-import type { ChatType } from "../../../channels/chat-type.js";
-import type { ChannelId } from "../../../channels/plugins/types.js";
+import type { ChatType } from "../../../entrypoints/channels/chat-type.js";
+import type { ChannelId } from "../../../entrypoints/channels/plugins/types.js";
 import type { DeliveryContext } from "../../../utils/delivery-context.js";
 import type { TtsAutoMode } from "../types.tts.js";
 

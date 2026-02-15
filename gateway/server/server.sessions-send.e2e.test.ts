@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createOpenClawTools } from "../agents/openclaw-tools.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { resolveSessionTranscriptPath } from "../infra/config/sessions.js";
+import { createOpenClawTools } from "../runtime/openclaw-tools.js";
 import {
   agentCommand,
   getFreePort,

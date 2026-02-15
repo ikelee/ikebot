@@ -1,10 +1,10 @@
 import type { Snapshot } from "../protocol/index.js";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { getHealthSnapshot, type HealthSummary } from "../../entry/commands/health.js";
+import { getHealthSnapshot, type HealthSummary } from "../../entrypoints/entry/commands/health.js";
 import { CONFIG_PATH, STATE_DIR, loadConfig } from "../../infra/config/config.js";
 import { resolveMainSessionKey } from "../../infra/config/sessions.js";
 import { normalizeMainKey } from "../../infra/routing/session-key.js";
 import { listSystemPresence } from "../../infra/system-presence.js";
+import { resolveDefaultAgentId } from "../../runtime/agent-scope.js";
 
 let presenceVersion = 1;
 let healthVersion = 1;

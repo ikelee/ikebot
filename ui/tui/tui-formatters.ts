@@ -1,7 +1,7 @@
 import {
   extractTextFromMessage as extractTextFromMessageGateway,
   formatRawAssistantErrorForUi,
-} from "../../gateway/agents/pi-embedded-helpers.js";
+} from "../../gateway/runtime/pi-embedded-helpers.js";
 import { formatTokenCount } from "../../gateway/utils/usage-format.js";
 
 export function resolveFinalAssistantText(params: {

@@ -1,23 +1,23 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { Command } from "commander";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AuthProfileCredential, OAuthCredential } from "../../agents/auth-profiles/types.js";
-import type { AnyAgentTool } from "../../agents/tools/common.js";
-import type { ChannelDock } from "../../channels/dock.js";
-import type { ChannelId, ChannelPlugin } from "../../channels/plugins/types.js";
-import type { createVpsAwareOAuthHandlers } from "../../entry/commands/oauth-flow.js";
-import type { WizardPrompter } from "../../entry/wizard/prompts.js";
+import type { ReplyPayload } from "../../agent/pipeline/types.js";
+import type { ChannelDock } from "../../entrypoints/channels/dock.js";
+import type { ChannelId, ChannelPlugin } from "../../entrypoints/channels/plugins/types.js";
+import type { createVpsAwareOAuthHandlers } from "../../entrypoints/entry/commands/oauth-flow.js";
+import type { WizardPrompter } from "../../entrypoints/entry/wizard/prompts.js";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { ModelProviderConfig } from "../../infra/config/types.js";
-import type { ReplyPayload } from "../../pipeline/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
+import type { AuthProfileCredential, OAuthCredential } from "../../runtime/auth-profiles/types.js";
+import type { AnyAgentTool } from "../../runtime/tools/common.js";
 import type { GatewayRequestHandler } from "../../server/server-methods/types.js";
 import type { InternalHookHandler } from "../hooks/internal-hooks.js";
 import type { HookEntry } from "../hooks/types.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
 export type { PluginRuntime } from "./runtime/types.js";
-export type { AnyAgentTool } from "../../agents/tools/common.js";
+export type { AnyAgentTool } from "../../runtime/tools/common.js";
 
 export type PluginLogger = {
   debug?: (message: string) => void;

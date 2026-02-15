@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
-import { listChannelPlugins } from "../channels/plugins/index.js";
+import type { ChannelPlugin } from "../entrypoints/channels/plugins/types.js";
+import { listChannelPlugins } from "../entrypoints/channels/plugins/index.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import {

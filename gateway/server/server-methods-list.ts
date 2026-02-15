@@ -1,4 +1,4 @@
-import { listChannelPlugins } from "../channels/plugins/index.js";
+import { listChannelPlugins } from "../entrypoints/channels/plugins/index.js";
 
 const BASE_METHODS = [
   "health",

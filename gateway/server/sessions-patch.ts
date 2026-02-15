@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
-import type { ModelCatalogEntry } from "../agents/model-catalog.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import type { SessionEntry } from "../infra/config/sessions.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { ModelCatalogEntry } from "../runtime/model-catalog.js";
+import { normalizeGroupActivation } from "../agent/pipeline/group-activation.js";
+import {
+  formatThinkingLevels,
+  formatXHighModelHint,
+  normalizeElevatedLevel,
+  normalizeReasoningLevel,
+  normalizeThinkLevel,
+  normalizeUsageDisplay,
+  supportsXHighThinking,
+} from "../agent/pipeline/thinking.js";
 import {
   isSubagentSessionKey,
   normalizeAgentId,
@@ -13,16 +22,7 @@ import { applyModelOverrideToSessionEntry } from "../infra/sessions/model-overri
 import { normalizeSendPolicy } from "../infra/sessions/send-policy.js";
 import { parseSessionLabel } from "../infra/sessions/session-label.js";
 import { resolveAllowedModelRef, resolveDefaultModelForAgent } from "../models/model-selection.js";
-import { normalizeGroupActivation } from "../pipeline/group-activation.js";
-import {
-  formatThinkingLevels,
-  formatXHighModelHint,
-  normalizeElevatedLevel,
-  normalizeReasoningLevel,
-  normalizeThinkLevel,
-  normalizeUsageDisplay,
-  supportsXHighThinking,
-} from "../pipeline/thinking.js";
+import { resolveDefaultAgentId } from "../runtime/agent-scope.js";
 import {
   ErrorCodes,
   type ErrorShape,

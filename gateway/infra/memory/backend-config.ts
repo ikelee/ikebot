@@ -8,8 +8,8 @@ import type {
   MemoryQmdIndexPath,
   MemoryQmdSearchMode,
 } from "../config/types.memory.js";
-import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
-import { parseDurationMs } from "../../entry/cli/parse-duration.js";
+import { parseDurationMs } from "../../entrypoints/entry/cli/parse-duration.js";
+import { resolveAgentWorkspaceDir } from "../../runtime/agent-scope.js";
 import { resolveUserPath } from "../../utils.js";
 import { splitShellArgs } from "../../utils/shell-argv.js";
 

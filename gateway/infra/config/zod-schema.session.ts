@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { parseByteSize } from "../../entry/cli/parse-bytes.js";
-import { parseDurationMs } from "../../entry/cli/parse-duration.js";
+import { parseByteSize } from "../../entrypoints/entry/cli/parse-bytes.js";
+import { parseDurationMs } from "../../entrypoints/entry/cli/parse-duration.js";
 import { ElevatedAllowFromSchema } from "./zod-schema.agent-runtime.js";
 import {
   GroupChatSchema,

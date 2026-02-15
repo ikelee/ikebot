@@ -1,4 +1,4 @@
-import { formatCliCommand } from "../entry/cli/command-format.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
 import { loadConfig } from "../infra/config/config.js";
 import { resolveBrowserControlAuth } from "./control-auth.js";
 import {

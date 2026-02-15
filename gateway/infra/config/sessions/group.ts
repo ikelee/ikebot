@@ -1,4 +1,4 @@
-import type { MsgContext } from "../../../pipeline/templating.js";
+import type { MsgContext } from "../../../agent/pipeline/templating.js";
 import type { GroupKeyResolution } from "./types.js";
 import { listDeliverableMessageChannels } from "../../../utils/message-channel.js";
 

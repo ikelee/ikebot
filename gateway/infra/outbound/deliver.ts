@@ -1,24 +1,27 @@
-import type { ChannelOutboundAdapter } from "../../channels/plugins/types.js";
-import type { sendMessageDiscord } from "../../discord/send.js";
-import type { sendMessageIMessage } from "../../imessage/send.js";
-import type { ReplyPayload } from "../../pipeline/types.js";
-import type { sendMessageSlack } from "../../slack/send.js";
-import type { sendMessageTelegram } from "../../telegram/send.js";
-import type { sendMessageWhatsApp } from "../../web/outbound.js";
+import type { ReplyPayload } from "../../agent/pipeline/types.js";
+import type { ChannelOutboundAdapter } from "../../entrypoints/channels/plugins/types.js";
+import type { sendMessageDiscord } from "../../entrypoints/discord/send.js";
+import type { sendMessageIMessage } from "../../entrypoints/imessage/send.js";
+import type { sendMessageSlack } from "../../entrypoints/slack/send.js";
+import type { sendMessageTelegram } from "../../entrypoints/telegram/send.js";
+import type { sendMessageWhatsApp } from "../../entrypoints/web/outbound.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { NormalizedOutboundPayload } from "./payloads.js";
 import type { OutboundChannel } from "./targets.js";
-import { resolveChannelMediaMaxBytes } from "../../channels/plugins/media-limits.js";
-import { loadChannelOutboundAdapter } from "../../channels/plugins/outbound/load.js";
-import { getGlobalHookRunner } from "../../extensibility/plugins/hook-runner-global.js";
 import {
   chunkByParagraph,
   chunkMarkdownTextWithMode,
   resolveChunkMode,
   resolveTextChunkLimit,
-} from "../../pipeline/chunk.js";
-import { markdownToSignalTextChunks, type SignalTextStyleRange } from "../../signal/format.js";
-import { sendMessageSignal } from "../../signal/send.js";
+} from "../../agent/pipeline/chunk.js";
+import { resolveChannelMediaMaxBytes } from "../../entrypoints/channels/plugins/media-limits.js";
+import { loadChannelOutboundAdapter } from "../../entrypoints/channels/plugins/outbound/load.js";
+import {
+  markdownToSignalTextChunks,
+  type SignalTextStyleRange,
+} from "../../entrypoints/signal/format.js";
+import { sendMessageSignal } from "../../entrypoints/signal/send.js";
+import { getGlobalHookRunner } from "../../extensibility/plugins/hook-runner-global.js";
 import { resolveMarkdownTableMode } from "../config/markdown-tables.js";
 import {
   appendAssistantMessageToSessionTranscript,

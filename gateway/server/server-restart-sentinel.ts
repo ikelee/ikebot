@@ -1,7 +1,6 @@
-import type { CliDeps } from "../entry/cli/deps.js";
-import { resolveAnnounceTargetFromKey } from "../agents/tools/sessions-send-helpers.js";
-import { normalizeChannelId } from "../channels/plugins/index.js";
-import { agentCommand } from "../entry/commands/agent.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
+import { normalizeChannelId } from "../entrypoints/channels/plugins/index.js";
+import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { resolveMainSessionKeyFromConfig } from "../infra/config/sessions.js";
 import { resolveOutboundTarget } from "../infra/outbound/targets.js";
 import {
@@ -11,6 +10,7 @@ import {
 } from "../infra/restart-sentinel.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
+import { resolveAnnounceTargetFromKey } from "../runtime/tools/sessions-send-helpers.js";
 import { deliveryContextFromSession, mergeDeliveryContext } from "../utils/delivery-context.js";
 import { loadSessionEntry } from "./session-utils.js";
 

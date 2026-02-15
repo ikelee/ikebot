@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CronJob } from "../../cron/types.js";
-import type { CliDeps } from "../../entry/cli/deps.js";
+import type { CliDeps } from "../../entrypoints/entry/cli/deps.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
 import { runCronIsolatedAgentTurn } from "../../cron/isolated-agent.js";

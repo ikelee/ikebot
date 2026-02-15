@@ -1,5 +1,5 @@
 import type { ConfigUiHint, ConfigUiHints } from "./schema.hints.js";
-import { CHANNEL_IDS } from "../../channels/registry.js";
+import { CHANNEL_IDS } from "../../entrypoints/channels/registry.js";
 import { VERSION } from "../../version.js";
 import { applySensitiveHints, buildBaseHints } from "./schema.hints.js";
 import { OpenClawSchema } from "./zod-schema.js";

@@ -6,9 +6,6 @@ import type {
   GatewaySessionsDefaults,
   SessionsListResult,
 } from "./session-utils.types.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { lookupContextTokens } from "../agents/context.js";
-import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { type OpenClawConfig, loadConfig } from "../infra/config/config.js";
 import { resolveStateDir } from "../infra/config/paths.js";
 import {
@@ -31,6 +28,9 @@ import {
   resolveConfiguredModelRef,
   resolveDefaultModelForAgent,
 } from "../models/model-selection.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../runtime/agent-scope.js";
+import { lookupContextTokens } from "../runtime/context.js";
+import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../runtime/defaults.js";
 import { normalizeSessionDeliveryFields } from "../utils/delivery-context.js";
 import {
   readFirstUserMessageFromTranscript,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelPlugin } from "../entrypoints/channels/plugins/types.js";
 import type { PluginRegistry } from "../extensibility/plugins/registry.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { resolveGatewayMessageChannel } from "./message-channel.js";

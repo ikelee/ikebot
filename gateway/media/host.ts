@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { formatCliCommand } from "../entry/cli/command-format.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
 import { ensurePortAvailable, PortInUseError } from "../infra/ports.js";
 import { getTailnetHostname } from "../infra/tailscale.js";
 import { logInfo } from "../logger.js";

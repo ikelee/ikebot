@@ -1,29 +1,29 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CliDeps } from "../entry/cli/deps.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import type { CronJob } from "./types.js";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
-import { telegramOutbound } from "../channels/plugins/outbound/telegram.js";
+import { telegramOutbound } from "../entrypoints/channels/plugins/outbound/telegram.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../test-utils/channel-plugins.js";
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../runtime/pi-embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: vi.fn(),
   resolveEmbeddedSessionLane: (key: string) => `session:${key.trim() || "main"}`,
 }));
-vi.mock("../agents/model-catalog.js", () => ({
+vi.mock("../runtime/model-catalog.js", () => ({
   loadModelCatalog: vi.fn(),
 }));
-vi.mock("../agents/subagent-announce.js", () => ({
+vi.mock("../runtime/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: vi.fn(),
 }));
 
-import { loadModelCatalog } from "../agents/model-catalog.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
-import { runSubagentAnnounceFlow } from "../agents/subagent-announce.js";
+import { loadModelCatalog } from "../runtime/model-catalog.js";
+import { runEmbeddedPiAgent } from "../runtime/pi-embedded.js";
+import { runSubagentAnnounceFlow } from "../runtime/subagent-announce.js";
 import { runCronIsolatedAgentTurn } from "./isolated-agent.js";
 
 async function withTempHome<T>(fn: (home: string) => Promise<T>): Promise<T> {

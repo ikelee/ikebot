@@ -1,8 +1,6 @@
-import type { CliDeps } from "../entry/cli/deps.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { loadOpenClawPlugins } from "../extensibility/plugins/loader.js";
 import type { loadConfig } from "../infra/config/config.js";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
-import { loadModelCatalog } from "../agents/model-catalog.js";
 import { startGmailWatcher } from "../extensibility/hooks/gmail-watcher.js";
 import {
   clearInternalHooks,
@@ -20,6 +18,8 @@ import {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
 } from "../models/model-selection.js";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../runtime/defaults.js";
+import { loadModelCatalog } from "../runtime/model-catalog.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
   scheduleRestartSentinelWake,

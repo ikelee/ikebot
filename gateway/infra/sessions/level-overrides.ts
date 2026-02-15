@@ -1,5 +1,5 @@
 import type { SessionEntry } from "../config/sessions.js";
-import { normalizeVerboseLevel, type VerboseLevel } from "../../pipeline/thinking.js";
+import { normalizeVerboseLevel, type VerboseLevel } from "../../agent/pipeline/thinking.js";
 
 export function parseVerboseOverride(
   raw: unknown,

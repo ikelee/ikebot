@@ -2,15 +2,15 @@ import type { OpenClawConfig } from "./config.js";
 import {
   getChannelPluginCatalogEntry,
   listChannelPluginCatalogEntries,
-} from "../../channels/plugins/catalog.js";
+} from "../../entrypoints/channels/plugins/catalog.js";
 import {
   getChatChannelMeta,
   listChatChannels,
   normalizeChatChannelId,
-} from "../../channels/registry.js";
+} from "../../entrypoints/channels/registry.js";
+import { hasAnyWhatsAppAuth } from "../../entrypoints/web/accounts.js";
 import { normalizeProviderId } from "../../models/model-selection.js";
 import { isRecord } from "../../utils.js";
-import { hasAnyWhatsAppAuth } from "../../web/accounts.js";
 
 type PluginEnableChange = {
   pluginId: string;

@@ -8,14 +8,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawConfig, ConfigFileSnapshot } from "../infra/config/config.js";
 import type { ExecFn } from "./windows-acl.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { loadWorkspaceSkillEntries } from "../agents/skills.js";
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
 import { resolveNativeSkillsEnabled } from "../infra/config/commands.js";
 import { createConfigIO } from "../infra/config/config.js";
 import { INCLUDE_KEY, MAX_INCLUDE_DEPTH } from "../infra/config/includes.js";
 import { resolveOAuthDir } from "../infra/config/paths.js";
 import { normalizeAgentId } from "../infra/routing/session-key.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../runtime/agent-scope.js";
+import { loadWorkspaceSkillEntries } from "../runtime/skills.js";
 import {
   formatPermissionDetail,
   formatPermissionRemediation,

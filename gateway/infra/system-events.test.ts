@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "./config/config.js";
-import { prependSystemEvents } from "../pipeline/reply/session-updates.js";
+import { prependSystemEvents } from "../agent/pipeline/reply/session-updates.js";
 import { resolveMainSessionKey } from "./config/sessions.js";
 import { enqueueSystemEvent, peekSystemEvents, resetSystemEventsForTest } from "./system-events.js";
 

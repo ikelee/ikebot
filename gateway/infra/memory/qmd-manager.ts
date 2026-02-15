@@ -11,8 +11,8 @@ import type {
   MemorySource,
   MemorySyncProgressUpdate,
 } from "./types.js";
-import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveAgentWorkspaceDir } from "../../runtime/agent-scope.js";
 import { resolveStateDir } from "../config/paths.js";
 import { parseAgentSessionKey } from "../sessions/session-key-utils.js";
 import {

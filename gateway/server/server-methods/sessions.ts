@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type { GatewayRequestHandlers } from "./types.js";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { abortEmbeddedPiRun, waitForEmbeddedPiRunEnd } from "../../agents/pi-embedded.js";
+import { stopSubagentsForRequester } from "../../agent/pipeline/reply/abort.js";
+import { clearSessionQueues } from "../../agent/pipeline/reply/queue.js";
 import { loadConfig } from "../../infra/config/config.js";
 import {
   loadSessionStore,
@@ -12,8 +12,8 @@ import {
   updateSessionStore,
 } from "../../infra/config/sessions.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../infra/routing/session-key.js";
-import { stopSubagentsForRequester } from "../../pipeline/reply/abort.js";
-import { clearSessionQueues } from "../../pipeline/reply/queue.js";
+import { resolveDefaultAgentId } from "../../runtime/agent-scope.js";
+import { abortEmbeddedPiRun, waitForEmbeddedPiRunEnd } from "../../runtime/pi-embedded.js";
 import {
   ErrorCodes,
   errorShape,

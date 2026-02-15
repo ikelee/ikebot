@@ -1,4 +1,4 @@
-import type { VerboseLevel } from "../pipeline/thinking.js";
+import type { VerboseLevel } from "../agent/pipeline/thinking.js";
 
 export type AgentEventStream = "lifecycle" | "tool" | "assistant" | "error" | (string & {});
 

@@ -1,6 +1,6 @@
 import type { PollInput } from "../../polls.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
+import { getChannelPlugin, normalizeChannelId } from "../../entrypoints/channels/plugins/index.js";
 import { normalizePollInput } from "../../polls.js";
 import { callGateway, randomIdempotencyKey } from "../../server/call.js";
 import {

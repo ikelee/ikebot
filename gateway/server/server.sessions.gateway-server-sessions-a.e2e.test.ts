@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
-import { DEFAULT_PROVIDER } from "../agents/defaults.js";
+import { DEFAULT_PROVIDER } from "../runtime/defaults.js";
 import {
   connectOk,
   embeddedRunMock,

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelPlugin } from "../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import { discordPlugin } from "../../extensions/discord/src/channel.js";
 import { slackPlugin } from "../../extensions/slack/src/channel.js";

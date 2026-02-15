@@ -1,4 +1,4 @@
-import type { ResolvedMemorySearchConfig } from "../../agents/memory-search.js";
+import type { ResolvedMemorySearchConfig } from "../../runtime/memory-search.js";
 import { fingerprintHeaderNames } from "./headers-fingerprint.js";
 import { hashText } from "./internal.js";
 

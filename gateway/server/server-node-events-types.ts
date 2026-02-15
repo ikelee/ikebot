@@ -1,6 +1,6 @@
-import type { ModelCatalogEntry } from "../agents/model-catalog.js";
-import type { CliDeps } from "../entry/cli/deps.js";
-import type { HealthSummary } from "../entry/commands/health.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
+import type { HealthSummary } from "../entrypoints/entry/commands/health.js";
+import type { ModelCatalogEntry } from "../runtime/model-catalog.js";
 import type { ChatAbortControllerEntry } from "./chat-abort.js";
 import type { ChatRunEntry } from "./server-chat.js";
 import type { DedupeEntry } from "./server-shared.js";

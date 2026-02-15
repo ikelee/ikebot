@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ResolvedMemorySearchConfig } from "../../agents/memory-search.js";
+import type { ResolvedMemorySearchConfig } from "../../runtime/memory-search.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type {
   MemoryEmbeddingProbeResult,
@@ -14,9 +14,9 @@ import type {
   MemorySource,
   MemorySyncProgressUpdate,
 } from "./types.js";
-import { resolveAgentDir, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
-import { resolveMemorySearchConfig } from "../../agents/memory-search.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveAgentDir, resolveAgentWorkspaceDir } from "../../runtime/agent-scope.js";
+import { resolveMemorySearchConfig } from "../../runtime/memory-search.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";

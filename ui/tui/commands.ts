@@ -3,8 +3,11 @@ import type { OpenClawConfig } from "../../gateway/infra/config/types.js";
 import {
   listChatCommands,
   listChatCommandsForConfig,
-} from "../../gateway/pipeline/commands-registry.js";
-import { formatThinkingLevels, listThinkingLevelLabels } from "../../gateway/pipeline/thinking.js";
+} from "../../gateway/agent/pipeline/commands-registry.js";
+import {
+  formatThinkingLevels,
+  listThinkingLevelLabels,
+} from "../../gateway/agent/pipeline/thinking.js";
 
 const VERBOSE_LEVELS = ["on", "off"];
 const REASONING_LEVELS = ["on", "off"];

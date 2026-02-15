@@ -1,16 +1,16 @@
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs";
 import path from "node:path";
-import type { MsgContext } from "../../pipeline/templating.js";
+import type { MsgContext } from "../../agent/pipeline/templating.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
+import { dispatchInboundMessage } from "../../agent/pipeline/dispatch.js";
+import { createReplyDispatcher } from "../../agent/pipeline/reply/reply-dispatcher.js";
+import { createReplyPrefixOptions } from "../../entrypoints/channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../infra/config/sessions.js";
 import { resolveSendPolicy } from "../../infra/sessions/send-policy.js";
 import { resolveThinkingDefault } from "../../models/model-selection.js";
-import { dispatchInboundMessage } from "../../pipeline/dispatch.js";
-import { createReplyDispatcher } from "../../pipeline/reply/reply-dispatcher.js";
+import { resolveSessionAgentId } from "../../runtime/agent-scope.js";
+import { resolveAgentTimeoutMs } from "../../runtime/timeout.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import {
   abortChatRunById,

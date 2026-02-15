@@ -1,6 +1,5 @@
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { listChannelPlugins } from "../../entrypoints/channels/plugins/index.js";
 import { loadOpenClawPlugins } from "../../extensibility/plugins/loader.js";
 import {
   CONFIG_PATH,
@@ -25,6 +24,7 @@ import {
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../runtime/agent-scope.js";
 import {
   ErrorCodes,
   errorShape,

@@ -10,8 +10,8 @@ import {
   resolveDefaultAgentId,
   resolveAgentWorkspaceDir,
   resolveAgentDir,
-} from "../../agents/agent-scope.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+} from "../../runtime/agent-scope.js";
+import { runEmbeddedPiAgent } from "../../runtime/pi-embedded.js";
 
 /**
  * Generate a short 1-2 word filename slug from session content using LLM

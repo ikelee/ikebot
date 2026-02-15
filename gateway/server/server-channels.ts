@@ -1,9 +1,13 @@
-import type { ChannelAccountSnapshot } from "../channels/plugins/types.js";
+import type { ChannelAccountSnapshot } from "../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
-import { type ChannelId, getChannelPlugin, listChannelPlugins } from "../channels/plugins/index.js";
+import { resolveChannelDefaultAccountId } from "../entrypoints/channels/plugins/helpers.js";
+import {
+  type ChannelId,
+  getChannelPlugin,
+  listChannelPlugins,
+} from "../entrypoints/channels/plugins/index.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resetDirectoryCache } from "../infra/outbound/target-resolver.js";
 import { DEFAULT_ACCOUNT_ID } from "../infra/routing/session-key.js";

@@ -35,7 +35,7 @@ vi.mock("../../infra/config/config.js", () => ({
   loadConfig: () => mocks.loadConfigReturn,
 }));
 
-vi.mock("../../agents/agent-scope.js", () => ({
+vi.mock("../../runtime/agent-scope.js", () => ({
   listAgentIds: () => ["main"],
 }));
 

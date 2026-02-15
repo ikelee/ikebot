@@ -1,9 +1,9 @@
-import type { ChannelId } from "../channels/plugins/types.js";
+import type { ChannelId } from "../entrypoints/channels/plugins/types.js";
 import {
   CHANNEL_IDS,
   listChatChannelAliases,
   normalizeChatChannelId,
-} from "../channels/registry.js";
+} from "../entrypoints/channels/registry.js";
 import { getActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import {
   GATEWAY_CLIENT_MODES,

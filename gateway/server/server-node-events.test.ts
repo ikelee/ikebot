@@ -7,8 +7,8 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeatNow: vi.fn(),
 }));
 
-import type { CliDeps } from "../entry/cli/deps.js";
-import type { HealthSummary } from "../entry/commands/health.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
+import type { HealthSummary } from "../entrypoints/entry/commands/health.js";
 import type { NodeEventContext } from "./server-node-events-types.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";

@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";
-import type { CliDeps } from "../entry/cli/deps.js";
+import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { PluginRegistry } from "../extensibility/plugins/registry.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { RuntimeEnv } from "../runtime.js";

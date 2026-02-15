@@ -2,13 +2,13 @@ import JSON5 from "json5";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawConfig } from "../infra/config/config.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { createConfigIO } from "../infra/config/config.js";
 import { INCLUDE_KEY, MAX_INCLUDE_DEPTH } from "../infra/config/includes.js";
 import { resolveConfigPath, resolveOAuthDir, resolveStateDir } from "../infra/config/paths.js";
 import { readChannelAllowFromStore } from "../infra/pairing/pairing-store.js";
 import { normalizeAgentId } from "../infra/routing/session-key.js";
 import { runExec } from "../process/exec.js";
+import { resolveDefaultAgentId } from "../runtime/agent-scope.js";
 import { createIcaclsResetCommand, formatIcaclsResetCommand, type ExecFn } from "./windows-acl.js";
 
 export type SecurityFixChmodAction = {

@@ -1,4 +1,4 @@
-import { formatCliCommand } from "../entry/cli/command-format.js";
+import { formatCliCommand } from "../entrypoints/entry/cli/command-format.js";
 
 export function isSystemdUnavailableDetail(detail?: string): boolean {
   if (!detail) {

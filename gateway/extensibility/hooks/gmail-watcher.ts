@@ -7,9 +7,9 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import type { OpenClawConfig } from "../../infra/config/config.js";
-import { hasBinary } from "../../agents/skills.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
+import { hasBinary } from "../../runtime/skills.js";
 import { ensureTailscaleEndpoint } from "./gmail-setup-utils.js";
 import {
   buildGogWatchServeArgs,

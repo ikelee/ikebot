@@ -1,29 +1,16 @@
-import type { MessagingToolSend } from "../../agents/pi-embedded-messaging.js";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { AgentDefaultsConfig } from "../../infra/config/types.js";
+import type { MessagingToolSend } from "../../runtime/pi-embedded-messaging.js";
 import type { CronJob } from "../types.js";
 import {
-  resolveAgentConfig,
-  resolveAgentDir,
-  resolveAgentModelFallbacksOverride,
-  resolveAgentWorkspaceDir,
-  resolveDefaultAgentId,
-} from "../../agents/agent-scope.js";
-import { runCliAgent } from "../../agents/cli-runner.js";
-import { getCliSessionId, setCliSessionId } from "../../agents/cli-session.js";
-import { lookupContextTokens } from "../../agents/context.js";
-import { resolveCronStyleNow } from "../../agents/current-time.js";
-import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../../agents/defaults.js";
-import { loadModelCatalog } from "../../agents/model-catalog.js";
-import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
-import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
-import { getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
-import { runSubagentAnnounceFlow } from "../../agents/subagent-announce.js";
-import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../agents/usage.js";
-import { ensureAgentWorkspace } from "../../agents/workspace.js";
-import { createOutboundSendDeps, type CliDeps } from "../../entry/cli/outbound-send-deps.js";
+  normalizeThinkLevel,
+  normalizeVerboseLevel,
+  supportsXHighThinking,
+} from "../../agent/pipeline/thinking.js";
+import {
+  createOutboundSendDeps,
+  type CliDeps,
+} from "../../entrypoints/entry/cli/outbound-send-deps.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import {
   resolveAgentMainSessionKey,
@@ -43,10 +30,26 @@ import {
   resolveThinkingDefault,
 } from "../../models/model-selection.js";
 import {
-  normalizeThinkLevel,
-  normalizeVerboseLevel,
-  supportsXHighThinking,
-} from "../../pipeline/thinking.js";
+  resolveAgentConfig,
+  resolveAgentDir,
+  resolveAgentModelFallbacksOverride,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../../runtime/agent-scope.js";
+import { runCliAgent } from "../../runtime/cli-runner.js";
+import { getCliSessionId, setCliSessionId } from "../../runtime/cli-session.js";
+import { lookupContextTokens } from "../../runtime/context.js";
+import { resolveCronStyleNow } from "../../runtime/current-time.js";
+import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../../runtime/defaults.js";
+import { loadModelCatalog } from "../../runtime/model-catalog.js";
+import { runWithModelFallback } from "../../runtime/model-fallback.js";
+import { runEmbeddedPiAgent } from "../../runtime/pi-embedded.js";
+import { buildWorkspaceSkillSnapshot } from "../../runtime/skills.js";
+import { getSkillsSnapshotVersion } from "../../runtime/skills/refresh.js";
+import { runSubagentAnnounceFlow } from "../../runtime/subagent-announce.js";
+import { resolveAgentTimeoutMs } from "../../runtime/timeout.js";
+import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../runtime/usage.js";
+import { ensureAgentWorkspace } from "../../runtime/workspace.js";
 import {
   buildSafeExternalPrompt,
   detectSuspiciousPatterns,
@@ -126,7 +129,7 @@ export async function runCronIsolatedAgentTurn(params: {
   const { model: overrideModel, ...agentOverrideRest } = agentConfigOverride ?? {};
   // Use the requested agentId even when there is no explicit agent config entry.
   // This ensures auth-profiles, workspace, and agentDir all resolve to the
-  // correct per-agent paths (e.g. ~/.openclaw/agents/<agentId>/agent/).
+  // correct per-agent paths (e.g. ~/.openclaw/runtime/<agentId>/agent/).
   const agentId = normalizedRequested ?? defaultAgentId;
   const agentCfg: AgentDefaultsConfig = Object.assign(
     {},

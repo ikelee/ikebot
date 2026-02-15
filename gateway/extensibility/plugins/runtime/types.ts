@@ -2,12 +2,13 @@ import type { LogLevel } from "../../../logging/levels.js";
 
 type ShouldLogVerbose = typeof import("../../../globals.js").shouldLogVerbose;
 type DispatchReplyWithBufferedBlockDispatcher =
-  typeof import("../../../pipeline/reply/provider-dispatcher.js").dispatchReplyWithBufferedBlockDispatcher;
+  typeof import("../../../agent/pipeline/reply/provider-dispatcher.js").dispatchReplyWithBufferedBlockDispatcher;
 type CreateReplyDispatcherWithTyping =
-  typeof import("../../../pipeline/reply/reply-dispatcher.js").createReplyDispatcherWithTyping;
+  typeof import("../../../agent/pipeline/reply/reply-dispatcher.js").createReplyDispatcherWithTyping;
 type ResolveEffectiveMessagesConfig =
-  typeof import("../../../agents/identity.js").resolveEffectiveMessagesConfig;
-type ResolveHumanDelayConfig = typeof import("../../../agents/identity.js").resolveHumanDelayConfig;
+  typeof import("../../../runtime/identity.js").resolveEffectiveMessagesConfig;
+type ResolveHumanDelayConfig =
+  typeof import("../../../runtime/identity.js").resolveHumanDelayConfig;
 type ResolveAgentRoute = typeof import("../../../infra/routing/resolve-route.js").resolveAgentRoute;
 type BuildPairingReply =
   typeof import("../../../infra/pairing/pairing-messages.js").buildPairingReply;
@@ -17,53 +18,59 @@ type UpsertChannelPairingRequest =
   typeof import("../../../infra/pairing/pairing-store.js").upsertChannelPairingRequest;
 type FetchRemoteMedia = typeof import("../../../media/fetch.js").fetchRemoteMedia;
 type SaveMediaBuffer = typeof import("../../../media/store.js").saveMediaBuffer;
-type TextToSpeechTelephony = typeof import("../../../tts/tts.js").textToSpeechTelephony;
-type BuildMentionRegexes = typeof import("../../../pipeline/reply/mentions.js").buildMentionRegexes;
+type TextToSpeechTelephony = typeof import("../../../runtime/tts/tts.js").textToSpeechTelephony;
+type BuildMentionRegexes =
+  typeof import("../../../agent/pipeline/reply/mentions.js").buildMentionRegexes;
 type MatchesMentionPatterns =
-  typeof import("../../../pipeline/reply/mentions.js").matchesMentionPatterns;
+  typeof import("../../../agent/pipeline/reply/mentions.js").matchesMentionPatterns;
 type MatchesMentionWithExplicit =
-  typeof import("../../../pipeline/reply/mentions.js").matchesMentionWithExplicit;
-type ShouldAckReaction = typeof import("../../../channels/ack-reactions.js").shouldAckReaction;
+  typeof import("../../../agent/pipeline/reply/mentions.js").matchesMentionWithExplicit;
+type ShouldAckReaction =
+  typeof import("../../../entrypoints/channels/ack-reactions.js").shouldAckReaction;
 type RemoveAckReactionAfterReply =
-  typeof import("../../../channels/ack-reactions.js").removeAckReactionAfterReply;
+  typeof import("../../../entrypoints/channels/ack-reactions.js").removeAckReactionAfterReply;
 type ResolveChannelGroupPolicy =
   typeof import("../../../infra/config/group-policy.js").resolveChannelGroupPolicy;
 type ResolveChannelGroupRequireMention =
   typeof import("../../../infra/config/group-policy.js").resolveChannelGroupRequireMention;
 type CreateInboundDebouncer =
-  typeof import("../../../pipeline/inbound-debounce.js").createInboundDebouncer;
+  typeof import("../../../agent/pipeline/inbound-debounce.js").createInboundDebouncer;
 type ResolveInboundDebounceMs =
-  typeof import("../../../pipeline/inbound-debounce.js").resolveInboundDebounceMs;
+  typeof import("../../../agent/pipeline/inbound-debounce.js").resolveInboundDebounceMs;
 type ResolveCommandAuthorizedFromAuthorizers =
-  typeof import("../../../channels/command-gating.js").resolveCommandAuthorizedFromAuthorizers;
-type ResolveTextChunkLimit = typeof import("../../../pipeline/chunk.js").resolveTextChunkLimit;
-type ResolveChunkMode = typeof import("../../../pipeline/chunk.js").resolveChunkMode;
-type ChunkMarkdownText = typeof import("../../../pipeline/chunk.js").chunkMarkdownText;
+  typeof import("../../../entrypoints/channels/command-gating.js").resolveCommandAuthorizedFromAuthorizers;
+type ResolveTextChunkLimit =
+  typeof import("../../../agent/pipeline/chunk.js").resolveTextChunkLimit;
+type ResolveChunkMode = typeof import("../../../agent/pipeline/chunk.js").resolveChunkMode;
+type ChunkMarkdownText = typeof import("../../../agent/pipeline/chunk.js").chunkMarkdownText;
 type ChunkMarkdownTextWithMode =
-  typeof import("../../../pipeline/chunk.js").chunkMarkdownTextWithMode;
-type ChunkText = typeof import("../../../pipeline/chunk.js").chunkText;
-type ChunkTextWithMode = typeof import("../../../pipeline/chunk.js").chunkTextWithMode;
-type ChunkByNewline = typeof import("../../../pipeline/chunk.js").chunkByNewline;
+  typeof import("../../../agent/pipeline/chunk.js").chunkMarkdownTextWithMode;
+type ChunkText = typeof import("../../../agent/pipeline/chunk.js").chunkText;
+type ChunkTextWithMode = typeof import("../../../agent/pipeline/chunk.js").chunkTextWithMode;
+type ChunkByNewline = typeof import("../../../agent/pipeline/chunk.js").chunkByNewline;
 type ResolveMarkdownTableMode =
   typeof import("../../../infra/config/markdown-tables.js").resolveMarkdownTableMode;
 type ConvertMarkdownTables = typeof import("../../../markdown/tables.js").convertMarkdownTables;
-type HasControlCommand = typeof import("../../../pipeline/command-detection.js").hasControlCommand;
+type HasControlCommand =
+  typeof import("../../../agent/pipeline/command-detection.js").hasControlCommand;
 type IsControlCommandMessage =
-  typeof import("../../../pipeline/command-detection.js").isControlCommandMessage;
+  typeof import("../../../agent/pipeline/command-detection.js").isControlCommandMessage;
 type ShouldComputeCommandAuthorized =
-  typeof import("../../../pipeline/command-detection.js").shouldComputeCommandAuthorized;
+  typeof import("../../../agent/pipeline/command-detection.js").shouldComputeCommandAuthorized;
 type ShouldHandleTextCommands =
-  typeof import("../../../pipeline/commands-registry.js").shouldHandleTextCommands;
+  typeof import("../../../agent/pipeline/commands-registry.js").shouldHandleTextCommands;
 type DispatchReplyFromConfig =
-  typeof import("../../../pipeline/reply/dispatch-from-config.js").dispatchReplyFromConfig;
+  typeof import("../../../agent/pipeline/reply/dispatch-from-config.js").dispatchReplyFromConfig;
 type FinalizeInboundContext =
-  typeof import("../../../pipeline/reply/inbound-context.js").finalizeInboundContext;
-type FormatAgentEnvelope = typeof import("../../../pipeline/envelope.js").formatAgentEnvelope;
-type FormatInboundEnvelope = typeof import("../../../pipeline/envelope.js").formatInboundEnvelope;
+  typeof import("../../../agent/pipeline/reply/inbound-context.js").finalizeInboundContext;
+type FormatAgentEnvelope = typeof import("../../../agent/pipeline/envelope.js").formatAgentEnvelope;
+type FormatInboundEnvelope =
+  typeof import("../../../agent/pipeline/envelope.js").formatInboundEnvelope;
 type ResolveEnvelopeFormatOptions =
-  typeof import("../../../pipeline/envelope.js").resolveEnvelopeFormatOptions;
+  typeof import("../../../agent/pipeline/envelope.js").resolveEnvelopeFormatOptions;
 type ResolveStateDir = typeof import("../../../infra/config/paths.js").resolveStateDir;
-type RecordInboundSession = typeof import("../../../channels/session.js").recordInboundSession;
+type RecordInboundSession =
+  typeof import("../../../entrypoints/channels/session.js").recordInboundSession;
 type RecordSessionMetaFromInbound =
   typeof import("../../../infra/config/sessions.js").recordSessionMetaFromInbound;
 type ResolveStorePath = typeof import("../../../infra/config/sessions.js").resolveStorePath;
@@ -77,101 +84,115 @@ type GetChannelActivity = typeof import("../../../infra/channel-activity.js").ge
 type EnqueueSystemEvent = typeof import("../../../infra/system-events.js").enqueueSystemEvent;
 type RunCommandWithTimeout = typeof import("../../../process/exec.js").runCommandWithTimeout;
 type FormatNativeDependencyHint = typeof import("./native-deps.js").formatNativeDependencyHint;
-type LoadWebMedia = typeof import("../../../web/media.js").loadWebMedia;
+type LoadWebMedia = typeof import("../../../entrypoints/web/media.js").loadWebMedia;
 type DetectMime = typeof import("../../../media/mime.js").detectMime;
 type MediaKindFromMime = typeof import("../../../media/constants.js").mediaKindFromMime;
 type IsVoiceCompatibleAudio = typeof import("../../../media/audio.js").isVoiceCompatibleAudio;
 type GetImageMetadata = typeof import("../../../media/image-ops.js").getImageMetadata;
 type ResizeToJpeg = typeof import("../../../media/image-ops.js").resizeToJpeg;
 type CreateMemoryGetTool =
-  typeof import("../../../agents/tools/memory-tool.js").createMemoryGetTool;
+  typeof import("../../../runtime/tools/memory-tool.js").createMemoryGetTool;
 type CreateMemorySearchTool =
-  typeof import("../../../agents/tools/memory-tool.js").createMemorySearchTool;
-type RegisterMemoryCli = typeof import("../../../entry/cli/memory-cli.js").registerMemoryCli;
+  typeof import("../../../runtime/tools/memory-tool.js").createMemorySearchTool;
+type RegisterMemoryCli =
+  typeof import("../../../entrypoints/entry/cli/memory-cli.js").registerMemoryCli;
 type DiscordMessageActions =
-  typeof import("../../../channels/plugins/actions/discord.js").discordMessageActions;
+  typeof import("../../../entrypoints/channels/plugins/actions/discord.js").discordMessageActions;
 type AuditDiscordChannelPermissions =
-  typeof import("../../../discord/audit.js").auditDiscordChannelPermissions;
+  typeof import("../../../entrypoints/discord/audit.js").auditDiscordChannelPermissions;
 type ListDiscordDirectoryGroupsLive =
-  typeof import("../../../discord/directory-live.js").listDiscordDirectoryGroupsLive;
+  typeof import("../../../entrypoints/discord/directory-live.js").listDiscordDirectoryGroupsLive;
 type ListDiscordDirectoryPeersLive =
-  typeof import("../../../discord/directory-live.js").listDiscordDirectoryPeersLive;
-type ProbeDiscord = typeof import("../../../discord/probe.js").probeDiscord;
+  typeof import("../../../entrypoints/discord/directory-live.js").listDiscordDirectoryPeersLive;
+type ProbeDiscord = typeof import("../../../entrypoints/discord/probe.js").probeDiscord;
 type ResolveDiscordChannelAllowlist =
-  typeof import("../../../discord/resolve-channels.js").resolveDiscordChannelAllowlist;
+  typeof import("../../../entrypoints/discord/resolve-channels.js").resolveDiscordChannelAllowlist;
 type ResolveDiscordUserAllowlist =
-  typeof import("../../../discord/resolve-users.js").resolveDiscordUserAllowlist;
-type SendMessageDiscord = typeof import("../../../discord/send.js").sendMessageDiscord;
-type SendPollDiscord = typeof import("../../../discord/send.js").sendPollDiscord;
-type MonitorDiscordProvider = typeof import("../../../discord/monitor.js").monitorDiscordProvider;
+  typeof import("../../../entrypoints/discord/resolve-users.js").resolveDiscordUserAllowlist;
+type SendMessageDiscord = typeof import("../../../entrypoints/discord/send.js").sendMessageDiscord;
+type SendPollDiscord = typeof import("../../../entrypoints/discord/send.js").sendPollDiscord;
+type MonitorDiscordProvider =
+  typeof import("../../../entrypoints/discord/monitor.js").monitorDiscordProvider;
 type ListSlackDirectoryGroupsLive =
-  typeof import("../../../slack/directory-live.js").listSlackDirectoryGroupsLive;
+  typeof import("../../../entrypoints/slack/directory-live.js").listSlackDirectoryGroupsLive;
 type ListSlackDirectoryPeersLive =
-  typeof import("../../../slack/directory-live.js").listSlackDirectoryPeersLive;
-type ProbeSlack = typeof import("../../../slack/probe.js").probeSlack;
+  typeof import("../../../entrypoints/slack/directory-live.js").listSlackDirectoryPeersLive;
+type ProbeSlack = typeof import("../../../entrypoints/slack/probe.js").probeSlack;
 type ResolveSlackChannelAllowlist =
-  typeof import("../../../slack/resolve-channels.js").resolveSlackChannelAllowlist;
+  typeof import("../../../entrypoints/slack/resolve-channels.js").resolveSlackChannelAllowlist;
 type ResolveSlackUserAllowlist =
-  typeof import("../../../slack/resolve-users.js").resolveSlackUserAllowlist;
-type SendMessageSlack = typeof import("../../../slack/send.js").sendMessageSlack;
-type MonitorSlackProvider = typeof import("../../../slack/index.js").monitorSlackProvider;
-type HandleSlackAction = typeof import("../../../agents/tools/slack-actions.js").handleSlackAction;
+  typeof import("../../../entrypoints/slack/resolve-users.js").resolveSlackUserAllowlist;
+type SendMessageSlack = typeof import("../../../entrypoints/slack/send.js").sendMessageSlack;
+type MonitorSlackProvider =
+  typeof import("../../../entrypoints/slack/index.js").monitorSlackProvider;
+type HandleSlackAction = typeof import("../../../runtime/tools/slack-actions.js").handleSlackAction;
 type AuditTelegramGroupMembership =
-  typeof import("../../../telegram/audit.js").auditTelegramGroupMembership;
+  typeof import("../../../entrypoints/telegram/audit.js").auditTelegramGroupMembership;
 type CollectTelegramUnmentionedGroupIds =
-  typeof import("../../../telegram/audit.js").collectTelegramUnmentionedGroupIds;
-type ProbeTelegram = typeof import("../../../telegram/probe.js").probeTelegram;
-type ResolveTelegramToken = typeof import("../../../telegram/token.js").resolveTelegramToken;
-type SendMessageTelegram = typeof import("../../../telegram/send.js").sendMessageTelegram;
+  typeof import("../../../entrypoints/telegram/audit.js").collectTelegramUnmentionedGroupIds;
+type ProbeTelegram = typeof import("../../../entrypoints/telegram/probe.js").probeTelegram;
+type ResolveTelegramToken =
+  typeof import("../../../entrypoints/telegram/token.js").resolveTelegramToken;
+type SendMessageTelegram =
+  typeof import("../../../entrypoints/telegram/send.js").sendMessageTelegram;
 type MonitorTelegramProvider =
-  typeof import("../../../telegram/monitor.js").monitorTelegramProvider;
+  typeof import("../../../entrypoints/telegram/monitor.js").monitorTelegramProvider;
 type TelegramMessageActions =
-  typeof import("../../../channels/plugins/actions/telegram.js").telegramMessageActions;
-type ProbeSignal = typeof import("../../../signal/probe.js").probeSignal;
-type SendMessageSignal = typeof import("../../../signal/send.js").sendMessageSignal;
-type MonitorSignalProvider = typeof import("../../../signal/index.js").monitorSignalProvider;
+  typeof import("../../../entrypoints/channels/plugins/actions/telegram.js").telegramMessageActions;
+type ProbeSignal = typeof import("../../../entrypoints/signal/probe.js").probeSignal;
+type SendMessageSignal = typeof import("../../../entrypoints/signal/send.js").sendMessageSignal;
+type MonitorSignalProvider =
+  typeof import("../../../entrypoints/signal/index.js").monitorSignalProvider;
 type SignalMessageActions =
-  typeof import("../../../channels/plugins/actions/signal.js").signalMessageActions;
+  typeof import("../../../entrypoints/channels/plugins/actions/signal.js").signalMessageActions;
 type MonitorIMessageProvider =
-  typeof import("../../../imessage/monitor.js").monitorIMessageProvider;
-type ProbeIMessage = typeof import("../../../imessage/probe.js").probeIMessage;
-type SendMessageIMessage = typeof import("../../../imessage/send.js").sendMessageIMessage;
-type GetActiveWebListener = typeof import("../../../web/active-listener.js").getActiveWebListener;
-type GetWebAuthAgeMs = typeof import("../../../web/auth-store.js").getWebAuthAgeMs;
-type LogoutWeb = typeof import("../../../web/auth-store.js").logoutWeb;
-type LogWebSelfId = typeof import("../../../web/auth-store.js").logWebSelfId;
-type ReadWebSelfId = typeof import("../../../web/auth-store.js").readWebSelfId;
-type WebAuthExists = typeof import("../../../web/auth-store.js").webAuthExists;
-type SendMessageWhatsApp = typeof import("../../../web/outbound.js").sendMessageWhatsApp;
-type SendPollWhatsApp = typeof import("../../../web/outbound.js").sendPollWhatsApp;
-type LoginWeb = typeof import("../../../web/login.js").loginWeb;
-type StartWebLoginWithQr = typeof import("../../../web/login-qr.js").startWebLoginWithQr;
-type WaitForWebLogin = typeof import("../../../web/login-qr.js").waitForWebLogin;
-type MonitorWebChannel = typeof import("../../../channels/web/index.js").monitorWebChannel;
+  typeof import("../../../entrypoints/imessage/monitor.js").monitorIMessageProvider;
+type ProbeIMessage = typeof import("../../../entrypoints/imessage/probe.js").probeIMessage;
+type SendMessageIMessage =
+  typeof import("../../../entrypoints/imessage/send.js").sendMessageIMessage;
+type GetActiveWebListener =
+  typeof import("../../../entrypoints/web/active-listener.js").getActiveWebListener;
+type GetWebAuthAgeMs = typeof import("../../../entrypoints/web/auth-store.js").getWebAuthAgeMs;
+type LogoutWeb = typeof import("../../../entrypoints/web/auth-store.js").logoutWeb;
+type LogWebSelfId = typeof import("../../../entrypoints/web/auth-store.js").logWebSelfId;
+type ReadWebSelfId = typeof import("../../../entrypoints/web/auth-store.js").readWebSelfId;
+type WebAuthExists = typeof import("../../../entrypoints/web/auth-store.js").webAuthExists;
+type SendMessageWhatsApp =
+  typeof import("../../../entrypoints/web/outbound.js").sendMessageWhatsApp;
+type SendPollWhatsApp = typeof import("../../../entrypoints/web/outbound.js").sendPollWhatsApp;
+type LoginWeb = typeof import("../../../entrypoints/web/login.js").loginWeb;
+type StartWebLoginWithQr =
+  typeof import("../../../entrypoints/web/login-qr.js").startWebLoginWithQr;
+type WaitForWebLogin = typeof import("../../../entrypoints/web/login-qr.js").waitForWebLogin;
+type MonitorWebChannel =
+  typeof import("../../../entrypoints/channels/web/index.js").monitorWebChannel;
 type HandleWhatsAppAction =
-  typeof import("../../../agents/tools/whatsapp-actions.js").handleWhatsAppAction;
+  typeof import("../../../runtime/tools/whatsapp-actions.js").handleWhatsAppAction;
 type CreateWhatsAppLoginTool =
-  typeof import("../../../channels/plugins/agent-tools/whatsapp-login.js").createWhatsAppLoginTool;
+  typeof import("../../../entrypoints/channels/plugins/agent-tools/whatsapp-login.js").createWhatsAppLoginTool;
 
 // LINE channel types
-type ListLineAccountIds = typeof import("../../../line/accounts.js").listLineAccountIds;
+type ListLineAccountIds = typeof import("../../../entrypoints/line/accounts.js").listLineAccountIds;
 type ResolveDefaultLineAccountId =
-  typeof import("../../../line/accounts.js").resolveDefaultLineAccountId;
-type ResolveLineAccount = typeof import("../../../line/accounts.js").resolveLineAccount;
-type NormalizeLineAccountId = typeof import("../../../line/accounts.js").normalizeAccountId;
-type ProbeLineBot = typeof import("../../../line/probe.js").probeLineBot;
-type SendMessageLine = typeof import("../../../line/send.js").sendMessageLine;
-type PushMessageLine = typeof import("../../../line/send.js").pushMessageLine;
-type PushMessagesLine = typeof import("../../../line/send.js").pushMessagesLine;
-type PushFlexMessage = typeof import("../../../line/send.js").pushFlexMessage;
-type PushTemplateMessage = typeof import("../../../line/send.js").pushTemplateMessage;
-type PushLocationMessage = typeof import("../../../line/send.js").pushLocationMessage;
+  typeof import("../../../entrypoints/line/accounts.js").resolveDefaultLineAccountId;
+type ResolveLineAccount = typeof import("../../../entrypoints/line/accounts.js").resolveLineAccount;
+type NormalizeLineAccountId =
+  typeof import("../../../entrypoints/line/accounts.js").normalizeAccountId;
+type ProbeLineBot = typeof import("../../../entrypoints/line/probe.js").probeLineBot;
+type SendMessageLine = typeof import("../../../entrypoints/line/send.js").sendMessageLine;
+type PushMessageLine = typeof import("../../../entrypoints/line/send.js").pushMessageLine;
+type PushMessagesLine = typeof import("../../../entrypoints/line/send.js").pushMessagesLine;
+type PushFlexMessage = typeof import("../../../entrypoints/line/send.js").pushFlexMessage;
+type PushTemplateMessage = typeof import("../../../entrypoints/line/send.js").pushTemplateMessage;
+type PushLocationMessage = typeof import("../../../entrypoints/line/send.js").pushLocationMessage;
 type PushTextMessageWithQuickReplies =
-  typeof import("../../../line/send.js").pushTextMessageWithQuickReplies;
-type CreateQuickReplyItems = typeof import("../../../line/send.js").createQuickReplyItems;
+  typeof import("../../../entrypoints/line/send.js").pushTextMessageWithQuickReplies;
+type CreateQuickReplyItems =
+  typeof import("../../../entrypoints/line/send.js").createQuickReplyItems;
 type BuildTemplateMessageFromPayload =
-  typeof import("../../../line/template-messages.js").buildTemplateMessageFromPayload;
-type MonitorLineProvider = typeof import("../../../line/monitor.js").monitorLineProvider;
+  typeof import("../../../entrypoints/line/template-messages.js").buildTemplateMessageFromPayload;
+type MonitorLineProvider =
+  typeof import("../../../entrypoints/line/monitor.js").monitorLineProvider;
 
 export type RuntimeLogger = {
   debug?: (message: string, meta?: Record<string, unknown>) => void;

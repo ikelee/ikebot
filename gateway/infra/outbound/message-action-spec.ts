@@ -1,4 +1,4 @@
-import type { ChannelMessageActionName } from "../../channels/plugins/types.js";
+import type { ChannelMessageActionName } from "../../entrypoints/channels/plugins/types.js";
 
 export type MessageActionTargetMode = "to" | "channelId" | "none";
 

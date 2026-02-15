@@ -1,7 +1,6 @@
 import path from "node:path";
 import type { OpenClawConfig, ConfigValidationIssue } from "./types.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { CHANNEL_IDS, normalizeChatChannelId } from "../../channels/registry.js";
+import { CHANNEL_IDS, normalizeChatChannelId } from "../../entrypoints/channels/registry.js";
 import {
   normalizePluginsConfig,
   resolveEnableState,
@@ -9,6 +8,7 @@ import {
 } from "../../extensibility/plugins/config-state.js";
 import { loadPluginManifestRegistry } from "../../extensibility/plugins/manifest-registry.js";
 import { validateJsonSchemaValue } from "../../extensibility/plugins/schema-validator.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../runtime/agent-scope.js";
 import { isRecord } from "../../utils.js";
 import { findDuplicateAgentDirs, formatDuplicateAgentDirError } from "./agent-dirs.js";
 import { applyAgentDefaults, applyModelDefaults, applySessionDefaults } from "./defaults.js";

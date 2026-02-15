@@ -2,7 +2,7 @@ import {
   expandToolGroups,
   normalizeToolName,
   resolveToolProfilePolicy,
-} from "gateway/agents/tool-policy.js";
+} from "gateway/runtime/tool-policy.js";
 import { html, nothing } from "lit";
 import type {
   AgentFileEntry,

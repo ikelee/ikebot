@@ -2,14 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsageProviderId } from "./provider-usage.types.js";
+import { getCustomProviderApiKey, resolveEnvApiKey } from "../models/model-auth.js";
+import { normalizeProviderId } from "../models/model-selection.js";
 import {
   ensureAuthProfileStore,
   listProfilesForProvider,
   resolveApiKeyForProfile,
   resolveAuthProfileOrder,
-} from "../agents/auth-profiles.js";
-import { getCustomProviderApiKey, resolveEnvApiKey } from "../models/model-auth.js";
-import { normalizeProviderId } from "../models/model-selection.js";
+} from "../runtime/auth-profiles.js";
 import { normalizeSecretInput } from "../utils/normalize-secret-input.js";
 import { loadConfig } from "./config/config.js";
 

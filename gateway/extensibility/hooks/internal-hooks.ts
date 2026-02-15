@@ -5,8 +5,8 @@
  * like command processing, session lifecycle, etc.
  */
 
-import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
 import type { OpenClawConfig } from "../../infra/config/config.js";
+import type { WorkspaceBootstrapFile } from "../../runtime/workspace.js";
 
 export type InternalHookEventType = "command" | "session" | "agent" | "gateway";
 

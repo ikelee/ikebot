@@ -1,4 +1,4 @@
-import type { ChatType } from "../channels/chat-type.js";
+import type { ChatType } from "../entrypoints/channels/chat-type.js";
 import type { SessionEntry } from "../infra/config/sessions.js";
 import type { DeliveryContext } from "../utils/delivery-context.js";
 

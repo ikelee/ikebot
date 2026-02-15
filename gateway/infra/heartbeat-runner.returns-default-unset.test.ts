@@ -7,10 +7,10 @@ import { telegramPlugin } from "../../extensions/telegram/src/channel.js";
 import { setTelegramRuntime } from "../../extensions/telegram/src/runtime.js";
 import { whatsappPlugin } from "../../extensions/whatsapp/src/channel.js";
 import { setWhatsAppRuntime } from "../../extensions/whatsapp/src/runtime.js";
+import { HEARTBEAT_PROMPT } from "../agent/pipeline/heartbeat.js";
+import * as replyModule from "../agent/pipeline/reply.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { createPluginRuntime } from "../extensibility/plugins/runtime/index.js";
-import { HEARTBEAT_PROMPT } from "../pipeline/heartbeat.js";
-import * as replyModule from "../pipeline/reply.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import {
   resolveAgentIdFromSessionKey,

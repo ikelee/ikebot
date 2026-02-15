@@ -1,22 +1,22 @@
 import type { OpenClawConfig } from "../infra/config/config.js";
 import type { ModelDefinitionConfig } from "../infra/config/types.models.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
-import { discoverBedrockModels } from "../agents/bedrock-discovery.js";
+import { ensureAuthProfileStore, listProfilesForProvider } from "../runtime/auth-profiles.js";
+import { discoverBedrockModels } from "../runtime/bedrock-discovery.js";
 import {
   buildCloudflareAiGatewayModelDefinition,
   resolveCloudflareAiGatewayBaseUrl,
-} from "../agents/cloudflare-ai-gateway.js";
+} from "../runtime/cloudflare-ai-gateway.js";
 import {
   buildSyntheticModelDefinition,
   SYNTHETIC_BASE_URL,
   SYNTHETIC_MODEL_CATALOG,
-} from "../agents/synthetic-models.js";
+} from "../runtime/synthetic-models.js";
 import {
   TOGETHER_BASE_URL,
   TOGETHER_MODEL_CATALOG,
   buildTogetherModelDefinition,
-} from "../agents/together-models.js";
-import { discoverVeniceModels, VENICE_BASE_URL } from "../agents/venice-models.js";
+} from "../runtime/together-models.js";
+import { discoverVeniceModels, VENICE_BASE_URL } from "../runtime/venice-models.js";
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
 import {
   DEFAULT_COPILOT_API_BASE_URL,

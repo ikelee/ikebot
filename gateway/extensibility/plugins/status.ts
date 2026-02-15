@@ -1,8 +1,8 @@
 import type { PluginRegistry } from "./registry.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { resolveDefaultAgentWorkspaceDir } from "../../agents/workspace.js";
 import { loadConfig } from "../../infra/config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../runtime/agent-scope.js";
+import { resolveDefaultAgentWorkspaceDir } from "../../runtime/workspace.js";
 import { loadOpenClawPlugins } from "./loader.js";
 
 export type PluginStatusReport = PluginRegistry & {

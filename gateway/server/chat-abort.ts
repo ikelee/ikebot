@@ -1,4 +1,4 @@
-import { isAbortTrigger } from "../pipeline/reply/abort.js";
+import { isAbortTrigger } from "../agent/pipeline/reply/abort.js";
 
 export type ChatAbortControllerEntry = {
   controller: AbortController;

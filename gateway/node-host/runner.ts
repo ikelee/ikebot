@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
-import { resolveAgentConfig } from "../agents/agent-scope.js";
 import { resolveBrowserConfig } from "../browser/config.js";
 import {
   createBrowserControlContext,
@@ -41,6 +40,7 @@ import {
 import { getMachineDisplayName } from "../infra/machine-name.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
 import { detectMime } from "../media/mime.js";
+import { resolveAgentConfig } from "../runtime/agent-scope.js";
 import { GatewayClient } from "../server/client.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { VERSION } from "../version.js";

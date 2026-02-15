@@ -6,25 +6,25 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "vitest";
 import type { OpenClawConfig, ModelProviderConfig } from "../infra/config/types.js";
-import { resolveOpenClawAgentDir } from "../agents/agent-paths.js";
-import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
-import {
-  type AuthProfileStore,
-  ensureAuthProfileStore,
-  saveAuthProfileStore,
-} from "../agents/auth-profiles.js";
-import {
-  collectAnthropicApiKeys,
-  isAnthropicBillingError,
-  isAnthropicRateLimitError,
-} from "../agents/live-auth-keys.js";
-import { isModernModelRef } from "../agents/live-model-filter.js";
-import { discoverAuthStorage, discoverModels } from "../agents/pi-model-discovery.js";
 import { loadConfig } from "../infra/config/config.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { DEFAULT_AGENT_ID } from "../infra/routing/session-key.js";
 import { getApiKeyForModel } from "../models/model-auth.js";
 import { ensureOpenClawModelsJson } from "../models/models-config.js";
+import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
+import { resolveAgentWorkspaceDir } from "../runtime/agent-scope.js";
+import {
+  type AuthProfileStore,
+  ensureAuthProfileStore,
+  saveAuthProfileStore,
+} from "../runtime/auth-profiles.js";
+import {
+  collectAnthropicApiKeys,
+  isAnthropicBillingError,
+  isAnthropicRateLimitError,
+} from "../runtime/live-auth-keys.js";
+import { isModernModelRef } from "../runtime/live-model-filter.js";
+import { discoverAuthStorage, discoverModels } from "../runtime/pi-model-discovery.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { GatewayClient } from "./client.js";
 import { renderCatNoncePngBase64 } from "./live-image-probe.js";

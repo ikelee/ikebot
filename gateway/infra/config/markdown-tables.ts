@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "./config.js";
 import type { MarkdownTableMode } from "./types.base.js";
-import { normalizeChannelId } from "../../channels/plugins/index.js";
+import { normalizeChannelId } from "../../entrypoints/channels/plugins/index.js";
 import { normalizeAccountId } from "../routing/session-key.js";
 
 type MarkdownConfigEntry = {

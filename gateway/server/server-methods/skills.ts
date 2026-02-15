@@ -1,16 +1,16 @@
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { GatewayRequestHandlers } from "./types.js";
+import { loadConfig, writeConfigFile } from "../../infra/config/config.js";
+import { normalizeAgentId } from "../../infra/routing/session-key.js";
+import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import {
   listAgentIds,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
-} from "../../agents/agent-scope.js";
-import { installSkill } from "../../agents/skills-install.js";
-import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
-import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
-import { loadConfig, writeConfigFile } from "../../infra/config/config.js";
-import { normalizeAgentId } from "../../infra/routing/session-key.js";
-import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
+} from "../../runtime/agent-scope.js";
+import { installSkill } from "../../runtime/skills-install.js";
+import { buildWorkspaceSkillStatus } from "../../runtime/skills-status.js";
+import { loadWorkspaceSkillEntries, type SkillEntry } from "../../runtime/skills.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import {
   ErrorCodes,

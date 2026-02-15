@@ -1,5 +1,5 @@
 import type { GatewayRequestHandlers } from "./types.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { listChannelPlugins } from "../../entrypoints/channels/plugins/index.js";
 import {
   ErrorCodes,
   errorShape,

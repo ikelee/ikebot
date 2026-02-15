@@ -1,7 +1,7 @@
-import type { ChannelId } from "../../channels/plugins/types.js";
+import type { ChannelId } from "../../entrypoints/channels/plugins/types.js";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { OutboundChannel } from "../../infra/outbound/targets.js";
-import { DEFAULT_CHAT_CHANNEL } from "../../channels/registry.js";
+import { DEFAULT_CHAT_CHANNEL } from "../../entrypoints/channels/registry.js";
 import {
   loadSessionStore,
   resolveAgentMainSessionKey,

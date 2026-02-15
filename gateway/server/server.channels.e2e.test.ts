@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelPlugin } from "../entrypoints/channels/plugins/types.js";
 import type { PluginRegistry } from "../extensibility/plugins/registry.js";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import {

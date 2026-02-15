@@ -137,7 +137,7 @@ describe("models-config", () => {
         }));
 
         const { ensureOpenClawModelsJson } = await import("./models-config.js");
-        const { resolveOpenClawAgentDir } = await import("../agents/agent-paths.js");
+        const { resolveOpenClawAgentDir } = await import("../runtime/agent-paths.js");
 
         await ensureOpenClawModelsJson({
           models: {

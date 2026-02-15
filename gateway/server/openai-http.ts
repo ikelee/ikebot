@@ -1,9 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { createDefaultDeps } from "../entry/cli/deps.js";
-import { agentCommand } from "../entry/commands/agent.js";
+import {
+  buildHistoryContextFromEntries,
+  type HistoryEntry,
+} from "../agent/pipeline/reply/history.js";
+import { createDefaultDeps } from "../entrypoints/entry/cli/deps.js";
+import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
-import { buildHistoryContextFromEntries, type HistoryEntry } from "../pipeline/reply/history.js";
 import { defaultRuntime } from "../runtime.js";
 import { authorizeGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
 import {

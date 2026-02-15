@@ -1,7 +1,7 @@
 import type { OpenClawConfig } from "./types.js";
 import type { ModelDefinitionConfig } from "./types.models.js";
-import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { parseModelRef } from "../../models/model-selection.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../../runtime/defaults.js";
 import { DEFAULT_AGENT_MAX_CONCURRENT, DEFAULT_SUBAGENT_MAX_CONCURRENT } from "./agent-limits.js";
 import { resolveTalkApiKey } from "./talk.js";
 

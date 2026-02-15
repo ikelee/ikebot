@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GatewayRequestHandlers } from "./types.js";
-import { listAgentIds } from "../../agents/agent-scope.js";
-import { agentCommand } from "../../entry/commands/agent.js";
+import { agentCommand } from "../../entrypoints/entry/commands/agent.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { loadConfig } from "../../infra/config/config.js";
 import {
@@ -22,6 +21,7 @@ import {
 } from "../../infra/sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../infra/sessions/send-policy.js";
 import { defaultRuntime } from "../../runtime.js";
+import { listAgentIds } from "../../runtime/agent-scope.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,

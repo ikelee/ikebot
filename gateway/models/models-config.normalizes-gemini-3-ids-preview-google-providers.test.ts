@@ -47,7 +47,7 @@ describe("models-config", () => {
     await withTempHome(async () => {
       vi.resetModules();
       const { ensureOpenClawModelsJson } = await import("./models-config.js");
-      const { resolveOpenClawAgentDir } = await import("../agents/agent-paths.js");
+      const { resolveOpenClawAgentDir } = await import("../runtime/agent-paths.js");
 
       const cfg: OpenClawConfig = {
         models: {

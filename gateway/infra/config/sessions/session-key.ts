@@ -1,4 +1,4 @@
-import type { MsgContext } from "../../../pipeline/templating.js";
+import type { MsgContext } from "../../../agent/pipeline/templating.js";
 import type { SessionScope } from "./types.js";
 import { normalizeE164 } from "../../../utils.js";
 import {

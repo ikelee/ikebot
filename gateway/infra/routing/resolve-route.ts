@@ -1,7 +1,7 @@
-import type { ChatType } from "../../channels/chat-type.js";
+import type { ChatType } from "../../entrypoints/channels/chat-type.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { normalizeChatType } from "../../channels/chat-type.js";
+import { normalizeChatType } from "../../entrypoints/channels/chat-type.js";
+import { resolveDefaultAgentId } from "../../runtime/agent-scope.js";
 import { listBindings } from "./bindings.js";
 import {
   buildAgentMainSessionKey,

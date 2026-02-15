@@ -13,7 +13,6 @@ import type {
   TuiOptions,
   TuiStateAccess,
 } from "./tui-types.js";
-import { resolveDefaultAgentId } from "../../gateway/agents/agent-scope.js";
 import { loadConfig } from "../../gateway/infra/config/config.js";
 import {
   buildAgentMainSessionKey,
@@ -21,6 +20,7 @@ import {
   normalizeMainKey,
   parseAgentSessionKey,
 } from "../../gateway/infra/routing/session-key.js";
+import { resolveDefaultAgentId } from "../../gateway/runtime/agent-scope.js";
 import { getSlashCommands } from "./commands.js";
 import { ChatLog } from "./components/chat-log.js";
 import { CustomEditor } from "./components/custom-editor.js";

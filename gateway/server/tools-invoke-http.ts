@@ -1,11 +1,17 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createOpenClawTools } from "../agents/openclaw-tools.js";
+import { isTestDefaultMemorySlotDisabled } from "../extensibility/plugins/config-state.js";
+import { getPluginToolMeta } from "../extensibility/plugins/tools.js";
+import { loadConfig } from "../infra/config/config.js";
+import { resolveMainSessionKey } from "../infra/config/sessions.js";
+import { isSubagentSessionKey } from "../infra/routing/session-key.js";
+import { logWarn } from "../logger.js";
+import { createOpenClawTools } from "../runtime/openclaw-tools.js";
 import {
   filterToolsByPolicy,
   resolveEffectiveToolPolicy,
   resolveGroupToolPolicy,
   resolveSubagentToolPolicy,
-} from "../agents/pi-tools.policy.js";
+} from "../runtime/pi-tools.policy.js";
 import {
   buildPluginToolGroups,
   collectExplicitAllowlist,
@@ -13,13 +19,7 @@ import {
   normalizeToolName,
   resolveToolProfilePolicy,
   stripPluginOnlyAllowlist,
-} from "../agents/tool-policy.js";
-import { isTestDefaultMemorySlotDisabled } from "../extensibility/plugins/config-state.js";
-import { getPluginToolMeta } from "../extensibility/plugins/tools.js";
-import { loadConfig } from "../infra/config/config.js";
-import { resolveMainSessionKey } from "../infra/config/sessions.js";
-import { isSubagentSessionKey } from "../infra/routing/session-key.js";
-import { logWarn } from "../logger.js";
+} from "../runtime/tool-policy.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
 import { authorizeGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
 import {
