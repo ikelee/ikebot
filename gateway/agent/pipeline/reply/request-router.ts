@@ -5,11 +5,14 @@
  * See docs/reference/tiered-model-routing.md and phases/routing/phase-1.ts.
  */
 
+import type { Api, Model } from "@mariozechner/pi-ai";
 import crypto from "node:crypto";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import type { ModelAliasIndex } from "../../../models/model-selection.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
-import { resolveModelRefFromString } from "../../../models/model-selection.js";
+import { resolveModelRefFromString, parseModelRef } from "../../../models/model-selection.js";
+import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
+import { resolveModel } from "../../../runtime/pi-embedded-runner/model.js";
 import { phase1Classify } from "./phases/routing/index.js";
 
 export type RequestRouterParams = {
@@ -44,7 +47,36 @@ export async function routeRequest(params: RequestRouterParams): Promise<Request
   const enabled = Boolean(routingCfg?.enabled);
   const classifierModelRaw = (routingCfg?.classifierModel ?? "").trim();
 
-  const phase1 = phase1Classify({ body: cleanedBody });
+  // Resolve classifier model if configured
+  let classifierModel: Model<Api> | undefined;
+
+  if (enabled && classifierModelRaw) {
+    try {
+      const modelRef = parseModelRef(classifierModelRaw, defaultProvider);
+      if (modelRef) {
+        const agentDir = resolveOpenClawAgentDir();
+        const resolved = resolveModel(modelRef.provider, modelRef.model, agentDir, cfg);
+
+        if (!resolved.model) {
+          throw new Error(
+            resolved.error ?? `Model not found: ${modelRef.provider}/${modelRef.model}`,
+          );
+        }
+
+        classifierModel = resolved.model;
+      }
+    } catch (err) {
+      console.error(`[router] Failed to create classifier model:`, err);
+      // Re-throw so we know if routing is broken
+      throw err;
+    }
+  }
+
+  const phase1 = await phase1Classify({
+    body: cleanedBody,
+    config: cfg,
+    model: classifierModel,
+  });
   const tier = phase1.decision === "stay" ? "simple" : "complex";
   const runId = crypto.randomUUID();
 

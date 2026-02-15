@@ -204,6 +204,8 @@ export type AgentDefaultsConfig = {
     enabled?: boolean;
     /** Model for "stay" requests (provider/model or alias). When routing enabled and Phase 1 says stay, this model is used. */
     classifierModel?: string;
+    /** Use model-based classification instead of heuristic. Default: false (heuristic). */
+    useModelClassifier?: boolean;
   };
   /** Max concurrent agent runs across all conversations. Default: 1 (sequential). */
   maxConcurrent?: number;

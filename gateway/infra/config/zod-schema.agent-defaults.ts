@@ -170,6 +170,14 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    routing: z
+      .object({
+        enabled: z.boolean().optional(),
+        classifierModel: z.string().optional(),
+        useModelClassifier: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();

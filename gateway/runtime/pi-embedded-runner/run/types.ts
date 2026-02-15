@@ -59,6 +59,8 @@ export type EmbeddedRunAttemptParams = {
   thinkLevel: ThinkLevel;
   verboseLevel?: VerboseLevel;
   reasoningLevel?: ReasoningLevel;
+  /** Reply tier from Phase 1 routing: "simple" (stay) or "complex" (escalate). Default: "complex". */
+  replyTier?: "simple" | "complex";
   toolResultFormat?: ToolResultFormat;
   execOverrides?: Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
   bashElevated?: ExecElevatedDefaults;

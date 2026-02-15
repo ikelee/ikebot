@@ -85,6 +85,8 @@ type RunPreparedReplyParams = {
   modelState: Awaited<ReturnType<typeof createModelSelectionState>>;
   provider: string;
   model: string;
+  /** Reply tier from Phase 1 routing: "simple" (stay) or "complex" (escalate). */
+  replyTier: "simple" | "complex";
   perMessageQueueMode?: InlineDirectives["queueMode"];
   perMessageQueueOptions?: {
     debounceMs?: number;
@@ -133,6 +135,7 @@ export async function runPreparedReply(
     modelState,
     provider,
     model,
+    replyTier,
     perMessageQueueMode,
     perMessageQueueOptions,
     typing,
@@ -446,6 +449,7 @@ export async function runPreparedReply(
     agentCfgContextTokens: agentCfg?.contextTokens,
     resolvedVerboseLevel: resolvedVerboseLevel ?? "off",
     isNewSession,
+    replyTier,
     blockStreamingEnabled,
     blockReplyChunking,
     resolvedBlockStreamingBreak,

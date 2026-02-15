@@ -62,6 +62,8 @@ export async function runReplyAgent(params: {
   agentCfgContextTokens?: number;
   resolvedVerboseLevel: VerboseLevel;
   isNewSession: boolean;
+  /** Reply tier from Phase 1 routing: "simple" (stay) or "complex" (escalate). */
+  replyTier: "simple" | "complex";
   blockStreamingEnabled: boolean;
   blockReplyChunking?: {
     minChars: number;
@@ -93,6 +95,7 @@ export async function runReplyAgent(params: {
     agentCfgContextTokens,
     resolvedVerboseLevel,
     isNewSession,
+    replyTier,
     blockStreamingEnabled,
     blockReplyChunking,
     resolvedBlockStreamingBreak,
@@ -323,6 +326,7 @@ export async function runReplyAgent(params: {
       resetSessionAfterCompactionFailure,
       resetSessionAfterRoleOrderingConflict,
       isHeartbeat,
+      replyTier,
       sessionKey,
       getActiveSessionEntry: () => activeSessionEntry,
       activeSessionStore,

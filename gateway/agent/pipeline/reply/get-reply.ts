@@ -1,5 +1,6 @@
 import type { MsgContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import { logVerbose } from "../../../globals.js";
 import { type OpenClawConfig, loadConfig } from "../../../infra/config/config.js";
 import { resolveModelRefFromString } from "../../../models/model-selection.js";
 import { defaultRuntime } from "../../../runtime.js";
@@ -20,6 +21,7 @@ import { resolveReplyDirectives } from "./get-reply-directives.js";
 import { handleInlineActions } from "./get-reply-inline-actions.js";
 import { runPreparedReply } from "./get-reply-run.js";
 import { finalizeInboundContext } from "./inbound-context.js";
+import { routeRequest } from "./request-router.js";
 import { applyResetModelOverride } from "./session-reset-model.js";
 import { initSessionState } from "./session.js";
 import { stageSandboxMedia } from "./stage-sandbox-media.js";
@@ -285,6 +287,28 @@ export async function getReplyFromConfig(
   directives = inlineActionResult.directives;
   abortedLastRun = inlineActionResult.abortedLastRun ?? abortedLastRun;
 
+  // Tiered routing: Phase 1 classifies stay (simple) vs escalate (complex).
+  // When enabled and stay, override provider/model to classifier model.
+  const routeResult = await routeRequest({
+    cleanedBody,
+    sessionKey,
+    provider,
+    model,
+    cfg,
+    defaultProvider,
+    aliasIndex,
+  });
+  const replyTier: "simple" | "complex" = routeResult.useDefault ? "complex" : routeResult.tier;
+  if (!routeResult.useDefault) {
+    logVerbose(
+      `[router] tier=${replyTier} provider=${routeResult.provider} model=${routeResult.model} (overridden)`,
+    );
+    provider = routeResult.provider;
+    model = routeResult.model;
+  } else {
+    logVerbose(`[router] tier=${replyTier} provider=${provider} model=${model} (default)`);
+  }
+
   await stageSandboxMedia({
     ctx,
     sessionCtx,
@@ -320,6 +344,7 @@ export async function getReplyFromConfig(
     modelState,
     provider,
     model,
+    replyTier,
     perMessageQueueMode,
     perMessageQueueOptions,
     typing,

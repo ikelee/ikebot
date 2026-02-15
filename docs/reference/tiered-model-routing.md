@@ -103,14 +103,16 @@ When Phase 1 returns **escalate**, we go to Phase 2. Details TBD.
 ## Existing flow and where the router interjects
 
 1. **Entry** — `dispatchInboundMessage` → `dispatchReplyFromConfig` → `getReplyFromConfig` (ctx, opts, cfg).
-2. **getReplyFromConfig** — finalizeInboundContext, initSessionState, resolveReplyDirectives, handleInlineActions, stageSandboxMedia → **request-router** (Phase 1 + override) → runPreparedReply.
-3. **runPreparedReply** → runReplyAgent → runAgentTurnWithFallback → runEmbeddedPiAgent / runCliAgent (full system prompt is used here for the main agent turn).
+2. **getReplyFromConfig** — finalizeInboundContext, initSessionState, resolveReplyDirectives, handleInlineActions, stageSandboxMedia → **(intended: request-router here)** → runPreparedReply.
+3. **runPreparedReply** → runReplyAgent → runAgentTurnWithFallback → runEmbeddedPiAgent / runCliAgent (full system prompt is built in **runtime/pi-embedded-runner/run/attempt.ts** and used for every turn).
 
-**Router injection point:** In get-reply.ts, after we have cleanedBody and provider/model, **before** runPreparedReply. The router calls **Phase 1** (routing/phase-1.ts) to get stay or escalate; then applies config and returns provider/model for the next step. When routing is enabled and Phase 1 says stay, we override to the classifier model and proceed to runPreparedReply. When Phase 1 says escalate, we return useDefault (today we still run the main agent; later we will branch to Phase 2).
+**Router injection point (intended):** In get-reply.ts, after we have cleanedBody and provider/model, **before** runPreparedReply. The router would call **Phase 1** (routing/phase-1.ts) to get stay or escalate; then apply config and return provider/model (and eventually a “simple prompt” hint) for the next step.
+
+**Current gap:** `routeRequest()` is **not called** anywhere in the get-reply path. So every message currently gets the full embedded system prompt; the small Phase 1 prompt in system-prompts-by-stage.ts is never used. See [Message-to-reply flow](/reference/message-to-reply-flow) for the exact code path and how to wire routing + simple prompt.
 
 ---
 
 ## Implementation status
 
-- **Phase 1:** Implemented as heuristic in `routing/phase-1.ts`; config in `agents.defaults.routing` (enabled, classifierModel). When enabled and Phase 1 says stay, provider/model override to classifier; routing events emitted for dashboard. Phase 1 system prompt is in system-prompts-by-stage.ts; LLM call for Phase 1 not yet wired (will use that prompt only).
+- **Phase 1:** Heuristic implemented in `gateway/agent/pipeline/reply/phases/routing/phase-1.ts`; `routeRequest` in `request-router.ts` applies config and returns provider/model for “stay”. **Not wired:** get-reply never calls `routeRequest`, so no model override and no “simple” path. Phase 1 system prompt is in `gateway/agent/system-prompts-by-stage.ts`; LLM call for Phase 1 not yet wired. **System prompt:** Full prompt is always built in runtime (pi-embedded-runner/run/attempt.ts); no “small prompt for simple input” path yet.
 - **Phase 2 / Phase 3:** Not yet implemented.

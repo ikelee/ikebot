@@ -1,64 +1,129 @@
 /**
  * Phase 1 classifier: input is normalized message body; output is stay or escalate.
- * Heuristic today; later we can call an LLM with getSystemPromptForStage("classify") only.
+ * Uses MODEL-BASED classification to decide routing tier.
+ * NO HEURISTIC FALLBACKS - all decisions must go through a model.
  * See docs/reference/tiered-model-routing.md and gateway/agent/system-prompts-by-stage.ts.
  */
 
-export type Phase1Input = { body: string };
+import type { Api, Model } from "@mariozechner/pi-ai";
+import { completeSimple } from "@mariozechner/pi-ai";
+import type { OpenClawConfig } from "../../../../../infra/config/config.js";
+
+export type Phase1Input = {
+  body: string;
+  config: OpenClawConfig;
+  model?: Model<Api>;
+};
 
 export type Phase1Result = { decision: "stay" | "escalate" };
 
-const ESCALATE_PATTERNS = [
-  /\b(?:run|execute|exec|script|bash|shell|command line)\b/i,
-  /\b(?:plan|schedule|remind|set up|configure|install|orchestrat)\b/i,
-  /\b(?:subagent|sub-agent|specialized agent|skill|multi-step)\b/i,
-  /\b(?:write (?:a )?code|implement|build (?:a )?(?:small )?app)\b/i,
-  /\/exec\b/i,
-];
+const PHASE_1_CLASSIFIER_SYSTEM_PROMPT = `You are a routing classifier for an AI assistant. Your job is to classify incoming user requests into two categories:
 
-const STAY_COMMANDS = ["/status", "/help", "/new", "/reset", "/verbose", "/usage"];
+**STAY** (handle with simple/fast path):
+- Simple greetings: "hi", "hello", "how are you", "what's up"
+- Permission queries: "what can you do", "what skills do you have", "what commands are available"
+- Basic commands: /status, /help, /new, /reset
+- Short conversational messages that don't require tools or data access
 
-function isBasicCommand(body: string): boolean {
-  const t = body.trim().toLowerCase();
-  for (const cmd of STAY_COMMANDS) {
-    if (t === cmd || t.startsWith(`${cmd} `)) {
-      return true;
-    }
-  }
-  return false;
-}
+**ESCALATE** (requires complex/full-featured path):
+- Job execution: "run this script", "execute X job", "start the backup"
+- Data queries: "check my calendar", "search my email", "find files"
+- File operations: "create file", "edit config", "write code"
+- Tool usage: "install dependencies", "set up a cron job"
+- Multi-step workflows or complex requests
 
-function hasEscalatePattern(body: string): boolean {
-  for (const re of ESCALATE_PATTERNS) {
-    if (re.test(body)) {
-      return true;
-    }
-  }
-  return false;
-}
+Respond with ONLY a JSON object in this format:
+{"decision": "stay"} or {"decision": "escalate"}
 
-/** Classify the request: stay (Phase 1 handles it) or escalate (hand off to Phase 2). */
-export function phase1Classify(input: Phase1Input): Phase1Result {
+No explanation, no other text.`;
+
+/**
+ * Classify using a model.
+ * Basic commands like /status, /help are handled without a model.
+ * Everything else MUST go through the model - NO heuristic fallbacks.
+ */
+export async function phase1Classify(input: Phase1Input): Promise<Phase1Result> {
   const body = (input.body ?? "").trim();
+
+  // Basic fast-path checks for explicit commands only (no language processing needed)
   if (!body) {
     return { decision: "escalate" };
   }
-  if (isBasicCommand(body)) {
-    return { decision: "stay" };
-  }
-  if (hasEscalatePattern(body)) {
-    return { decision: "escalate" };
-  }
-  // Short, likely greeting or simple question
-  if (body.length <= 120 && !body.includes("?")) {
-    return { decision: "stay" };
-  }
-  if (body.includes("?")) {
-    const simplePermission = /\b(what can (you|i)|what (am i|do you) (allowed|have)|what data)\b/i;
-    if (simplePermission.test(body) && body.length <= 200) {
+
+  const basicCommands = ["/status", "/help", "/new", "/reset", "/verbose", "/usage"];
+  const lowerBody = body.toLowerCase();
+  for (const cmd of basicCommands) {
+    if (lowerBody === cmd || lowerBody.startsWith(`${cmd} `)) {
       return { decision: "stay" };
     }
   }
-  // Default: escalate when unclear
+
+  // Everything else MUST go through the model
+  if (!input.model) {
+    throw new Error(
+      "[phase1] Model is required for classification. No heuristic fallbacks allowed.",
+    );
+  }
+
+  return await invokeClassifierModel(input.model, body);
+}
+
+async function invokeClassifierModel<T extends Api>(
+  model: Model<T>,
+  userInput: string,
+): Promise<Phase1Result> {
+  const messages = [
+    {
+      role: "user" as const,
+      content: `Classify this request: "${userInput}"`,
+      timestamp: Date.now(),
+    },
+  ];
+
+  const response = await completeSimple(
+    model,
+    {
+      systemPrompt: PHASE_1_CLASSIFIER_SYSTEM_PROMPT,
+      messages,
+    },
+    {
+      apiKey: "no-api-key-needed", // Ollama doesn't require auth
+    },
+  );
+
+  // Extract text from response content
+  let accumulatedText = "";
+  if (Array.isArray(response.content)) {
+    for (const item of response.content) {
+      if (item.type === "text") {
+        accumulatedText += item.text;
+      }
+    }
+  }
+
+  // Parse JSON response
+  try {
+    const trimmed = accumulatedText.trim();
+    const parsed = JSON.parse(trimmed);
+    if (parsed.decision === "stay" || parsed.decision === "escalate") {
+      return { decision: parsed.decision };
+    }
+  } catch {
+    // JSON parse failed - try to extract from text
+  }
+
+  // If we can't parse, check for keywords in response
+  const lower = accumulatedText.toLowerCase();
+  if (lower.includes('"stay"') || (lower.includes("stay") && !lower.includes("escalate"))) {
+    return { decision: "stay" };
+  }
+  if (lower.includes('"escalate"') || lower.includes("escalate")) {
+    return { decision: "escalate" };
+  }
+
+  // Default: escalate when unclear (safer to use full agent)
+  console.warn(
+    `[phase1] Could not parse model response, defaulting to escalate: ${accumulatedText.slice(0, 100)}`,
+  );
   return { decision: "escalate" };
 }

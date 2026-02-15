@@ -8,6 +8,25 @@ import type { ReasoningLevel, ThinkLevel } from "./utils.js";
 import { buildAgentSystemPrompt, type PromptMode } from "../system-prompt.js";
 import { buildToolSummaryMap } from "../tool-summaries.js";
 
+/**
+ * Minimal system prompt for "simple" tier (Phase 1 "stay" route).
+ * Used for short conversational replies that don't need tool context.
+ */
+export function buildSimpleSystemPrompt(params: {
+  userTime?: string;
+  userTimezone: string;
+}): string {
+  const dateParts = [`Timezone: ${params.userTimezone}`];
+  if (params.userTime) {
+    dateParts.push(`Current time: ${params.userTime}`);
+  }
+  return `You are a helpful assistant. Respond directly and conversationally to simple questions.
+
+${dateParts.join("\n")}
+
+Keep responses brief and natural.`;
+}
+
 export function buildEmbeddedSystemPrompt(params: {
   workspaceDir: string;
   defaultThinkLevel?: ThinkLevel;

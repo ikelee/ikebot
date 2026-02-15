@@ -74,6 +74,8 @@ export async function runAgentTurnWithFallback(params: {
   resetSessionAfterCompactionFailure: (reason: string) => Promise<boolean>;
   resetSessionAfterRoleOrderingConflict: (reason: string) => Promise<boolean>;
   isHeartbeat: boolean;
+  /** Reply tier from Phase 1 routing: "simple" (stay) or "complex" (escalate). */
+  replyTier: "simple" | "complex";
   sessionKey?: string;
   getActiveSessionEntry: () => SessionEntry | undefined;
   activeSessionStore?: Record<string, SessionEntry>;
@@ -299,6 +301,7 @@ export async function runAgentTurnWithFallback(params: {
             verboseLevel: params.followupRun.run.verboseLevel,
             reasoningLevel: params.followupRun.run.reasoningLevel,
             execOverrides: params.followupRun.run.execOverrides,
+            replyTier: params.replyTier,
             toolResultFormat: (() => {
               const channel = resolveMessageChannel(
                 params.sessionCtx.Surface,
