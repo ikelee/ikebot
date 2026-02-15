@@ -42,15 +42,19 @@ export type RequestRouterResult =
  * event for dashboard observability (tier: simple = stay, complex = escalate).
  */
 export async function routeRequest(params: RequestRouterParams): Promise<RequestRouterResult> {
+  const routeStartTime = Date.now();
   const { cleanedBody, sessionKey, provider, model, cfg, defaultProvider, aliasIndex } = params;
   const routingCfg = cfg?.agents?.defaults?.routing;
   const enabled = Boolean(routingCfg?.enabled);
   const classifierModelRaw = (routingCfg?.classifierModel ?? "").trim();
 
+  console.log(`[router] route start: body="${cleanedBody.slice(0, 50)}..."`);
+
   // Resolve classifier model if configured
   let classifierModel: Model<Api> | undefined;
 
   if (enabled && classifierModelRaw) {
+    const modelResolveStart = Date.now();
     try {
       const modelRef = parseModelRef(classifierModelRaw, defaultProvider);
       if (modelRef) {
@@ -65,6 +69,7 @@ export async function routeRequest(params: RequestRouterParams): Promise<Request
 
         classifierModel = resolved.model;
       }
+      console.log(`[router] model resolved in ${Date.now() - modelResolveStart}ms`);
     } catch (err) {
       console.error(`[router] Failed to create classifier model:`, err);
       // Re-throw so we know if routing is broken
@@ -72,11 +77,13 @@ export async function routeRequest(params: RequestRouterParams): Promise<Request
     }
   }
 
+  const classifyStart = Date.now();
   const phase1 = await phase1Classify({
     body: cleanedBody,
     config: cfg,
     model: classifierModel,
   });
+  console.log(`[router] phase1 classification took ${Date.now() - classifyStart}ms`);
   const tier = phase1.decision === "stay" ? "simple" : "complex";
   const runId = crypto.randomUUID();
 
@@ -117,6 +124,8 @@ export async function routeRequest(params: RequestRouterParams): Promise<Request
   }
 
   emit(true, resolved.ref.provider, resolved.ref.model);
+  const routeTotalMs = Date.now() - routeStartTime;
+  console.log(`[router] route complete: tier=${tier} totalMs=${routeTotalMs}`);
   return {
     useDefault: false,
     tier: "simple",

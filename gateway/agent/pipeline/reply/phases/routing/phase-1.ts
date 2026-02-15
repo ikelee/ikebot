@@ -72,6 +72,7 @@ async function invokeClassifierModel<T extends Api>(
   model: Model<T>,
   userInput: string,
 ): Promise<Phase1Result> {
+  const classifierCallStart = Date.now();
   const messages = [
     {
       role: "user" as const,
@@ -80,6 +81,7 @@ async function invokeClassifierModel<T extends Api>(
     },
   ];
 
+  console.log(`[phase1] calling classifier model for: "${userInput.slice(0, 50)}..."`);
   const response = await completeSimple(
     model,
     {
@@ -88,8 +90,11 @@ async function invokeClassifierModel<T extends Api>(
     },
     {
       apiKey: "no-api-key-needed", // Ollama doesn't require auth
+      maxTokens: 128, // Classification needs very short response
+      temperature: 0.3, // Lower temperature for deterministic classification
     },
   );
+  console.log(`[phase1] classifier model call took ${Date.now() - classifierCallStart}ms`);
 
   // Extract text from response content
   let accumulatedText = "";

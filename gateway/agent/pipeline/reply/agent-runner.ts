@@ -405,6 +405,7 @@ export async function runReplyAgent(params: {
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
+      console.log(`[agent-runner] no payloads to send, returning undefined`);
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -428,6 +429,7 @@ export async function runReplyAgent(params: {
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
     if (replyPayloads.length === 0) {
+      console.log(`[agent-runner] no replyPayloads after building, returning undefined`);
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 

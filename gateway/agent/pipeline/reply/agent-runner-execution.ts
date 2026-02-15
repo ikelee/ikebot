@@ -89,7 +89,12 @@ export async function runAgentTurnWithFallback(params: {
   const directlySentBlockKeys = new Set<string>();
 
   const runId = params.opts?.runId ?? crypto.randomUUID();
-  params.opts?.onAgentRunStart?.(runId);
+  // Only call onAgentRunStart for complex tier (full agent session).
+  // Simple tier uses fast path without full agent session, so final reply broadcast
+  // should be handled by the caller (e.g. chat.send handler).
+  if (params.replyTier !== "simple") {
+    params.opts?.onAgentRunStart?.(runId);
+  }
   if (params.sessionKey) {
     registerAgentRunContext(runId, {
       sessionKey: params.sessionKey,

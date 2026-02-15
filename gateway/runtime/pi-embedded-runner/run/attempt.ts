@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { AssistantMessage, ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
@@ -190,6 +190,104 @@ export function injectHistoryImagesIntoMessages(
   return didMutate;
 }
 
+/**
+ * Fast path for simple tier: bypasses full pi-coding-agent machinery and uses direct model completion.
+ * No tools, no complex event subscriptions, just a simple request/response.
+ * This is dramatically faster for simple conversational queries like "hello!" or "how are you?"
+ */
+async function runSimpleTierFastPath(
+  params: EmbeddedRunAttemptParams,
+  resolvedWorkspace: string,
+  runAbortController: AbortController,
+): Promise<EmbeddedRunAttemptResult> {
+  const promptStartedAt = Date.now();
+
+  try {
+    log.info(
+      `[simple-fast-path] calling completeSimple directly (skipping agent session overhead)`,
+    );
+    const callStart = Date.now();
+
+    // Build minimal system prompt for simple queries
+    const systemPrompt = params.extraSystemPrompt ?? "";
+
+    // Build messages array - just the current prompt, no history needed for simple queries
+    const messages: Array<{ role: "user"; content: string; timestamp: number }> = [
+      {
+        role: "user",
+        content: params.prompt,
+        timestamp: Date.now(),
+      },
+    ];
+
+    // Direct model completion using completeSimple (fastest path, no streaming overhead)
+    const { completeSimple } = await import("@mariozechner/pi-ai");
+    const response = await completeSimple(
+      params.model,
+      {
+        systemPrompt,
+        messages,
+      },
+      {
+        apiKey: "no-api-key-needed",
+        maxTokens: 2048,
+        temperature: 0.7,
+      },
+    );
+
+    log.info(`[simple-fast-path] model responded in ${Date.now() - callStart}ms`);
+
+    // Extract text from response
+    let assistantText = "";
+    if (Array.isArray(response.content)) {
+      for (const item of response.content) {
+        if (item.type === "text") {
+          assistantText += item.text;
+        }
+      }
+    }
+
+    const totalMs = Date.now() - promptStartedAt;
+    log.info(
+      `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${totalMs}`,
+    );
+    log.info(
+      `model output: ${params.provider}/${params.modelId} response=${assistantText.length} chars`,
+    );
+    log.info(`model output: ${assistantText}`);
+
+    // Note: We don't call onBlockReply here because the final delivery happens via
+    // the returned assistantTexts array, which gets converted to payloads by the caller.
+    // Calling onBlockReply would cause duplicate delivery or interfere with the normal flow.
+    log.info(`[simple-fast-path] returning assistantTexts for payload building`);
+
+    return {
+      aborted: false,
+      timedOut: false,
+      promptError: undefined,
+      sessionIdUsed: params.sessionId,
+      messagesSnapshot: [],
+      assistantTexts: [assistantText],
+      toolMetas: [],
+      lastAssistant: undefined, // Not needed for simple tier
+      didSendViaMessagingTool: false,
+      messagingToolSentTexts: [],
+      messagingToolSentTargets: [],
+      cloudCodeAssistFormatError: false,
+      attemptUsage: {
+        input: response.usage?.input ?? 0,
+        output: response.usage?.output ?? 0,
+        cacheWrite: 0,
+        cacheRead: 0,
+      },
+      compactionCount: 0,
+    };
+  } catch (err) {
+    log.error(`[simple-fast-path] error: ${err}`);
+    throw err;
+  }
+}
+
 export async function runEmbeddedAttempt(
   params: EmbeddedRunAttemptParams,
 ): Promise<EmbeddedRunAttemptResult> {
@@ -200,6 +298,12 @@ export async function runEmbeddedAttempt(
   log.debug(
     `embedded run start: runId=${params.runId} sessionId=${params.sessionId} provider=${params.provider} model=${params.modelId} thinking=${params.thinkLevel} messageChannel=${params.messageChannel ?? params.messageProvider ?? "unknown"}`,
   );
+
+  // Fast path for simple tier: bypass full agent machinery and use direct model completion
+  if (params.replyTier === "simple") {
+    log.info(`[timing] using simple tier fast path (bypassing full agent session)`);
+    return runSimpleTierFastPath(params, resolvedWorkspace, runAbortController);
+  }
 
   await fs.mkdir(resolvedWorkspace, { recursive: true });
 
@@ -401,41 +505,35 @@ export async function runEmbeddedAttempt(
     });
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
-    // Use simple prompt for Phase 1 "stay" (simple tier), full prompt for escalate (complex).
-    const replyTier = params.replyTier ?? "complex";
-    const appendPrompt =
-      replyTier === "simple"
-        ? buildSimpleSystemPrompt({
-            userTime,
-            userTimezone,
-          })
-        : buildEmbeddedSystemPrompt({
-            workspaceDir: effectiveWorkspace,
-            defaultThinkLevel: params.thinkLevel,
-            reasoningLevel: params.reasoningLevel ?? "off",
-            extraSystemPrompt: params.extraSystemPrompt,
-            ownerNumbers: params.ownerNumbers,
-            reasoningTagHint,
-            heartbeatPrompt: isDefaultAgent
-              ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-              : undefined,
-            skillsPrompt,
-            docsPath: docsPath ?? undefined,
-            ttsHint,
-            workspaceNotes,
-            reactionGuidance,
-            promptMode,
-            runtimeInfo,
-            messageToolHints,
-            sandboxInfo,
-            tools,
-            modelAliasLines: buildModelAliasLines(params.config),
-            userTimezone,
-            userTime,
-            userTimeFormat,
-            contextFiles,
-            memoryCitationsMode: params.config?.memory?.citations,
-          });
+    // Build system prompt - at this point we're always in complex tier
+    // (simple tier already took the fast path at the start of runEmbeddedAttempt)
+    const appendPrompt = buildEmbeddedSystemPrompt({
+      workspaceDir: effectiveWorkspace,
+      defaultThinkLevel: params.thinkLevel,
+      reasoningLevel: params.reasoningLevel ?? "off",
+      extraSystemPrompt: params.extraSystemPrompt,
+      ownerNumbers: params.ownerNumbers,
+      reasoningTagHint,
+      heartbeatPrompt: isDefaultAgent
+        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+        : undefined,
+      skillsPrompt,
+      docsPath: docsPath ?? undefined,
+      ttsHint,
+      workspaceNotes,
+      reactionGuidance,
+      promptMode,
+      runtimeInfo,
+      messageToolHints,
+      sandboxInfo,
+      tools,
+      modelAliasLines: buildModelAliasLines(params.config),
+      userTimezone,
+      userTime,
+      userTimeFormat,
+      contextFiles,
+      memoryCitationsMode: params.config?.memory?.citations,
+    });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -540,6 +638,7 @@ export async function runEmbeddedAttempt(
 
       const allCustomTools = [...customTools, ...clientToolDefs];
 
+      const sessionCreateStart = Date.now();
       ({ session } = await createAgentSession({
         cwd: resolvedWorkspace,
         agentDir,
@@ -552,6 +651,7 @@ export async function runEmbeddedAttempt(
         sessionManager,
         settingsManager,
       }));
+      log.info(`[timing] createAgentSession took ${Date.now() - sessionCreateStart}ms`);
       applySystemPromptOverrideToSession(session, systemPromptText);
       if (!session) {
         throw new Error("Embedded agent session missing");
@@ -605,6 +705,7 @@ export async function runEmbeddedAttempt(
       }
 
       try {
+        const sanitizeStart = Date.now();
         const prior = await sanitizeSessionHistory({
           messages: activeSession.messages,
           modelApi: params.model.api,
@@ -614,6 +715,7 @@ export async function runEmbeddedAttempt(
           sessionId: params.sessionId,
           policy: transcriptPolicy,
         });
+        log.info(`[timing] sanitizeSessionHistory took ${Date.now() - sanitizeStart}ms`);
         cacheTrace?.recordStage("session:sanitized", { messages: prior });
         const validatedGemini = transcriptPolicy.validateGeminiTurns
           ? validateGeminiTurns(prior)
@@ -856,6 +958,7 @@ export async function runEmbeddedAttempt(
           // This eliminates the need for an explicit "view" tool call by injecting
           // images directly into the prompt when the model supports it.
           // Also scans conversation history to enable follow-up questions about earlier images.
+          const imageDetectStart = Date.now();
           const imageResult = await detectAndLoadPromptImages({
             prompt: effectivePrompt,
             workspaceDir: effectiveWorkspace,
@@ -866,6 +969,7 @@ export async function runEmbeddedAttempt(
             // Enforce sandbox path restrictions when sandbox is enabled
             sandboxRoot: sandbox?.enabled ? sandbox.workspaceDir : undefined,
           });
+          log.info(`[timing] image detection took ${Date.now() - imageDetectStart}ms`);
 
           // Inject history images into their original message positions.
           // This ensures the model sees images in context (e.g., "compare to the first image").
@@ -886,11 +990,16 @@ export async function runEmbeddedAttempt(
 
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
+          log.info(
+            `[timing] calling activeSession.prompt() with ${imageResult.images.length} images...`,
+          );
+          const promptCallStart = Date.now();
           if (imageResult.images.length > 0) {
             await abortable(activeSession.prompt(effectivePrompt, { images: imageResult.images }));
           } else {
             await abortable(activeSession.prompt(effectivePrompt));
           }
+          log.info(`[timing] activeSession.prompt() took ${Date.now() - promptCallStart}ms`);
         } catch (err) {
           promptError = err;
         } finally {

@@ -113,6 +113,7 @@ type RunPreparedReplyParams = {
 export async function runPreparedReply(
   params: RunPreparedReplyParams,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
+  const runPreparedStartTime = Date.now();
   const {
     ctx,
     sessionCtx,
@@ -163,6 +164,8 @@ export async function runPreparedReply(
   } = params;
   let currentSystemSent = systemSent;
 
+  console.log(`[runPreparedReply] start: tier=${replyTier} provider=${provider} model=${model}`);
+
   const isFirstTurnInSession = isNewSession || !currentSystemSent;
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
@@ -210,16 +213,21 @@ export async function runPreparedReply(
     isNewSession &&
     ((baseBodyTrimmedRaw.length === 0 && rawBodyTrimmed.length > 0) || isBareNewOrReset);
   const baseBodyFinal = isBareSessionReset ? BARE_SESSION_RESET_PROMPT : baseBody;
-  const inboundUserContext = buildInboundUserContextPrefix(
-    isNewSession
-      ? {
-          ...sessionCtx,
-          ...(sessionCtx.ThreadHistoryBody?.trim()
-            ? { InboundHistory: undefined, ThreadStarterBody: undefined }
-            : {}),
-        }
-      : { ...sessionCtx, ThreadStarterBody: undefined },
-  );
+  // For simple tier, skip inbound metadata (conversation_label, etc.) - it's unnecessary
+  // and can confuse simple models. Only include it for complex tier.
+  const inboundUserContext =
+    replyTier === "complex"
+      ? buildInboundUserContextPrefix(
+          isNewSession
+            ? {
+                ...sessionCtx,
+                ...(sessionCtx.ThreadHistoryBody?.trim()
+                  ? { InboundHistory: undefined, ThreadStarterBody: undefined }
+                  : {}),
+              }
+            : { ...sessionCtx, ThreadStarterBody: undefined },
+        )
+      : "";
   // Put the user's message first so the model is primed to reply to it; metadata after as context only.
   const baseBodyForPrompt = isBareSessionReset
     ? baseBodyFinal
@@ -430,7 +438,11 @@ export async function runPreparedReply(
     },
   };
 
-  return runReplyAgent({
+  const setupMs = Date.now() - runPreparedStartTime;
+  console.log(`[runPreparedReply] setup took ${setupMs}ms, calling runReplyAgent...`);
+
+  const agentStartTime = Date.now();
+  const result = await runReplyAgent({
     commandBody: prefixedCommandBody,
     followupRun,
     queueKey,
@@ -457,4 +469,8 @@ export async function runPreparedReply(
     shouldInjectGroupIntro,
     typingMode,
   });
+
+  console.log(`[runPreparedReply] runReplyAgent took ${Date.now() - agentStartTime}ms`);
+  console.log(`[runPreparedReply] total time: ${Date.now() - runPreparedStartTime}ms`);
+  return result;
 }

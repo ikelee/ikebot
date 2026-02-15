@@ -289,6 +289,7 @@ export async function getReplyFromConfig(
 
   // Tiered routing: Phase 1 classifies stay (simple) vs escalate (complex).
   // When enabled and stay, override provider/model to classifier model.
+  const routeStartTime = Date.now();
   const routeResult = await routeRequest({
     cleanedBody,
     sessionKey,
@@ -298,6 +299,8 @@ export async function getReplyFromConfig(
     defaultProvider,
     aliasIndex,
   });
+  console.log(`[get-reply] routeRequest took ${Date.now() - routeStartTime}ms`);
+
   const replyTier: "simple" | "complex" = routeResult.useDefault ? "complex" : routeResult.tier;
   if (!routeResult.useDefault) {
     logVerbose(
@@ -309,6 +312,7 @@ export async function getReplyFromConfig(
     logVerbose(`[router] tier=${replyTier} provider=${provider} model=${model} (default)`);
   }
 
+  const stageSandboxStart = Date.now();
   await stageSandboxMedia({
     ctx,
     sessionCtx,
@@ -316,8 +320,11 @@ export async function getReplyFromConfig(
     sessionKey,
     workspaceDir,
   });
+  console.log(`[get-reply] stageSandboxMedia took ${Date.now() - stageSandboxStart}ms`);
 
-  return runPreparedReply({
+  const runPreparedStart = Date.now();
+  console.log(`[get-reply] starting runPreparedReply with tier=${replyTier}`);
+  const result = await runPreparedReply({
     ctx,
     sessionCtx,
     cfg,
@@ -363,4 +370,6 @@ export async function getReplyFromConfig(
     workspaceDir,
     abortedLastRun,
   });
+  console.log(`[get-reply] runPreparedReply took ${Date.now() - runPreparedStart}ms`);
+  return result;
 }
