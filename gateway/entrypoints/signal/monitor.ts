@@ -10,7 +10,7 @@ import {
 import {
   DEFAULT_GROUP_HISTORY_LIMIT,
   type HistoryEntry,
-} from "../../agent/pipeline/reply/history.js";
+} from "../../agent/pipeline/reply/utilities/history.js";
 import { loadConfig } from "../../infra/config/config.js";
 import { waitForTransportReady } from "../../infra/transport-ready.js";
 import { saveMediaBuffer } from "../../media/store.js";

@@ -7,8 +7,8 @@ import type {
   TelegramTopicConfig,
 } from "../../infra/config/types.js";
 import type { StickerMetadata, TelegramContext } from "./bot/types.js";
-import { hasControlCommand } from "../../agent/pipeline/command-detection.js";
-import { normalizeCommandBody } from "../../agent/pipeline/commands-registry.js";
+import { hasControlCommand } from "../../agent/pipeline/commands-registry/index.js";
+import { normalizeCommandBody } from "../../agent/pipeline/commands-registry/index.js";
 import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
@@ -17,12 +17,12 @@ import {
   buildPendingHistoryContextFromMap,
   recordPendingHistoryEntryIfEnabled,
   type HistoryEntry,
-} from "../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../agent/pipeline/reply/inbound-context.js";
+} from "../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../agent/pipeline/reply/utilities/inbound-context.js";
 import {
   buildMentionRegexes,
   matchesMentionWithExplicit,
-} from "../../agent/pipeline/reply/mentions.js";
+} from "../../agent/pipeline/reply/utilities/mentions.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { recordChannelActivity } from "../../infra/channel-activity.js";
 import { loadConfig } from "../../infra/config/config.js";

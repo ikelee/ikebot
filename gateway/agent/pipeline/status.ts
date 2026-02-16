@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { SkillCommandSpec } from "../../runtime/skills.js";
 import type { MediaUnderstandingDecision } from "../media-understanding/types.js";
-import type { CommandCategory } from "./commands-registry.types.js";
+import type { CommandCategory } from "./commands-registry/commands-registry.types.js";
 import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./thinking.js";
 import { listPluginCommands } from "../../extensibility/plugins/commands.js";
 import {
@@ -41,7 +41,7 @@ import {
   listChatCommands,
   listChatCommandsForConfig,
   type ChatCommandDefinition,
-} from "./commands-registry.js";
+} from "./commands-registry/index.js";
 
 type AgentConfig = Partial<NonNullable<NonNullable<OpenClawConfig["agents"]>["defaults"]>>;
 

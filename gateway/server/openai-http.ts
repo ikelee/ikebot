@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
-} from "../agent/pipeline/reply/history.js";
+} from "../agent/pipeline/reply/utilities/history.js";
 import { createDefaultDeps } from "../entrypoints/entry/cli/deps.js";
 import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";

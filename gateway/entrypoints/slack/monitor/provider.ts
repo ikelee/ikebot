@@ -4,7 +4,7 @@ import type { SessionScope } from "../../../infra/config/sessions.js";
 import type { RuntimeEnv } from "../../../runtime.js";
 import type { MonitorSlackOpts } from "./types.js";
 import { resolveTextChunkLimit } from "../../../agent/pipeline/chunk.js";
-import { DEFAULT_GROUP_HISTORY_LIMIT } from "../../../agent/pipeline/reply/history.js";
+import { DEFAULT_GROUP_HISTORY_LIMIT } from "../../../agent/pipeline/reply/utilities/history.js";
 import { warn } from "../../../globals.js";
 import { loadConfig } from "../../../infra/config/config.js";
 import { normalizeMainKey } from "../../../infra/routing/session-key.js";

@@ -2,7 +2,10 @@ import { Type } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { normalizeGroupActivation } from "../../agent/pipeline/group-activation.js";
-import { getFollowupQueueDepth, resolveQueueSettings } from "../../agent/pipeline/reply/queue.js";
+import {
+  getFollowupQueueDepth,
+  resolveQueueSettings,
+} from "../../agent/pipeline/reply/agent-runner/queue.js";
 import { buildStatusMessage } from "../../agent/pipeline/status.js";
 import { loadConfig } from "../../infra/config/config.js";
 import {

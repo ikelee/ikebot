@@ -1,5 +1,5 @@
 import type { ChannelType, Client, User } from "@buape/carbon";
-import type { HistoryEntry } from "../../../agent/pipeline/reply/history.js";
+import type { HistoryEntry } from "../../../agent/pipeline/reply/utilities/history.js";
 import type { ReplyToMode } from "../../../infra/config/config.js";
 import type { resolveAgentRoute } from "../../../infra/routing/resolve-route.js";
 import type { DiscordChannelConfigResolved, DiscordGuildEntryResolved } from "./allow-list.js";

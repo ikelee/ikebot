@@ -6,7 +6,7 @@ import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
 import { runCronIsolatedAgentTurn } from "../../cron/isolated-agent.js";
 import { loadConfig } from "../../infra/config/config.js";
 import { resolveMainSessionKeyFromConfig } from "../../infra/config/sessions.js";
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
+import { requestHeartbeatNow } from "../../infra/heartbeat/index.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createHooksRequestHandler } from "../server-http.js";
 

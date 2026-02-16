@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
-import type { ReplyDirectiveParseResult } from "../agent/pipeline/reply/reply-directives.js";
+import type { ReplyDirectiveParseResult } from "../agent/pipeline/reply/reply-building/reply-directives.js";
 import type { ReasoningLevel } from "../agent/pipeline/thinking.js";
 import type { HookRunner } from "../extensibility/plugins/hooks.js";
 import type { InlineCodeState } from "../markdown/code-spans.js";

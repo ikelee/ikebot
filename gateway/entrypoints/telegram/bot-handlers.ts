@@ -1,14 +1,14 @@
 import type { Message } from "@grammyjs/types";
 import type { TelegramMediaRef } from "./bot-message-context.js";
 import type { TelegramContext } from "./bot/types.js";
-import { hasControlCommand } from "../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../agent/pipeline/commands-registry/index.js";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../agent/pipeline/inbound-debounce.js";
-import { buildCommandsPaginationKeyboard } from "../../agent/pipeline/reply/commands-info.js";
-import { buildModelsProviderData } from "../../agent/pipeline/reply/commands-models.js";
-import { resolveStoredModelOverride } from "../../agent/pipeline/reply/model-selection.js";
+import { buildCommandsPaginationKeyboard } from "../../agent/pipeline/reply/commands/commands-info.js";
+import { buildModelsProviderData } from "../../agent/pipeline/reply/commands/commands-models.js";
+import { resolveStoredModelOverride } from "../../agent/pipeline/reply/utilities/model-selection.js";
 import { listSkillCommandsForAgents } from "../../agent/pipeline/skill-commands.js";
 import { buildCommandsMessagePaginated } from "../../agent/pipeline/status.js";
 import { danger, logVerbose, warn } from "../../globals.js";

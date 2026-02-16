@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HeartbeatRunResult } from "../infra/heartbeat-wake.js";
+import type { HeartbeatRunResult } from "../infra/heartbeat/index.js";
 import type { CronJob } from "./types.js";
 import { CronService } from "./service.js";
 

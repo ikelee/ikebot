@@ -9,7 +9,7 @@ import type {
 import type { OpenClawConfig } from "../config/config.js";
 import type { OutboundSendDeps } from "./deliver.js";
 import type { MessagePollResult, MessageSendResult } from "./message.js";
-import { parseReplyDirectives } from "../../agent/pipeline/reply/reply-directives.js";
+import { parseReplyDirectives } from "../../agent/pipeline/reply/reply-building/reply-directives.js";
 import { dispatchChannelMessageAction } from "../../entrypoints/channels/plugins/message-actions.js";
 import { parseSlackTarget } from "../../entrypoints/slack/targets.js";
 import { parseTelegramTarget } from "../../entrypoints/telegram/targets.js";

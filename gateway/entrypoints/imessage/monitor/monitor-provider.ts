@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { IMessagePayload, MonitorIMessageOpts } from "./types.js";
 import { resolveTextChunkLimit } from "../../../agent/pipeline/chunk.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
 import { dispatchInboundMessage } from "../../../agent/pipeline/dispatch.js";
 import {
   formatInboundEnvelope,
@@ -12,19 +12,19 @@ import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../../agent/pipeline/inbound-debounce.js";
+import { createReplyDispatcher } from "../../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
   DEFAULT_GROUP_HISTORY_LIMIT,
   recordPendingHistoryEntryIfEnabled,
   type HistoryEntry,
-} from "../../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
+} from "../../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import {
   buildMentionRegexes,
   matchesMentionPatterns,
-} from "../../../agent/pipeline/reply/mentions.js";
-import { createReplyDispatcher } from "../../../agent/pipeline/reply/reply-dispatcher.js";
+} from "../../../agent/pipeline/reply/utilities/mentions.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { loadConfig } from "../../../infra/config/config.js";
 import {

@@ -3,16 +3,16 @@ import type {
   DiscordMessagePreflightContext,
   DiscordMessagePreflightParams,
 } from "./message-handler.preflight.types.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
-import { shouldHandleTextCommands } from "../../../agent/pipeline/commands-registry.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
+import { shouldHandleTextCommands } from "../../../agent/pipeline/commands-registry/index.js";
 import {
   recordPendingHistoryEntryIfEnabled,
   type HistoryEntry,
-} from "../../../agent/pipeline/reply/history.js";
+} from "../../../agent/pipeline/reply/utilities/history.js";
 import {
   buildMentionRegexes,
   matchesMentionWithExplicit,
-} from "../../../agent/pipeline/reply/mentions.js";
+} from "../../../agent/pipeline/reply/utilities/mentions.js";
 import { logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { recordChannelActivity } from "../../../infra/channel-activity.js";
 import { loadConfig } from "../../../infra/config/config.js";

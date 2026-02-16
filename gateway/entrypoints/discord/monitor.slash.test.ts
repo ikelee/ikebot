@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createReplyDispatcherWithTyping } from "../../agent/pipeline/reply/reply-dispatcher.js";
+import { createReplyDispatcherWithTyping } from "../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
 
 const dispatchMock = vi.fn();
 

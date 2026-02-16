@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: vi.fn(),
 }));
-vi.mock("../infra/heartbeat-wake.js", () => ({
+vi.mock("../infra/heartbeat/index.js", () => ({
   requestHeartbeatNow: vi.fn(),
 }));
 
 import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { HealthSummary } from "../entrypoints/entry/commands/health.js";
 import type { NodeEventContext } from "./server-node-events-types.js";
-import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
+import { requestHeartbeatNow } from "../infra/heartbeat/index.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { handleNodeEvent } from "./server-node-events.js";
 

@@ -1,5 +1,5 @@
 import type { SignalEventHandlerDeps, SignalReceivePayload } from "./event-handler.types.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
 import { dispatchInboundMessage } from "../../../agent/pipeline/dispatch.js";
 import {
   formatInboundEnvelope,
@@ -10,17 +10,17 @@ import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../../agent/pipeline/inbound-debounce.js";
+import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
   recordPendingHistoryEntryIfEnabled,
-} from "../../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
+} from "../../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import {
   buildMentionRegexes,
   matchesMentionPatterns,
-} from "../../../agent/pipeline/reply/mentions.js";
-import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-dispatcher.js";
+} from "../../../agent/pipeline/reply/utilities/mentions.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { resolveChannelGroupRequireMention } from "../../../infra/config/group-policy.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../../infra/config/sessions.js";

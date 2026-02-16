@@ -1,16 +1,16 @@
 import type { OpenClawConfig } from "../../infra/config/config.js";
-import type { DispatchFromConfigResult } from "./reply/dispatch-from-config.js";
+import type { DispatchFromConfigResult } from "./reply/reply-building/dispatch-from-config.js";
 import type { FinalizedMsgContext, MsgContext } from "./templating.js";
 import type { GetReplyOptions } from "./types.js";
-import { dispatchReplyFromConfig } from "./reply/dispatch-from-config.js";
-import { finalizeInboundContext } from "./reply/inbound-context.js";
+import { dispatchReplyFromConfig } from "./reply/reply-building/dispatch-from-config.js";
 import {
   createReplyDispatcher,
   createReplyDispatcherWithTyping,
   type ReplyDispatcher,
   type ReplyDispatcherOptions,
   type ReplyDispatcherWithTypingOptions,
-} from "./reply/reply-dispatcher.js";
+} from "./reply/reply-building/reply-dispatcher.js";
+import { finalizeInboundContext } from "./reply/utilities/inbound-context.js";
 
 export type DispatchInboundResult = DispatchFromConfigResult;
 

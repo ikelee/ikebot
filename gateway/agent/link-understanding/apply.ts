@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { MsgContext } from "../pipeline/templating.js";
-import { finalizeInboundContext } from "../pipeline/reply/inbound-context.js";
+import { finalizeInboundContext } from "../pipeline/reply/utilities/inbound-context.js";
 import { formatLinkUnderstandingBody } from "./format.js";
 import { runLinkUnderstanding } from "./runner.js";
 

@@ -1,9 +1,9 @@
 import type { loadConfig } from "../../../../infra/config/config.js";
 import type { MentionConfig } from "../mentions.js";
 import type { WebInboundMsg } from "../types.js";
-import { hasControlCommand } from "../../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../../agent/pipeline/commands-registry/index.js";
 import { parseActivationCommand } from "../../../../agent/pipeline/group-activation.js";
-import { recordPendingHistoryEntryIfEnabled } from "../../../../agent/pipeline/reply/history.js";
+import { recordPendingHistoryEntryIfEnabled } from "../../../../agent/pipeline/reply/utilities/history.js";
 import { normalizeE164 } from "../../../../utils.js";
 import { resolveMentionGating } from "../../../channels/mention-gating.js";
 import { buildMentionConfig, debugMention, resolveOwnerList } from "../mentions.js";

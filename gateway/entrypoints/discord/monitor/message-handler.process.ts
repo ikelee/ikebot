@@ -7,12 +7,12 @@ import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
 } from "../../../agent/pipeline/envelope.js";
+import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
-} from "../../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
-import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-dispatcher.js";
+} from "../../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { resolveMarkdownTableMode } from "../../../infra/config/markdown-tables.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../../infra/config/sessions.js";

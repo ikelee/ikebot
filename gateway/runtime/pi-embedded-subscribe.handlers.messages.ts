@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
-import { parseReplyDirectives } from "../agent/pipeline/reply/reply-directives.js";
+import { parseReplyDirectives } from "../agent/pipeline/reply/reply-building/reply-directives.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { createInlineCodeState } from "../markdown/code-spans.js";
 import {

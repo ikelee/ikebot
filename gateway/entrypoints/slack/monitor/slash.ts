@@ -2,7 +2,7 @@ import type { SlackActionMiddlewareArgs, SlackCommandMiddlewareArgs } from "@sla
 import type {
   ChatCommandDefinition,
   CommandArgs,
-} from "../../../agent/pipeline/commands-registry.js";
+} from "../../../agent/pipeline/commands-registry/index.js";
 import type { ResolvedSlackAccount } from "../accounts.js";
 import type { SlackMonitorContext } from "./context.js";
 import { resolveChunkMode } from "../../../agent/pipeline/chunk.js";
@@ -12,9 +12,9 @@ import {
   listNativeCommandSpecsForConfig,
   parseCommandArgs,
   resolveCommandArgMenu,
-} from "../../../agent/pipeline/commands-registry.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
-import { dispatchReplyWithDispatcher } from "../../../agent/pipeline/reply/provider-dispatcher.js";
+} from "../../../agent/pipeline/commands-registry/index.js";
+import { dispatchReplyWithDispatcher } from "../../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import { listSkillCommandsForAgents } from "../../../agent/pipeline/skill-commands.js";
 import { danger, logVerbose } from "../../../globals.js";
 import {

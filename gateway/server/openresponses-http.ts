@@ -14,7 +14,7 @@ import type { ClientToolDefinition } from "../runtime/pi-embedded-runner/run/par
 import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
-} from "../agent/pipeline/reply/history.js";
+} from "../agent/pipeline/reply/utilities/history.js";
 import { createDefaultDeps } from "../entrypoints/entry/cli/deps.js";
 import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";

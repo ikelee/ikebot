@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { resolveQueueSettings } from "../agent/pipeline/reply/queue.js";
+import { resolveQueueSettings } from "../agent/pipeline/reply/agent-runner/queue.js";
 import { loadConfig } from "../infra/config/config.js";
 import {
   loadSessionStore,

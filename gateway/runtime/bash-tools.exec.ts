@@ -19,7 +19,7 @@ import {
   resolveExecApprovals,
   resolveExecApprovalsFromFile,
 } from "../infra/exec-approvals.js";
-import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
+import { requestHeartbeatNow } from "../infra/heartbeat/index.js";
 import { buildNodeShellCommand } from "../infra/node-shell.js";
 import {
   parseAgentSessionKey,

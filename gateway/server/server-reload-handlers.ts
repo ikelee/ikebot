@@ -1,6 +1,6 @@
 import type { CliDeps } from "../entrypoints/entry/cli/deps.js";
 import type { loadConfig } from "../infra/config/config.js";
-import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
+import type { HeartbeatRunner } from "../infra/heartbeat/index.js";
 import type { ChannelKind, GatewayReloadPlan } from "./config-reload.js";
 import { startGmailWatcher, stopGmailWatcher } from "../extensibility/hooks/gmail-watcher.js";
 import {

@@ -4,7 +4,7 @@ import path from "node:path";
 import type { MsgContext } from "../../agent/pipeline/templating.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { dispatchInboundMessage } from "../../agent/pipeline/dispatch.js";
-import { createReplyDispatcher } from "../../agent/pipeline/reply/reply-dispatcher.js";
+import { createReplyDispatcher } from "../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
 import { createReplyPrefixOptions } from "../../entrypoints/channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../infra/config/sessions.js";
 import { resolveSendPolicy } from "../../infra/sessions/send-policy.js";

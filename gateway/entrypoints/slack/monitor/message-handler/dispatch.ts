@@ -1,7 +1,7 @@
 import type { PreparedSlackMessage } from "./types.js";
 import { dispatchInboundMessage } from "../../../../agent/pipeline/dispatch.js";
-import { clearHistoryEntriesIfEnabled } from "../../../../agent/pipeline/reply/history.js";
-import { createReplyDispatcherWithTyping } from "../../../../agent/pipeline/reply/reply-dispatcher.js";
+import { createReplyDispatcherWithTyping } from "../../../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
+import { clearHistoryEntriesIfEnabled } from "../../../../agent/pipeline/reply/utilities/history.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../../../globals.js";
 import { resolveStorePath, updateLastRoute } from "../../../../infra/config/sessions.js";
 import { resolveHumanDelayConfig } from "../../../../runtime/identity.js";

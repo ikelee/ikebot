@@ -1,10 +1,10 @@
 import type { Client } from "@buape/carbon";
-import type { HistoryEntry } from "../../../agent/pipeline/reply/history.js";
+import type { HistoryEntry } from "../../../agent/pipeline/reply/utilities/history.js";
 import type { ReplyToMode } from "../../../infra/config/config.js";
 import type { RuntimeEnv } from "../../../runtime.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import type { DiscordMessageEvent, DiscordMessageHandler } from "./listeners.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,

@@ -1,8 +1,8 @@
 import type { WebChannelStatus, WebInboundMsg, WebMonitorTuning } from "./types.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
 import { resolveInboundDebounceMs } from "../../../agent/pipeline/inbound-debounce.js";
 import { getReplyFromConfig } from "../../../agent/pipeline/reply.js";
-import { DEFAULT_GROUP_HISTORY_LIMIT } from "../../../agent/pipeline/reply/history.js";
+import { DEFAULT_GROUP_HISTORY_LIMIT } from "../../../agent/pipeline/reply/utilities/history.js";
 import { logVerbose } from "../../../globals.js";
 import { loadConfig } from "../../../infra/config/config.js";
 import { formatDurationPrecise } from "../../../infra/format-time/format-duration.ts";

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type { GatewayRequestHandlers } from "./types.js";
-import { stopSubagentsForRequester } from "../../agent/pipeline/reply/abort.js";
-import { clearSessionQueues } from "../../agent/pipeline/reply/queue.js";
+import { clearSessionQueues } from "../../agent/pipeline/reply/agent-runner/queue.js";
+import { stopSubagentsForRequester } from "../../agent/pipeline/reply/agent-runner/routing/abort.js";
 import { loadConfig } from "../../infra/config/config.js";
 import {
   loadSessionStore,

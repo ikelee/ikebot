@@ -1,4 +1,4 @@
-import type { HeartbeatEventPayload } from "../../../infra/heartbeat-events.js";
+import type { HeartbeatEventPayload } from "../../../infra/heartbeat/index.js";
 import type { RuntimeEnv } from "../../../runtime.js";
 import { info } from "../../../globals.js";
 import { resolveGatewayPort } from "../../../infra/config/config.js";

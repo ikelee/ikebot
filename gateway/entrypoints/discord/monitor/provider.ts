@@ -2,11 +2,11 @@ import { Client, type BaseMessageInteractiveComponent } from "@buape/carbon";
 import { GatewayIntents, GatewayPlugin } from "@buape/carbon/gateway";
 import { Routes } from "discord-api-types/v10";
 import { inspect } from "node:util";
-import type { HistoryEntry } from "../../../agent/pipeline/reply/history.js";
+import type { HistoryEntry } from "../../../agent/pipeline/reply/utilities/history.js";
 import type { OpenClawConfig, ReplyToMode } from "../../../infra/config/config.js";
 import type { RuntimeEnv } from "../../../runtime.js";
 import { resolveTextChunkLimit } from "../../../agent/pipeline/chunk.js";
-import { listNativeCommandSpecsForConfig } from "../../../agent/pipeline/commands-registry.js";
+import { listNativeCommandSpecsForConfig } from "../../../agent/pipeline/commands-registry/index.js";
 import { listSkillCommandsForAgents } from "../../../agent/pipeline/skill-commands.js";
 import { danger, logVerbose, shouldLogVerbose, warn } from "../../../globals.js";
 import {

@@ -4,7 +4,7 @@ import { normalizeChannelId } from "../entrypoints/channels/plugins/index.js";
 import { agentCommand } from "../entrypoints/entry/commands/agent.js";
 import { loadConfig } from "../infra/config/config.js";
 import { updateSessionStore } from "../infra/config/sessions.js";
-import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
+import { requestHeartbeatNow } from "../infra/heartbeat/index.js";
 import { normalizeMainKey } from "../infra/routing/session-key.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";

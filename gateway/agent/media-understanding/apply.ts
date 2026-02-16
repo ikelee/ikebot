@@ -21,7 +21,7 @@ import {
   normalizeMimeList,
   normalizeMimeType,
 } from "../../media/input-files.js";
-import { finalizeInboundContext } from "../pipeline/reply/inbound-context.js";
+import { finalizeInboundContext } from "../pipeline/reply/utilities/inbound-context.js";
 import { resolveAttachmentKind } from "./attachments.js";
 import { runWithConcurrency } from "./concurrency.js";
 import {

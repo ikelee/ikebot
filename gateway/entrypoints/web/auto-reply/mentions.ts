@@ -3,7 +3,7 @@ import type { WebInboundMsg } from "./types.js";
 import {
   buildMentionRegexes,
   normalizeMentionText,
-} from "../../../agent/pipeline/reply/mentions.js";
+} from "../../../agent/pipeline/reply/utilities/mentions.js";
 import { isSelfChatMode, jidToE164, normalizeE164 } from "../../../utils.js";
 
 export type MentionConfig = {

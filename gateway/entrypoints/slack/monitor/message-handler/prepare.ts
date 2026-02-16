@@ -2,8 +2,8 @@ import type { FinalizedMsgContext } from "../../../../agent/pipeline/templating.
 import type { ResolvedSlackAccount } from "../../accounts.js";
 import type { SlackMessageEvent } from "../../types.js";
 import type { PreparedSlackMessage } from "./types.js";
-import { hasControlCommand } from "../../../../agent/pipeline/command-detection.js";
-import { shouldHandleTextCommands } from "../../../../agent/pipeline/commands-registry.js";
+import { hasControlCommand } from "../../../../agent/pipeline/commands-registry/index.js";
+import { shouldHandleTextCommands } from "../../../../agent/pipeline/commands-registry/index.js";
 import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
@@ -11,12 +11,12 @@ import {
 import {
   buildPendingHistoryContextFromMap,
   recordPendingHistoryEntryIfEnabled,
-} from "../../../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../../../agent/pipeline/reply/inbound-context.js";
+} from "../../../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../../../agent/pipeline/reply/utilities/inbound-context.js";
 import {
   buildMentionRegexes,
   matchesMentionWithExplicit,
-} from "../../../../agent/pipeline/reply/mentions.js";
+} from "../../../../agent/pipeline/reply/utilities/mentions.js";
 import { logVerbose, shouldLogVerbose } from "../../../../globals.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../../../infra/config/sessions.js";
 import { buildPairingReply } from "../../../../infra/pairing/pairing-messages.js";

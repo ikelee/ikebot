@@ -16,7 +16,7 @@ import type {
   CommandArgValues,
   CommandArgs,
   NativeCommandSpec,
-} from "../../../agent/pipeline/commands-registry.js";
+} from "../../../agent/pipeline/commands-registry/index.js";
 import type { ReplyPayload } from "../../../agent/pipeline/types.js";
 import type { OpenClawConfig, loadConfig } from "../../../infra/config/config.js";
 import { resolveChunkMode, resolveTextChunkLimit } from "../../../agent/pipeline/chunk.js";
@@ -28,9 +28,9 @@ import {
   resolveCommandArgChoices,
   resolveCommandArgMenu,
   serializeCommandArgs,
-} from "../../../agent/pipeline/commands-registry.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
-import { dispatchReplyWithDispatcher } from "../../../agent/pipeline/reply/provider-dispatcher.js";
+} from "../../../agent/pipeline/commands-registry/index.js";
+import { dispatchReplyWithDispatcher } from "../../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import { loadWebMedia } from "../../../entrypoints/web/media.js";
 import { buildPairingReply } from "../../../infra/pairing/pairing-messages.js";
 import {

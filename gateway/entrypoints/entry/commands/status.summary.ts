@@ -8,7 +8,7 @@ import {
   resolveStorePath,
   type SessionEntry,
 } from "../../../infra/config/sessions.js";
-import { resolveHeartbeatSummaryForAgent } from "../../../infra/heartbeat-runner.js";
+import { resolveHeartbeatSummaryForAgent } from "../../../infra/heartbeat/index.js";
 import { parseAgentSessionKey } from "../../../infra/routing/session-key.js";
 import { peekSystemEvents } from "../../../infra/system-events.js";
 import { resolveConfiguredModelRef } from "../../../models/model-selection.js";

@@ -3,7 +3,7 @@ import type { OpenClawConfig } from "../../gateway/infra/config/types.js";
 import {
   listChatCommands,
   listChatCommandsForConfig,
-} from "../../gateway/agent/pipeline/commands-registry.js";
+} from "../../gateway/agent/pipeline/commands-registry/index.js";
 import {
   formatThinkingLevels,
   listThinkingLevelLabels,

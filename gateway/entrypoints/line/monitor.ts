@@ -4,7 +4,7 @@ import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import type { LineChannelData, ResolvedLineAccount } from "./types.js";
 import { chunkMarkdownText } from "../../agent/pipeline/chunk.js";
-import { dispatchReplyWithBufferedBlockDispatcher } from "../../agent/pipeline/reply/provider-dispatcher.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
 import { normalizePluginHttpPath } from "../../extensibility/plugins/http-path.js";
 import { registerPluginHttpRoute } from "../../extensibility/plugins/http-registry.js";
 import { danger, logVerbose } from "../../globals.js";

@@ -3,7 +3,7 @@ import type { ReplyPayload } from "../../../agent/pipeline/types.js";
 import type { MarkdownTableMode } from "../../../infra/config/types.base.js";
 import type { RuntimeEnv } from "../../../runtime.js";
 import { chunkMarkdownTextWithMode } from "../../../agent/pipeline/chunk.js";
-import { createReplyReferencePlanner } from "../../../agent/pipeline/reply/reply-reference.js";
+import { createReplyReferencePlanner } from "../../../agent/pipeline/reply/reply-building/reply-reference.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../agent/pipeline/tokens.js";
 import { markdownToSlackMrkdwnChunks } from "../format.js";
 import { sendMessageSlack } from "../send.js";

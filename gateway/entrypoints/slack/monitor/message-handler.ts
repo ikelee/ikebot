@@ -1,7 +1,7 @@
 import type { ResolvedSlackAccount } from "../accounts.js";
 import type { SlackMessageEvent } from "../types.js";
 import type { SlackMonitorContext } from "./context.js";
-import { hasControlCommand } from "../../../agent/pipeline/command-detection.js";
+import { hasControlCommand } from "../../../agent/pipeline/commands-registry/index.js";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,

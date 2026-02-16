@@ -7,11 +7,11 @@ import type { OpenClawConfig, ReplyToMode } from "../../infra/config/config.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import type { TelegramContext } from "./bot/types.js";
 import { resolveTextChunkLimit } from "../../agent/pipeline/chunk.js";
-import { isControlCommandMessage } from "../../agent/pipeline/command-detection.js";
+import { isControlCommandMessage } from "../../agent/pipeline/commands-registry/index.js";
 import {
   DEFAULT_GROUP_HISTORY_LIMIT,
   type HistoryEntry,
-} from "../../agent/pipeline/reply/history.js";
+} from "../../agent/pipeline/reply/utilities/history.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../globals.js";
 import {
   isNativeCommandsExplicitlyDisabled,

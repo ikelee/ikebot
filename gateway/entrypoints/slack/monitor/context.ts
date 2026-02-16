@@ -1,5 +1,5 @@
 import type { App } from "@slack/bolt";
-import type { HistoryEntry } from "../../../agent/pipeline/reply/history.js";
+import type { HistoryEntry } from "../../../agent/pipeline/reply/utilities/history.js";
 import type {
   OpenClawConfig,
   SlackReactionNotificationMode,

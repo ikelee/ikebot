@@ -148,7 +148,7 @@ vi.mock("./server-browser.js", () => ({
   startBrowserControlServerIfEnabled: hoisted.startBrowserControlServerIfEnabled,
 }));
 
-vi.mock("../infra/heartbeat-runner.js", () => ({
+vi.mock("../infra/heartbeat/index.js", () => ({
   startHeartbeatRunner: hoisted.startHeartbeatRunner,
 }));
 

@@ -1,5 +1,5 @@
 import type { Bot, Context } from "grammy";
-import type { CommandArgs } from "../../agent/pipeline/commands-registry.js";
+import type { CommandArgs } from "../../agent/pipeline/commands-registry/index.js";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import type { ChannelGroupPolicy } from "../../infra/config/group-policy.js";
 import type {
@@ -18,9 +18,9 @@ import {
   listNativeCommandSpecsForConfig,
   parseCommandArgs,
   resolveCommandArgMenu,
-} from "../../agent/pipeline/commands-registry.js";
-import { finalizeInboundContext } from "../../agent/pipeline/reply/inbound-context.js";
-import { dispatchReplyWithBufferedBlockDispatcher } from "../../agent/pipeline/reply/provider-dispatcher.js";
+} from "../../agent/pipeline/commands-registry/index.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
+import { finalizeInboundContext } from "../../agent/pipeline/reply/utilities/inbound-context.js";
 import { listSkillCommandsForAgents } from "../../agent/pipeline/skill-commands.js";
 import {
   executePluginCommand,

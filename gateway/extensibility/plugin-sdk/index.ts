@@ -149,8 +149,8 @@ export {
   DEFAULT_GROUP_HISTORY_LIMIT,
   recordPendingHistoryEntry,
   recordPendingHistoryEntryIfEnabled,
-} from "../../agent/pipeline/reply/history.js";
-export type { HistoryEntry } from "../../agent/pipeline/reply/history.js";
+} from "../../agent/pipeline/reply/utilities/history.js";
+export type { HistoryEntry } from "../../agent/pipeline/reply/utilities/history.js";
 export {
   mergeAllowlist,
   summarizeMapping,

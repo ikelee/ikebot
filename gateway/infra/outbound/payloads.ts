@@ -1,6 +1,6 @@
 import type { ReplyPayload } from "../../agent/pipeline/types.js";
-import { parseReplyDirectives } from "../../agent/pipeline/reply/reply-directives.js";
-import { isRenderablePayload } from "../../agent/pipeline/reply/reply-payloads.js";
+import { parseReplyDirectives } from "../../agent/pipeline/reply/reply-building/reply-directives.js";
+import { isRenderablePayload } from "../../agent/pipeline/reply/reply-building/reply-payloads.js";
 
 export type NormalizedOutboundPayload = {
   text: string;

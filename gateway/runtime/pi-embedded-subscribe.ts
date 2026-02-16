@@ -4,8 +4,8 @@ import type {
   EmbeddedPiSubscribeState,
 } from "./pi-embedded-subscribe.handlers.types.js";
 import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
-import { parseReplyDirectives } from "../agent/pipeline/reply/reply-directives.js";
-import { createStreamingDirectiveAccumulator } from "../agent/pipeline/reply/streaming-directives.js";
+import { parseReplyDirectives } from "../agent/pipeline/reply/reply-building/reply-directives.js";
+import { createStreamingDirectiveAccumulator } from "../agent/pipeline/reply/utilities/streaming-directives.js";
 import { formatToolAggregate } from "../agent/pipeline/tool-meta.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";

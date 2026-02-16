@@ -191,7 +191,7 @@ export function injectHistoryImagesIntoMessages(
 }
 
 /**
- * Fast path for simple tier: bypasses full pi-coding-agent machinery and uses direct model completion.
+ * Fast path for simple tier: uses SimpleResponderAgent for conversational responses.
  * No tools, no complex event subscriptions, just a simple request/response.
  * This is dramatically faster for simple conversational queries like "hello!" or "how are you?"
  */
@@ -203,58 +203,42 @@ async function runSimpleTierFastPath(
   const promptStartedAt = Date.now();
 
   try {
-    log.info(
-      `[simple-fast-path] calling completeSimple directly (skipping agent session overhead)`,
-    );
-    const callStart = Date.now();
+    log.info(`[simple-fast-path] executing SimpleResponderAgent (agent-based architecture)`);
 
-    // Build minimal system prompt for simple queries
-    const systemPrompt = params.extraSystemPrompt ?? "";
+    // Import agent infrastructure
+    const { SimpleResponderAgent } = await import("../../../agent/agents/simple-responder.js");
+    const { executeAgent } = await import("../../../agent/core/agent-executor.js");
 
-    // Build messages array - just the current prompt, no history needed for simple queries
-    const messages: Array<{ role: "user"; content: string; timestamp: number }> = [
-      {
-        role: "user",
-        content: params.prompt,
-        timestamp: Date.now(),
+    // Create agent instance
+    const agent = new SimpleResponderAgent();
+
+    // Prepare agent input
+    const agentInput = {
+      userIdentifier: params.senderId || params.sessionKey || "unknown",
+      message: params.prompt,
+      context: {
+        userTimezone: "UTC", // TODO: Get from params.config
+        sessionId: params.sessionId,
+        messageChannel: params.messageChannel,
       },
-    ];
+    };
 
-    // Direct model completion using completeSimple (fastest path, no streaming overhead)
-    const { completeSimple } = await import("@mariozechner/pi-ai");
-    const response = await completeSimple(
-      params.model,
-      {
-        systemPrompt,
-        messages,
-      },
-      {
-        apiKey: "no-api-key-needed",
-        maxTokens: 2048,
-        temperature: 0.7,
-      },
-    );
-
-    log.info(`[simple-fast-path] model responded in ${Date.now() - callStart}ms`);
-
-    // Extract text from response
-    let assistantText = "";
-    if (Array.isArray(response.content)) {
-      for (const item of response.content) {
-        if (item.type === "text") {
-          assistantText += item.text;
-        }
-      }
-    }
+    // Execute agent with tracing
+    const agentOutput = await executeAgent(agent, agentInput, {
+      abortSignal: runAbortController.signal,
+      config: params.config,
+    });
 
     const totalMs = Date.now() - promptStartedAt;
     log.info(
       `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${totalMs}`,
     );
     log.info(
-      `model output: ${params.provider}/${params.modelId} response=${assistantText.length} chars`,
+      `model output: ${params.provider}/${params.modelId} response=${agentOutput.response?.length ?? 0} chars`,
     );
-    log.info(`model output: ${assistantText}`);
+    if (agentOutput.response) {
+      log.info(`model output: ${agentOutput.response}`);
+    }
 
     // Note: We don't call onBlockReply here because the final delivery happens via
     // the returned assistantTexts array, which gets converted to payloads by the caller.
@@ -267,7 +251,7 @@ async function runSimpleTierFastPath(
       promptError: undefined,
       sessionIdUsed: params.sessionId,
       messagesSnapshot: [],
-      assistantTexts: [assistantText],
+      assistantTexts: [agentOutput.response ?? ""],
       toolMetas: [],
       lastAssistant: undefined, // Not needed for simple tier
       didSendViaMessagingTool: false,
@@ -275,8 +259,8 @@ async function runSimpleTierFastPath(
       messagingToolSentTargets: [],
       cloudCodeAssistFormatError: false,
       attemptUsage: {
-        input: response.usage?.input ?? 0,
-        output: response.usage?.output ?? 0,
+        input: agentOutput.tokenUsage?.input ?? 0,
+        output: agentOutput.tokenUsage?.output ?? 0,
         cacheWrite: 0,
         cacheRead: 0,
       },
@@ -298,6 +282,7 @@ export async function runEmbeddedAttempt(
   log.debug(
     `embedded run start: runId=${params.runId} sessionId=${params.sessionId} provider=${params.provider} model=${params.modelId} thinking=${params.thinkLevel} messageChannel=${params.messageChannel ?? params.messageProvider ?? "unknown"}`,
   );
+  console.log(`[embedded] user input: ${(params.prompt ?? "").length} chars (complex path)`);
 
   // Fast path for simple tier: bypass full agent machinery and use direct model completion
   if (params.replyTier === "simple") {

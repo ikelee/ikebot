@@ -13,8 +13,8 @@ import {
   hasControlCommand,
   isControlCommandMessage,
   shouldComputeCommandAuthorized,
-} from "../../../agent/pipeline/command-detection.js";
-import { shouldHandleTextCommands } from "../../../agent/pipeline/commands-registry.js";
+} from "../../../agent/pipeline/commands-registry/index.js";
+import { shouldHandleTextCommands } from "../../../agent/pipeline/commands-registry/index.js";
 import {
   formatAgentEnvelope,
   formatInboundEnvelope,
@@ -24,15 +24,15 @@ import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../../agent/pipeline/inbound-debounce.js";
-import { dispatchReplyFromConfig } from "../../../agent/pipeline/reply/dispatch-from-config.js";
-import { finalizeInboundContext } from "../../../agent/pipeline/reply/inbound-context.js";
+import { dispatchReplyFromConfig } from "../../../agent/pipeline/reply/reply-building/dispatch-from-config.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
+import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-building/reply-dispatcher.js";
+import { finalizeInboundContext } from "../../../agent/pipeline/reply/utilities/inbound-context.js";
 import {
   buildMentionRegexes,
   matchesMentionPatterns,
   matchesMentionWithExplicit,
-} from "../../../agent/pipeline/reply/mentions.js";
-import { dispatchReplyWithBufferedBlockDispatcher } from "../../../agent/pipeline/reply/provider-dispatcher.js";
-import { createReplyDispatcherWithTyping } from "../../../agent/pipeline/reply/reply-dispatcher.js";
+} from "../../../agent/pipeline/reply/utilities/mentions.js";
 import {
   removeAckReactionAfterReply,
   shouldAckReaction,

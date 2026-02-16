@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import {
   listNativeCommandSpecs,
   listNativeCommandSpecsForConfig,
-} from "../../agent/pipeline/commands-registry.js";
+} from "../../agent/pipeline/commands-registry/index.js";
 import { resetInboundDedupe } from "../../agent/pipeline/reply/inbound-dedupe.js";
 import { escapeRegExp, formatEnvelopeTimestamp } from "../../test/helpers/envelope-timestamp.js";
 import { expectInboundContextContract } from "../../test/helpers/inbound-contract.js";

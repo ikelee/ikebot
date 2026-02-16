@@ -13,8 +13,8 @@ import {
   resolveStorePath,
   updateSessionStore,
 } from "../../../infra/config/sessions.js";
-import { emitHeartbeatEvent, resolveIndicatorType } from "../../../infra/heartbeat-events.js";
-import { resolveHeartbeatVisibility } from "../../../infra/heartbeat-visibility.js";
+import { emitHeartbeatEvent, resolveIndicatorType } from "../../../infra/heartbeat/index.js";
+import { resolveHeartbeatVisibility } from "../../../infra/heartbeat/index.js";
 import { normalizeMainKey } from "../../../infra/routing/session-key.js";
 import { getChildLogger } from "../../../logging.js";
 import { appendCronStyleCurrentTimeLine } from "../../../runtime/current-time.js";

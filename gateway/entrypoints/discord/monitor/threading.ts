@@ -3,7 +3,7 @@ import { Routes } from "discord-api-types/v10";
 import type { ReplyToMode } from "../../../infra/config/config.js";
 import type { DiscordChannelConfigResolved } from "./allow-list.js";
 import type { DiscordMessageEvent } from "./listeners.js";
-import { createReplyReferencePlanner } from "../../../agent/pipeline/reply/reply-reference.js";
+import { createReplyReferencePlanner } from "../../../agent/pipeline/reply/reply-building/reply-reference.js";
 import { logVerbose } from "../../../globals.js";
 import { buildAgentSessionKey } from "../../../infra/routing/resolve-route.js";
 import { truncateUtf16Safe } from "../../../utils.js";

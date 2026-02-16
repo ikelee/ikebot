@@ -1,7 +1,7 @@
 ---
 summary: "Reply pipeline lifecycle: input → dispatch → phases → output"
 read_when:
-  - Navigating or refactoring the auto-reply pipeline
+  - Navigating or refactoring the reply pipeline
   - Adding new input types, phases, or skills
 title: "Reply pipeline lifecycle"
 ---
@@ -16,39 +16,50 @@ This doc describes how input flows through the system until a reply goes out, an
 2. **Dispatch** — Single entry: `dispatchInboundMessage` / `dispatchReplyFromConfig`. Finalizes context, skips dupes, runs hooks, then invokes the reply resolver.
 3. **Phases** — The reply resolver (`getReplyFromConfig`) runs in stages:
    - **Directives** — Resolve inline directives, model selection, commands allowlist, group/mention rules, think/verbose levels.
-   - **Routing** — Phase 1 classifies stay vs escalate; request router may override provider/model for “stay”. See [Tiered model routing](/reference/tiered-model-routing).
-   - **Run** — Build prompt, run agent (embedded Pi or CLI), handle followups, queue if needed.
+   - **Routing** — Phase 1 classifies stay vs escalate; request router may override provider/model for "stay" and returns tier ("simple" or "complex"). See [Tiered model routing](/reference/tiered-model-routing).
+   - **Run** — Execute agent based on tier:
+     - **Simple tier** — Fast path: no session, minimal prompt, no tools (`runSimpleTierFastPath`)
+     - **Complex tier** — Full agent: build full prompt, create session, load tools, stream (`runEmbeddedAttempt`)
 4. **Output** — The reply dispatcher sends the reply back to the channel (typing, deliver, route-reply).
 
 ## Code layout (lifecycle-oriented)
 
-- **Runner (top)** — `src/auto-reply/runner.ts` — Main entry: `getReplyFromConfig`, `dispatchInboundMessage`, `dispatchReplyFromConfig`. Use this for “run the reply pipeline.”
-- **Shared (top)** — `src/auto-reply/shared/` — Shared types and helpers used across the pipeline: context/templating, types, tokens, thinking, send-policy, etc.
-- **Phases** — `src/auto-reply/reply/phases/`
-  - **directives** — Resolve what model, commands, and options apply: `get-reply-directives*`, `directive-handling*`, `model-selection.ts`, `mentions.ts`, `groups.ts`, etc.
-  - **routing** — Phase 1 (stay/escalate) and request router: `phases/routing/` (phase-1.ts), `request-router.ts`.
-  - **run** — Execute the agent and deliver: `get-reply-run.ts`, `agent-runner*`, `followup-runner.ts`, `queue/`, etc.
-- **Skills** — `src/auto-reply/` — Skill and command registry: `commands-registry.ts`, `commands-registry.types.ts`, `skill-commands.ts`. (Logical group; may move to `skills/` later.)
+- **Pipeline entry** — `gateway/agent/pipeline/dispatch.ts` — Main entry: `dispatchInboundMessage`, `dispatchReplyFromConfig`. Use this for "run the reply pipeline."
+- **Reply building** — `gateway/agent/pipeline/reply/reply-building/`
+  - `get-reply.ts` — Main resolver: `getReplyFromConfig`, calls routing, builds reply
+  - `get-reply-run.ts` — Executes prepared reply: `runPreparedReply`
+  - `dispatch-from-config.ts` — Dispatch wrapper: `dispatchReplyFromConfig`
+- **Shared** — `gateway/agent/pipeline/` — Shared types and helpers: `templating.ts`, `types.ts`, etc.
+- **Agent runner** — `gateway/agent/pipeline/reply/agent-runner/`
+  - **core** — Main runner: `agent-runner.ts` (`runReplyAgent`, `runAgentTurnWithFallback`)
+  - **phases/routing** — Phase 1 (stay/escalate): `phase-1.ts`
+  - **routing** — Request router: `request-router.ts`
+- **Skills & Commands** — `gateway/agent/skills/` — Skill and command registry, skill loading
+- **Runtime** — `gateway/runtime/pi-embedded-runner/` — Agent execution:
+  - `run.ts` — Entry: `runEmbeddedPiAgent`
+  - `run/attempt.ts` — Tier branching: `runEmbeddedAttempt`, `runSimpleTierFastPath`
+  - `system-prompt.ts` — System prompt building for complex tier
 - **Input types** — One folder per channel; each turns inbound events into `MsgContext` and calls dispatch:
-  - `src/telegram/` — Telegram bot
-  - `src/discord/` — Discord bot
-  - `src/signal/` — Signal
-  - `src/line/` — LINE
-  - `src/web/` — WhatsApp Web (and `web/auto-reply/` for channel-specific reply wiring)
-  - `src/imessage/` — iMessage / Blue Bubbles
-- **Routing (session/agent)** — `src/routing/` — Session keys, resolve-route, bindings. Used by channels and pipeline to resolve agent/session. Separate from “phase” routing above.
-- **Agents** — `src/agents/` — System prompt, model selection, Pi embedded runner, tools. Invoked from the “run” phase.
+  - `gateway/telegram/` — Telegram bot
+  - `gateway/discord/` — Discord bot
+  - `gateway/signal/` — Signal
+  - `gateway/line/` — LINE
+  - `gateway/web/` — WhatsApp Web
+  - `gateway/imessage/` — iMessage / Blue Bubbles
+- **Routing (session/agent)** — `gateway/routing/` — Session keys, resolve-route, bindings. Used by channels and pipeline to resolve agent/session. Separate from "phase" routing above.
+- **System prompts** — `gateway/agent/system-prompts-by-stage.ts` — Stage-specific prompts (Phase 1 classifier, etc.)
 - **UI** — `ui/` (repo root) — Control UI, routing tab, gateway UI. All app UI lives in this folder; gateway serves it.
 
 ## File map (current)
 
-| Area       | Paths                                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Runner     | `auto-reply/runner.ts`, `auto-reply/dispatch.ts`, `reply/dispatch-from-config.ts`, `reply/get-reply.ts`                              |
-| Shared     | `auto-reply/shared/` (re-exports), `templating.ts`, `types.ts`, `tokens.ts`, `thinking.ts`                                           |
-| Directives | `reply/get-reply-directives*.ts`, `reply/directive-handling*.ts`, `reply/model-selection.ts`, `reply/mentions.ts`, `reply/groups.ts` |
-| Routing    | `reply/phases/routing/` (phase-1), `reply/request-router.ts`                                                                         |
-| Run        | `reply/get-reply-run.ts`, `reply/agent-runner*.ts`, `reply/followup-runner.ts`, `reply/queue/`                                       |
-| Skills     | `commands-registry.ts`, `commands-registry.types.ts`, `skill-commands.ts`                                                            |
-| Input      | `telegram/`, `discord/`, `signal/`, `line/`, `web/`, `imessage/`                                                                     |
-| Session    | `routing/session-key.ts`, `routing/resolve-route.ts`, `routing/bindings.ts`                                                          |
+| Area           | Paths                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry          | `gateway/agent/pipeline/dispatch.ts`, `gateway/agent/pipeline/reply/dispatch-from-config.ts`                                                            |
+| Reply building | `gateway/agent/pipeline/reply/reply-building/get-reply.ts`, `gateway/agent/pipeline/reply/reply-building/get-reply-run.ts`                              |
+| Shared         | `gateway/agent/pipeline/templating.ts`, `gateway/agent/pipeline/types.ts`                                                                               |
+| Routing        | `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts`, `gateway/agent/pipeline/reply/agent-runner/routing/request-router.ts`            |
+| Agent runner   | `gateway/agent/pipeline/reply/agent-runner/core/agent-runner.ts`                                                                                        |
+| Runtime        | `gateway/runtime/pi-embedded-runner/run.ts`, `gateway/runtime/pi-embedded-runner/run/attempt.ts`, `gateway/runtime/pi-embedded-runner/system-prompt.ts` |
+| Skills         | `gateway/agent/skills/`                                                                                                                                 |
+| Input          | `gateway/telegram/`, `gateway/discord/`, `gateway/signal/`, `gateway/line/`, `gateway/web/`, `gateway/imessage/`                                        |
+| Session        | `gateway/routing/session-key.ts`, `gateway/routing/resolve-route.ts`, `gateway/routing/bindings.ts`                                                     |

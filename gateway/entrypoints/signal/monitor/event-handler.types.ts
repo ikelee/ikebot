@@ -1,4 +1,4 @@
-import type { HistoryEntry } from "../../../agent/pipeline/reply/history.js";
+import type { HistoryEntry } from "../../../agent/pipeline/reply/utilities/history.js";
 import type { ReplyPayload } from "../../../agent/pipeline/types.js";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import type {

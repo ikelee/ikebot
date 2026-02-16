@@ -3,7 +3,7 @@ import type { OpenClawConfig } from "../../infra/config/config.js";
 import {
   extractShortModelName,
   type ResponsePrefixContext,
-} from "../../agent/pipeline/reply/response-prefix-template.js";
+} from "../../agent/pipeline/reply/utilities/response-prefix-template.js";
 import { resolveEffectiveMessagesConfig, resolveIdentityName } from "../../runtime/identity.js";
 
 type ModelSelectionContext = Parameters<NonNullable<GetReplyOptions["onModelSelected"]>>[0];

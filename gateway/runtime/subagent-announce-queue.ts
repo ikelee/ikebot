@@ -1,4 +1,7 @@
-import { type QueueDropPolicy, type QueueMode } from "../agent/pipeline/reply/queue.js";
+import {
+  type QueueDropPolicy,
+  type QueueMode,
+} from "../agent/pipeline/reply/agent-runner/queue.js";
 import { defaultRuntime } from "../runtime.js";
 import {
   type DeliveryContext,

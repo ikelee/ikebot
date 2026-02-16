@@ -5,17 +5,17 @@ import type { resolveAgentRoute } from "../../../../infra/routing/resolve-route.
 import type { getChildLogger } from "../../../../logging.js";
 import type { WebInboundMsg } from "../types.js";
 import { resolveChunkMode, resolveTextChunkLimit } from "../../../../agent/pipeline/chunk.js";
-import { shouldComputeCommandAuthorized } from "../../../../agent/pipeline/command-detection.js";
+import { shouldComputeCommandAuthorized } from "../../../../agent/pipeline/commands-registry/index.js";
 import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
 } from "../../../../agent/pipeline/envelope.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../../../agent/pipeline/reply/reply-building/provider-dispatcher.js";
 import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
-} from "../../../../agent/pipeline/reply/history.js";
-import { finalizeInboundContext } from "../../../../agent/pipeline/reply/inbound-context.js";
-import { dispatchReplyWithBufferedBlockDispatcher } from "../../../../agent/pipeline/reply/provider-dispatcher.js";
+} from "../../../../agent/pipeline/reply/utilities/history.js";
+import { finalizeInboundContext } from "../../../../agent/pipeline/reply/utilities/inbound-context.js";
 import { logVerbose, shouldLogVerbose } from "../../../../globals.js";
 import { resolveMarkdownTableMode } from "../../../../infra/config/markdown-tables.js";
 import {

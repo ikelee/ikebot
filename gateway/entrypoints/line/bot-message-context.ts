@@ -5,7 +5,7 @@ import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
 } from "../../agent/pipeline/envelope.js";
-import { finalizeInboundContext } from "../../agent/pipeline/reply/inbound-context.js";
+import { finalizeInboundContext } from "../../agent/pipeline/reply/utilities/inbound-context.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { recordChannelActivity } from "../../infra/channel-activity.js";
 import {

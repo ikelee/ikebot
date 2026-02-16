@@ -3,7 +3,7 @@ import type { OpenClawConfig } from "../../infra/config/config.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { listAgentIds, resolveAgentWorkspaceDir } from "../../runtime/agent-scope.js";
 import { buildWorkspaceSkillCommandSpecs, type SkillCommandSpec } from "../../runtime/skills.js";
-import { listChatCommands } from "./commands-registry.js";
+import { listChatCommands } from "./commands-registry/index.js";
 
 function resolveReservedCommandNames(): Set<string> {
   const reserved = new Set<string>();

@@ -2,9 +2,9 @@ import type { LogLevel } from "../../../logging/levels.js";
 
 type ShouldLogVerbose = typeof import("../../../globals.js").shouldLogVerbose;
 type DispatchReplyWithBufferedBlockDispatcher =
-  typeof import("../../../agent/pipeline/reply/provider-dispatcher.js").dispatchReplyWithBufferedBlockDispatcher;
+  typeof import("../../../agent/pipeline/reply/reply-building/provider-dispatcher.js").dispatchReplyWithBufferedBlockDispatcher;
 type CreateReplyDispatcherWithTyping =
-  typeof import("../../../agent/pipeline/reply/reply-dispatcher.js").createReplyDispatcherWithTyping;
+  typeof import("../../../agent/pipeline/reply/reply-building/reply-dispatcher.js").createReplyDispatcherWithTyping;
 type ResolveEffectiveMessagesConfig =
   typeof import("../../../runtime/identity.js").resolveEffectiveMessagesConfig;
 type ResolveHumanDelayConfig =
@@ -20,11 +20,11 @@ type FetchRemoteMedia = typeof import("../../../media/fetch.js").fetchRemoteMedi
 type SaveMediaBuffer = typeof import("../../../media/store.js").saveMediaBuffer;
 type TextToSpeechTelephony = typeof import("../../../runtime/tts/tts.js").textToSpeechTelephony;
 type BuildMentionRegexes =
-  typeof import("../../../agent/pipeline/reply/mentions.js").buildMentionRegexes;
+  typeof import("../../../agent/pipeline/reply/utilities/mentions.js").buildMentionRegexes;
 type MatchesMentionPatterns =
-  typeof import("../../../agent/pipeline/reply/mentions.js").matchesMentionPatterns;
+  typeof import("../../../agent/pipeline/reply/utilities/mentions.js").matchesMentionPatterns;
 type MatchesMentionWithExplicit =
-  typeof import("../../../agent/pipeline/reply/mentions.js").matchesMentionWithExplicit;
+  typeof import("../../../agent/pipeline/reply/utilities/mentions.js").matchesMentionWithExplicit;
 type ShouldAckReaction =
   typeof import("../../../entrypoints/channels/ack-reactions.js").shouldAckReaction;
 type RemoveAckReactionAfterReply =
@@ -52,17 +52,17 @@ type ResolveMarkdownTableMode =
   typeof import("../../../infra/config/markdown-tables.js").resolveMarkdownTableMode;
 type ConvertMarkdownTables = typeof import("../../../markdown/tables.js").convertMarkdownTables;
 type HasControlCommand =
-  typeof import("../../../agent/pipeline/command-detection.js").hasControlCommand;
+  typeof import("../../../agent/pipeline/commands-registry/index.js").hasControlCommand;
 type IsControlCommandMessage =
-  typeof import("../../../agent/pipeline/command-detection.js").isControlCommandMessage;
+  typeof import("../../../agent/pipeline/commands-registry/index.js").isControlCommandMessage;
 type ShouldComputeCommandAuthorized =
-  typeof import("../../../agent/pipeline/command-detection.js").shouldComputeCommandAuthorized;
+  typeof import("../../../agent/pipeline/commands-registry/index.js").shouldComputeCommandAuthorized;
 type ShouldHandleTextCommands =
-  typeof import("../../../agent/pipeline/commands-registry.js").shouldHandleTextCommands;
+  typeof import("../../../agent/pipeline/commands-registry/index.js").shouldHandleTextCommands;
 type DispatchReplyFromConfig =
-  typeof import("../../../agent/pipeline/reply/dispatch-from-config.js").dispatchReplyFromConfig;
+  typeof import("../../../agent/pipeline/reply/reply-building/dispatch-from-config.js").dispatchReplyFromConfig;
 type FinalizeInboundContext =
-  typeof import("../../../agent/pipeline/reply/inbound-context.js").finalizeInboundContext;
+  typeof import("../../../agent/pipeline/reply/utilities/inbound-context.js").finalizeInboundContext;
 type FormatAgentEnvelope = typeof import("../../../agent/pipeline/envelope.js").formatAgentEnvelope;
 type FormatInboundEnvelope =
   typeof import("../../../agent/pipeline/envelope.js").formatInboundEnvelope;

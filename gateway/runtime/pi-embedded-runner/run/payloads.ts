@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { ReasoningLevel, VerboseLevel } from "../../../agent/pipeline/thinking.js";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import type { ToolResultFormat } from "../../pi-embedded-subscribe.js";
-import { parseReplyDirectives } from "../../../agent/pipeline/reply/reply-directives.js";
+import { parseReplyDirectives } from "../../../agent/pipeline/reply/reply-building/reply-directives.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../agent/pipeline/tokens.js";
 import { formatToolAggregate } from "../../../agent/pipeline/tool-meta.js";
 import {
