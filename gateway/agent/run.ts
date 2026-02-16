@@ -17,10 +17,11 @@ import { emitAgentEvent } from "../infra/agent-events.js";
 import { logModelIo } from "../logging/model-io.js";
 import { resolveModelRefFromString, parseModelRef } from "../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
+import { resolveAgentDir } from "../runtime/agent-scope.js";
 import { log } from "../runtime/pi-embedded-runner/logger.js";
 import { resolveModel } from "../runtime/pi-embedded-runner/model.js";
-import { RouterAgent, type RouterAgentModelResolver } from "./agents/router.js";
-import { SimpleResponderAgent } from "./agents/simple-responder.js";
+import { RouterAgent, type RouterAgentModelResolver } from "./agents/classifier/agent.js";
+import { SimpleResponderAgent } from "./agents/simple-responder/agent.js";
 import { executeAgent } from "./core/agent-executor.js";
 import { runPreparedReply } from "./pipeline/reply/reply-building/get-reply-run.js";
 
@@ -84,7 +85,12 @@ export async function runAgentFlow(
     { recordTrace: true },
   );
 
-  const tier = routerOutput.decision === "stay" ? "simple" : "complex";
+  const tier =
+    routerOutput.decision === "stay"
+      ? "simple"
+      : routerOutput.decision === "calendar"
+        ? "calendar"
+        : "complex";
   const runId = crypto.randomUUID();
 
   console.log(`[runAgentFlow] Router model call 1: decision=${routerOutput.decision} tier=${tier}`);
@@ -165,12 +171,18 @@ export async function runAgentFlow(
     };
   }
 
-  // ─── STEP 2b: Complex path → Invoke runPreparedReply (full agent) ────────
-  console.log(`[runAgentFlow] complex path: invoking runPreparedReply`);
+  // ─── STEP 2b: Complex or calendar path → Invoke runPreparedReply ─────────
+  const targetAgentId = tier === "calendar" ? "calendar" : params.runPreparedReplyParams.agentId;
+  const targetAgentDir =
+    tier === "calendar" ? resolveAgentDir(cfg, "calendar") : params.runPreparedReplyParams.agentDir;
+
+  console.log(`[runAgentFlow] ${tier} path: invoking runPreparedReply (agent=${targetAgentId})`);
   return runPreparedReply({
     ...params.runPreparedReplyParams,
+    agentId: targetAgentId,
+    agentDir: targetAgentDir,
     provider: effectiveProvider,
     model: effectiveModel,
-    replyTier: "complex",
+    replyTier: tier === "calendar" ? "complex" : "complex",
   });
 }

@@ -104,7 +104,7 @@ reply/
 **Key files**:
 
 - `agent-runner.ts` - Main orchestrator
-- `request-router.ts` - Classifies requests (simple/complex)
+- Classification via `gateway/agent/run.ts` (RouterAgent)
 - `routing/`, `phases/` - Multi-phase routing logic
 - `session*.ts` - Session lifecycle
 - `abort.ts` - Cancellation handling
@@ -178,7 +178,7 @@ From any subfolder to:
 
 **Key Flows**:
 
-1. **Request → Reply**: `get-reply.ts` → `request-router.ts` → `agent-runner.ts`
+1. **Request → Reply**: `get-reply.ts` → `runAgentFlow` (run.ts) → `agent-runner.ts`
 2. **Commands**: `commands.ts` → `commands-*.ts` handlers
 3. **Streaming**: `streaming/block-reply-pipeline.ts` → `typing.ts`
 

@@ -29,8 +29,6 @@ export default defineConfig({
     setupFiles: ["test/setup.ts"],
     exclude: [
       "dist/**",
-      "apps/macos/**",
-      "apps/macos/.build/**",
       "**/node_modules/**",
       "**/vendor/**",
       "dist/OpenClaw.app/**",

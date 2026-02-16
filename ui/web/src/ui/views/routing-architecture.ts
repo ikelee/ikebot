@@ -1,7 +1,7 @@
 /**
  * Routing architecture: agents, relationships, and prompts.
- * Mirrors gateway/agent structure. Prompts kept in sync with gateway/agent/system-prompts-by-stage.ts
- * and gateway/agent/agents/simple-responder.ts.
+ * Mirrors gateway/agent structure. Prompts kept in sync with gateway/agent/agents/classifier/prompt.ts
+ * and gateway/agent/agents/simple-responder/simple-responder.ts.
  */
 
 export type RoutingAgentTier = "small" | "medium" | "large";

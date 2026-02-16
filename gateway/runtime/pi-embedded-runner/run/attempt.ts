@@ -190,88 +190,6 @@ export function injectHistoryImagesIntoMessages(
   return didMutate;
 }
 
-/**
- * Fast path for simple tier: uses SimpleResponderAgent for conversational responses.
- * No tools, no complex event subscriptions, just a simple request/response.
- * This is dramatically faster for simple conversational queries like "hello!" or "how are you?"
- */
-async function runSimpleTierFastPath(
-  params: EmbeddedRunAttemptParams,
-  resolvedWorkspace: string,
-  runAbortController: AbortController,
-): Promise<EmbeddedRunAttemptResult> {
-  const promptStartedAt = Date.now();
-
-  try {
-    log.info(`[simple-fast-path] executing SimpleResponderAgent (agent-based architecture)`);
-
-    // Import agent infrastructure
-    const { SimpleResponderAgent } = await import("../../../agent/agents/simple-responder.js");
-    const { executeAgent } = await import("../../../agent/core/agent-executor.js");
-
-    // Create agent instance
-    const agent = new SimpleResponderAgent();
-
-    // Prepare agent input
-    const agentInput = {
-      userIdentifier: params.senderId || params.sessionKey || "unknown",
-      message: params.prompt,
-      context: {
-        userTimezone: "UTC", // TODO: Get from params.config
-        sessionId: params.sessionId,
-        messageChannel: params.messageChannel,
-      },
-    };
-
-    // Execute agent with tracing
-    const agentOutput = await executeAgent(agent, agentInput, {
-      abortSignal: runAbortController.signal,
-      config: params.config,
-    });
-
-    const totalMs = Date.now() - promptStartedAt;
-    log.info(
-      `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${totalMs}`,
-    );
-    log.info(
-      `model output: ${params.provider}/${params.modelId} response=${agentOutput.response?.length ?? 0} chars`,
-    );
-    if (agentOutput.response) {
-      log.info(`model output: ${agentOutput.response}`);
-    }
-
-    // Note: We don't call onBlockReply here because the final delivery happens via
-    // the returned assistantTexts array, which gets converted to payloads by the caller.
-    // Calling onBlockReply would cause duplicate delivery or interfere with the normal flow.
-    log.info(`[simple-fast-path] returning assistantTexts for payload building`);
-
-    return {
-      aborted: false,
-      timedOut: false,
-      promptError: undefined,
-      sessionIdUsed: params.sessionId,
-      messagesSnapshot: [],
-      assistantTexts: [agentOutput.response ?? ""],
-      toolMetas: [],
-      lastAssistant: undefined, // Not needed for simple tier
-      didSendViaMessagingTool: false,
-      messagingToolSentTexts: [],
-      messagingToolSentTargets: [],
-      cloudCodeAssistFormatError: false,
-      attemptUsage: {
-        input: agentOutput.tokenUsage?.input ?? 0,
-        output: agentOutput.tokenUsage?.output ?? 0,
-        cacheWrite: 0,
-        cacheRead: 0,
-      },
-      compactionCount: 0,
-    };
-  } catch (err) {
-    log.error(`[simple-fast-path] error: ${err}`);
-    throw err;
-  }
-}
-
 export async function runEmbeddedAttempt(
   params: EmbeddedRunAttemptParams,
 ): Promise<EmbeddedRunAttemptResult> {
@@ -283,12 +201,6 @@ export async function runEmbeddedAttempt(
     `embedded run start: runId=${params.runId} sessionId=${params.sessionId} provider=${params.provider} model=${params.modelId} thinking=${params.thinkLevel} messageChannel=${params.messageChannel ?? params.messageProvider ?? "unknown"}`,
   );
   console.log(`[embedded] user input: ${(params.prompt ?? "").length} chars (complex path)`);
-
-  // Fast path for simple tier: bypass full agent machinery and use direct model completion
-  if (params.replyTier === "simple") {
-    log.info(`[timing] using simple tier fast path (bypassing full agent session)`);
-    return runSimpleTierFastPath(params, resolvedWorkspace, runAbortController);
-  }
 
   await fs.mkdir(resolvedWorkspace, { recursive: true });
 
@@ -490,8 +402,8 @@ export async function runEmbeddedAttempt(
     });
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
-    // Build system prompt - at this point we're always in complex tier
-    // (simple tier already took the fast path at the start of runEmbeddedAttempt)
+    // Build system prompt - runEmbeddedAttempt is only used for complex tier
+    // (simple tier is handled in runAgentFlow before runPreparedReply is ever called)
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,

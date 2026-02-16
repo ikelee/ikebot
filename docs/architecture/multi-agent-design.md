@@ -159,7 +159,7 @@ Each arrow represents a **clear handoff** with defined input/output contracts.
 
 **Current File:** `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts`
 
-**System Prompt:** `gateway/agent/system-prompts-by-stage.ts` → `PHASE_1_CLASSIFIER_SYSTEM_PROMPT`
+**System Prompt:** `gateway/agent/agents/classifier/prompt.ts` → `CLASSIFIER_SYSTEM_PROMPT`
 
 **Decision Boundaries:**
 

@@ -12,7 +12,7 @@ These are the **only files** that need import path updates when we move things. 
 
 | File                                                  | Imports from agent-runner                                 |
 | ----------------------------------------------------- | --------------------------------------------------------- |
-| **reply-building/get-reply.ts**                       | `request-router`, `session-reset-model`, `session`        |
+| **reply-building/get-reply.ts**                       | `runAgentFlow` (run.ts), `session-reset-model`, `session` |
 | **reply-building/get-reply-run.ts**                   | `agent-runner`, `queue`, `route-reply`, `session-updates` |
 | **reply-building/dispatch-from-config.ts**            | `abort`, `route-reply`                                    |
 | **reply-building/get-reply-inline-actions.ts**        | `abort`                                                   |
@@ -47,15 +47,13 @@ These are the **only files** that need import path updates when we move things. 
 
 ### Leaf Files (few internal importers – safe to nest)
 
-| File                       | Imported by (internal)               | Role                                 |
-| -------------------------- | ------------------------------------ | ------------------------------------ |
-| **session-reset-model.ts** | get-reply.ts (external only!)        | Model reset – **pure leaf**          |
-| **session-usage.ts**       | session-run-accounting only          | Usage calc – leaf                    |
-| **memory-flush.ts**        | agent-runner-memory only             | Memory flush – leaf                  |
-| **request-router.ts**      | get-reply.ts (external), phases only | Classification – leaf from reply POV |
-| **followup-runner.ts**     | agent-runner only                    | Followup execution – leaf            |
-| **exec.ts** + **exec/**    | utilities/directives (external)      | Exec directive – leaf                |
-| **phases/**                | request-router only                  | Phase routing – already nested       |
+| File                       | Imported by (internal)          | Role                        |
+| -------------------------- | ------------------------------- | --------------------------- |
+| **session-reset-model.ts** | get-reply.ts (external only!)   | Model reset – **pure leaf** |
+| **session-usage.ts**       | session-run-accounting only     | Usage calc – leaf           |
+| **memory-flush.ts**        | agent-runner-memory only        | Memory flush – leaf         |
+| **followup-runner.ts**     | agent-runner only               | Followup execution – leaf   |
+| **exec.ts** + **exec/**    | utilities/directives (external) | Exec directive – leaf       |
 
 ### Mid-Level (imported by hub, import from leaves)
 
@@ -101,9 +99,8 @@ Files with similar names should live together. Current flat list is cognitively 
 
 **Theme**: Queue management. Already well-organized.
 
-### Cluster D: Routing & control (4 files)
+### Cluster D: Routing & control (3 files)
 
-- request-router.ts
 - route-reply.ts
 - abort.ts
 - followup-runner.ts
@@ -117,13 +114,6 @@ Files with similar names should live together. Current flat list is cognitively 
 - exec/directive.ts
 
 **Theme**: Execution directives. Already nested.
-
-### Cluster F: Phases (already in phases/)
-
-- phases/routing/index.ts
-- phases/routing/phase-1.ts
-
-**Theme**: Multi-phase routing. Already nested.
 
 ---
 
@@ -155,7 +145,6 @@ agent-runner/
 │   └── session-usage.test.ts
 │
 ├── routing/                     # request-router, route-reply, abort, followup, memory-flush + tests
-│   ├── request-router.ts
 │   ├── route-reply.ts
 │   ├── abort.ts
 │   ├── followup-runner.ts
@@ -164,7 +153,6 @@ agent-runner/
 │   ├── followup-runner.test.ts
 │   ├── memory-flush.test.ts
 │   ├── reply-routing.test.ts
-│   ├── request-router.test.ts
 │   └── route-reply.test.ts
 │
 ├── queue.ts                     # Barrel
@@ -175,7 +163,6 @@ agent-runner/
 │
 ├── exec.ts
 ├── exec/                        # Execution directives
-├── phases/                      # Multi-phase routing
 ├── IMPORT_GRAPH.md
 └── README.md
 ```
@@ -232,17 +219,16 @@ Run `pnpm build` and `pnpm test:e2e gateway/agent/pipeline/reply/e2e`.
                          │
          ┌───────────────┼───────────────┐
          ▼               ▼               ▼
-   request-router    session-reset   session
-         │               (leaf)      (hub)
+   runAgentFlow      session-reset   session
+   (run.ts)              (leaf)      (hub)
          │                              │
-         ▼                              │
-   phases/routing              session-updates
-                                      │
-                                      ▼
-                              session-run-accounting
-                                      │
-                                      ▼
-                              session-usage (leaf)
+         │                     session-updates
+         │                              │
+         │                              ▼
+         │                     session-run-accounting
+         │                              │
+         │                              ▼
+         │                     session-usage (leaf)
 
    get-reply-run.ts
          │

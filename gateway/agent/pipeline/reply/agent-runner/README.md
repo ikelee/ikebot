@@ -35,7 +35,6 @@ agent-runner/
 │   └── *.test.ts                   # 4 test files co-located
 │
 ├── routing/                         # Request flow control + tests
-│   ├── request-router.ts           # Request classification (simple/complex)
 │   ├── route-reply.ts              # Reply routing logic
 │   ├── abort.ts                    # Request cancellation
 │   ├── followup-runner.ts          # Followup execution
@@ -190,20 +189,7 @@ Sessions maintain conversation state and history.
 
 ### Routing & Classification
 
-#### `request-router.ts`
-
-**Request classification.**
-
-**Determines**:
-
-- Simple vs. complex requests
-- Fast path eligibility
-- Routing strategy
-
-**Classification logic**:
-
-- Simple: "what's the weather", "hello", short questions
-- Complex: code generation, multi-step reasoning, tool use
+Classification (stay/escalate/calendar) lives in `gateway/agent/run.ts` via RouterAgent. See `gateway/agent/agents/classifier/`.
 
 #### `route-reply.ts`
 
@@ -333,24 +319,6 @@ const result = await runReplyAgent({
 });
 ```
 
-### Checking Request Classification
-
-```typescript
-import { classifyRequest } from "./agent-runner/routing/request-router.js";
-
-const tier = await classifyRequest({
-  message: userMessage,
-  history: sessionHistory,
-  cfg,
-});
-
-if (tier === "simple") {
-  // Use fast path
-} else {
-  // Use full agent
-}
-```
-
 ### Managing Sessions
 
 ```typescript
@@ -400,7 +368,7 @@ pnpm test gateway/agent/pipeline/reply/agent-runner/session
 
 ### Separation of Concerns
 
-- **Classification** (`request-router.ts`) - Separate from execution
+- **Classification** (`gateway/agent/run.ts` via RouterAgent) - Separate from execution
 - **Execution** (`agent-runner-execution.ts`) - Separate from orchestration
 - **Session** (`session*.ts`) - Separate from execution
 - **Queue** (`queue/`) - Separate from core execution

@@ -65,7 +65,7 @@ Phase 1 is fast and cheap: small local model, minimal prompt. If we can't clearl
 - Defines "escalate": unclear intent, or request for script execution, specialized agents, plans, scheduling, or anything beyond Phase 1 clearance.
 - Asks for exactly one word: **stay** or **escalate**.
 
-Implemented in `gateway/agent/system-prompts-by-stage.ts` as `PHASE_1_CLASSIFIER_SYSTEM_PROMPT` / `getSystemPromptForStage("classify")`. When Phase 1 calls an LLM, **only this prompt** is sent—never the full agent prompt.
+Implemented in `gateway/agent/agents/classifier/prompt.ts` as `CLASSIFIER_SYSTEM_PROMPT`. When Phase 1 calls an LLM, **only this prompt** is sent—never the full agent prompt.
 
 ### Output
 
@@ -78,7 +78,7 @@ The LLM-based classifier returns the decision, which the router converts to tier
 
 - **`gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts`** — Phase 1 only. Input: body. Output: **stay** | **escalate**. Contains LLM-based classification using `getSystemPromptForStage("classify")`.
 - **`gateway/agent/pipeline/reply/agent-runner/routing/request-router.ts`** — Orchestrator: calls Phase 1, then applies config (e.g. override provider/model when stay and routing enabled), emits events, returns result with tier ("simple" or "complex").
-- **`gateway/agent/system-prompts-by-stage.ts`** — Single source of truth for Phase 1 (and later Phase 2) system prompt text (`PHASE_1_CLASSIFIER_SYSTEM_PROMPT`).
+- **`gateway/agent/agents/classifier/prompt.ts`** — Single source of truth for classifier system prompt (`CLASSIFIER_SYSTEM_PROMPT`).
 
 ---
 
@@ -116,7 +116,7 @@ When Phase 1 returns **escalate**, we go to Phase 2. Details TBD.
 ## Implementation status
 
 - **Phase 1: ✅ IMPLEMENTED**
-  - **Classification:** LLM-based classification in `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts` using `PHASE_1_CLASSIFIER_SYSTEM_PROMPT` from `gateway/agent/system-prompts-by-stage.ts`.
+  - **Classification:** LLM-based classification in `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts` using `CLASSIFIER_SYSTEM_PROMPT` from `gateway/agent/agents/classifier/prompt.ts`.
   - **Router:** `routeRequest` in `gateway/agent/pipeline/reply/agent-runner/routing/request-router.ts` calls Phase 1, applies config, returns tier ("simple" or "complex") and optional provider/model override.
   - **Integration:** `routeRequest` is called from `gateway/agent/pipeline/reply/reply-building/get-reply.ts` and tier flows through `runPreparedReply` → `runReplyAgent` → `queueEmbeddedPiMessage` → `runEmbeddedPiAgent` → `runEmbeddedAttempt`.
   - **Execution paths:**

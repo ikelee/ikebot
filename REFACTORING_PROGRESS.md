@@ -25,7 +25,7 @@
 
 ### 2. First Agent Implementation
 
-- [x] `gateway/agent/agents/simple-responder.ts` - SimpleResponderAgent (Agent 3a):
+- [x] `gateway/agent/agents/simple-responder/simple-responder.ts` - SimpleResponderAgent (Agent 3a):
   - Model Tier: Small (3B-7B local)
   - Purpose: Simple conversational responses
   - Access: User timezone only, no tools
@@ -206,9 +206,7 @@ interface AgentMessage {
 - `gateway/agent/core/agent-registry.ts`
 - `gateway/agent/core/agent-executor.ts`
 - `gateway/agent/core/index.ts`
-- `gateway/agent/agents/simple-responder.ts`
-- `gateway/agent/agents/simple-responder.test.ts`
-- `gateway/agent/agents/index.ts`
+- `gateway/agent/agents/simple-responder/simple-responder.ts`
 - `gateway/agent/AGENT_ARCHITECTURE.md`
 
 ### Modified Files (3)
@@ -224,10 +222,8 @@ interface AgentMessage {
 
 ## Testing Status
 
-- ✅ SimpleResponderAgent config tests (4/4 passing)
-- ⚠️ SimpleResponderAgent execution tests (need LLM mocking)
-- 🔴 Integration tests (not yet created)
-- 🔴 E2E tests (not yet created)
+- Simple path covered by reply/simple-path and agent e2e tests (no separate SimpleResponderAgent unit tests)
+- Agent tests reserved for complex path / big task flows
 
 ## Questions & Decisions
 

@@ -21,10 +21,15 @@ gateway/agent/
 │   ├── agent-registry.ts   # Agent registry for tracking and stats
 │   ├── agent-executor.ts   # Execute agents with tracing
 │   └── index.ts            # Core exports
-├── agents/                  # Concrete agent implementations
-│   ├── simple-responder.ts # Agent 3a: Simple Responder
-│   ├── simple-responder.test.ts
-│   └── index.ts
+├── agents/                  # Concrete agent implementations (each: agent.ts + prompt.ts)
+│   ├── classifier/         # Agent 2: Router (Phase 1 classifier)
+│   │   ├── agent.ts        # RouterAgent
+│   │   ├── prompt.ts       # CLASSIFIER_SYSTEM_PROMPT
+│   │   └── agent.test.ts
+│   ├── simple-responder/   # Agent 3a: Simple Responder
+│   │   ├── agent.ts        # SimpleResponderAgent
+│   │   └── prompt.ts       # buildSimpleResponderPrompt
+│   └── ...
 └── AGENT_ARCHITECTURE.md   # This file
 ```
 
@@ -139,7 +144,7 @@ console.log(output.response);
 
 ### Agent 3a: Simple Responder
 
-- **File:** `agents/simple-responder.ts`
+- **File:** `agents/simple-responder/agent.ts`
 - **Model Tier:** 🟢 Small (3B-7B local)
 - **Cost:** <$0.0001/request
 - **Purpose:** Generate conversational responses to simple inquiries

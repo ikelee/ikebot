@@ -171,7 +171,7 @@ This doc groups all top-level folders under **gateway/** (the server and pipelin
 ## Quick hierarchy (grouped)
 
 ```
-Agent & pipeline    agent (pipeline, system-prompts-by-stage), runtime (Pi, tools, sandbox, understanding, TTS), models
+Agent & pipeline    agent (pipeline, agents/classifier, agents/simple-responder), runtime (Pi, tools, sandbox, understanding, TTS), models
 Channels            telegram, discord, signal, slack, line, web, imessage, whatsapp, channels
 Entrypoints         entrypoints/ (docs); channels and entry at gateway root
 Gateway/runtime     server, macos, daemon; TUI under ui/tui

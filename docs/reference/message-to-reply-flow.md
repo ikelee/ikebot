@@ -198,7 +198,7 @@ The complex tier goes through **11 phases** with **56 steps total**. Here's the 
 ## 3. Where the "small" system prompt lives and how it's used
 
 - **Small prompt (Phase 1 classifier):**  
-  `gateway/agent/system-prompts-by-stage.ts` → `PHASE_1_CLASSIFIER_SYSTEM_PROMPT` / `getSystemPromptForStage("classify")`.  
+  `gateway/agent/agents/classifier/prompt.ts` → `CLASSIFIER_SYSTEM_PROMPT`.  
   Used for: LLM-based classification of user message as **stay** (simple tier) or **escalate** (complex tier).
 
 - **Phase 1 decision (LLM-based):**  
@@ -232,7 +232,7 @@ So the small prompt is used **twice**:
 
 | Component                  | File                                                                  | Function/Export                                       |
 | -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------- |
-| Phase 1 classifier prompt  | `gateway/agent/system-prompts-by-stage.ts`                            | `PHASE_1_CLASSIFIER_SYSTEM_PROMPT`                    |
+| Phase 1 classifier prompt  | `gateway/agent/agents/classifier/prompt.ts`                           | `CLASSIFIER_SYSTEM_PROMPT`                            |
 | Phase 1 LLM classification | `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts` | `phase1Classify({ body, cfg })`                       |
 | Request router             | `gateway/agent/pipeline/reply/agent-runner/routing/request-router.ts` | `routeRequest(...)`                                   |
 | Routing invocation         | `gateway/agent/pipeline/reply/reply-building/get-reply.ts`            | `routeRequest(...)` called after directive resolution |

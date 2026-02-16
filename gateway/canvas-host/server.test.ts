@@ -206,7 +206,7 @@ describe("canvas host", () => {
 
   it("serves the gateway-hosted A2UI scaffold", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-canvas-"));
-    const a2uiRoot = path.resolve(process.cwd(), "src/canvas-host/a2ui");
+    const a2uiRoot = path.resolve(process.cwd(), "gateway/canvas-host/a2ui");
     const bundlePath = path.join(a2uiRoot, "a2ui.bundle.js");
     let createdBundle = false;
 

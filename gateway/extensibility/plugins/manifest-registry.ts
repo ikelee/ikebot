@@ -162,15 +162,12 @@ export function loadPluginManifestRegistry(params: {
     }
 
     if (seenIds.has(manifest.id)) {
-      diagnostics.push({
-        level: "warn",
-        pluginId: manifest.id,
-        source: candidate.source,
-        message: `duplicate plugin id detected; later plugin may be overridden (${candidate.source})`,
-      });
-    } else {
-      seenIds.add(manifest.id);
+      // Skip duplicate plugin id silently; first instance wins. Do not add a diagnostic
+      // to avoid config warnings when the same plugin appears from multiple sources
+      // (e.g. bundled extensions/zalo and ~/.openclaw/extensions/zalo).
+      continue;
     }
+    seenIds.add(manifest.id);
 
     const configSchema = manifest.configSchema;
     const manifestMtime = safeStatMtimeMs(manifestRes.manifestPath);

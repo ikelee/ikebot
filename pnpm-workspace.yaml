@@ -1,7 +1,6 @@
 packages:
   - .
   - ui/web
-  - packages/*
   - extensions/*
 
 onlyBuiltDependencies:

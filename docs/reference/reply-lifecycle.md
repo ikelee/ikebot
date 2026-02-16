@@ -47,7 +47,7 @@ This doc describes how input flows through the system until a reply goes out, an
   - `gateway/web/` — WhatsApp Web
   - `gateway/imessage/` — iMessage / Blue Bubbles
 - **Routing (session/agent)** — `gateway/routing/` — Session keys, resolve-route, bindings. Used by channels and pipeline to resolve agent/session. Separate from "phase" routing above.
-- **System prompts** — `gateway/agent/system-prompts-by-stage.ts` — Stage-specific prompts (Phase 1 classifier, etc.)
+- **System prompts** — `gateway/agent/agents/classifier/prompt.ts` — Classifier prompt
 - **UI** — `ui/` (repo root) — Control UI, routing tab, gateway UI. All app UI lives in this folder; gateway serves it.
 
 ## File map (current)

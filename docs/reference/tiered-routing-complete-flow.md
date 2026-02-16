@@ -86,7 +86,7 @@ Every incoming message goes through **Phase 1 routing** which classifies it as "
 │   │   │       phases/routing/phase-1.ts                       │   │   │
 │   │   │   - Makes LLM call with PHASE_1_CLASSIFIER_SYSTEM_    │   │   │
 │   │   │     PROMPT                                            │   │   │
-│   │   │     (from gateway/agent/system-prompts-by-stage.ts)   │   │   │
+│   │   │     (from gateway/agent/agents/classifier/prompt.ts)   │   │   │
 │   │   │   - Returns: { decision: "stay" | "escalate" }        │   │   │
 │   │   └───────────────────────────────────────────────────────┘   │   │
 │   │   - Applies routing config                                     │   │
@@ -602,7 +602,7 @@ The complex path is **~10x slower** but provides the full agent experience with 
 
 | File                                                                  | Purpose                                                             |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `gateway/agent/system-prompts-by-stage.ts`                            | Contains `PHASE_1_CLASSIFIER_SYSTEM_PROMPT`                         |
+| `gateway/agent/agents/classifier/prompt.ts`                           | Contains `CLASSIFIER_SYSTEM_PROMPT`                                 |
 | `gateway/agent/pipeline/reply/agent-runner/phases/routing/phase-1.ts` | LLM-based classification: returns "stay" or "escalate"              |
 | `gateway/agent/pipeline/reply/agent-runner/routing/request-router.ts` | Orchestrates Phase 1, applies config, returns tier + provider/model |
 
