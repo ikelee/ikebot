@@ -28,14 +28,14 @@ apps/android/.cxx/
 apps/macos/.build/
 apps/shared/MoltbotKit/.build/
 **/ModuleCache/
-bin/
-bin/clawdbot-mac
-bin/docs-list
+/bin/
+/bin/clawdbot-mac
+/bin/docs-list
 apps/macos/.build-local/
 apps/macos/.swiftpm/
 apps/shared/MoltbotKit/.swiftpm/
 /Core/
-vendor/
+/vendor/
 **/*.bun-build
 
 # Vendor build artifacts
@@ -57,4 +57,4 @@ USER.md
 /memory/
 .agent/*.json
 !.agent/workflows/
-local/
+/local/
