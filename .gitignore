@@ -34,7 +34,7 @@ bin/docs-list
 apps/macos/.build-local/
 apps/macos/.swiftpm/
 apps/shared/MoltbotKit/.swiftpm/
-Core/
+/Core/
 vendor/
 **/*.bun-build
 
