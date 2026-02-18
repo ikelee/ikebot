@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import type { EventLogEntry } from "../app-events.ts";
+import type { AgentsListResult } from "../types.ts";
 import { formatEventPayload } from "../presenter.ts";
 
 export type DebugProps = {
@@ -8,6 +9,7 @@ export type DebugProps = {
   health: Record<string, unknown> | null;
   models: unknown[];
   heartbeat: unknown;
+  agentsList: AgentsListResult | null;
   eventLog: EventLogEntry[];
   callMethod: string;
   callParams: string;
@@ -17,6 +19,21 @@ export type DebugProps = {
   onCallParamsChange: (next: string) => void;
   onRefresh: () => void;
   onCall: () => void;
+  piConfigAgentId: string | null;
+  piConfigResult: {
+    agentId: string;
+    piConfig?: unknown;
+    resolvedPiConfig: unknown;
+    sandboxPreview?: { mode: string; workspaceAccess: string; sandboxed: boolean };
+    testMemoryPath?: string;
+  } | null;
+  piConfigLoading: boolean;
+  piConfigSandboxPreview: boolean;
+  piConfigTestMemoryPath: string;
+  onPiConfigAgentChange: (agentId: string | null) => void;
+  onLoadPiConfig: () => void;
+  onPiConfigSandboxPreviewChange: (v: boolean) => void;
+  onPiConfigTestMemoryPathChange: (v: string) => void;
 };
 
 export function renderDebug(props: DebugProps) {
@@ -55,15 +72,15 @@ export function renderDebug(props: DebugProps) {
                 </div>`
                 : nothing
             }
-            <pre class="code-block">${JSON.stringify(props.status ?? {}, null, 2)}</pre>
+            <div class="code-block-wrap"><pre class="code-block">${JSON.stringify(props.status ?? {}, null, 2)}</pre></div>
           </div>
           <div>
             <div class="muted">Health</div>
-            <pre class="code-block">${JSON.stringify(props.health ?? {}, null, 2)}</pre>
+            <div class="code-block-wrap"><pre class="code-block">${JSON.stringify(props.health ?? {}, null, 2)}</pre></div>
           </div>
           <div>
             <div class="muted">Last heartbeat</div>
-            <pre class="code-block">${JSON.stringify(props.heartbeat ?? {}, null, 2)}</pre>
+            <div class="code-block-wrap"><pre class="code-block">${JSON.stringify(props.heartbeat ?? {}, null, 2)}</pre></div>
           </div>
         </div>
       </div>
@@ -102,20 +119,118 @@ export function renderDebug(props: DebugProps) {
         }
         ${
           props.callResult
-            ? html`<pre class="code-block" style="margin-top: 12px;">${props.callResult}</pre>`
+            ? html`<div class="code-block-wrap" style="margin-top: 12px;"><pre class="code-block">${props.callResult}</pre></div>`
             : nothing
         }
       </div>
     </section>
 
     <section class="card" style="margin-top: 18px;">
+      <div class="card-title">Agent PI Config</div>
+      <div class="card-sub">Full resolved Pi config for an agent (bootstrapFiles, promptMode, toolsAllow, etc.).</div>
+      <div class="row" style="gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+        <label class="field" style="min-width: 180px;">
+          <span>Agent</span>
+          <select
+            .value=${props.piConfigAgentId ?? ""}
+            ?disabled=${props.loading || !props.agentsList}
+            @change=${(e: Event) => {
+              const v = (e.target as HTMLSelectElement).value;
+              props.onPiConfigAgentChange(v ? v : null);
+            }}
+          >
+            <option value="">Select agent</option>
+            ${(props.agentsList?.agents ?? []).map(
+              (a) => html`<option value=${a.id}>${a.name ?? a.id}</option>`,
+            )}
+          </select>
+        </label>
+        <label class="field" style="display: flex; align-items: center; gap: 8px;">
+          <input
+            type="checkbox"
+            ?checked=${props.piConfigSandboxPreview}
+            @change=${(e: Event) =>
+              props.onPiConfigSandboxPreviewChange((e.target as HTMLInputElement).checked)}
+          />
+          <span>Sandbox preview</span>
+        </label>
+        <label class="field" style="min-width: 200px;">
+          <span>Test memory path</span>
+          <input
+            type="text"
+            .value=${props.piConfigTestMemoryPath}
+            @input=${(e: Event) =>
+              props.onPiConfigTestMemoryPathChange((e.target as HTMLInputElement).value)}
+            placeholder="Optional path to test workspace"
+          />
+        </label>
+        <div style="display: flex; align-items: flex-end;">
+          <button
+            class="btn btn--sm"
+            ?disabled=${!props.piConfigAgentId || props.piConfigLoading}
+            @click=${props.onLoadPiConfig}
+          >
+            ${props.piConfigLoading ? "Loading…" : "Load Full Config"}
+          </button>
+        </div>
+      </div>
+      ${
+        props.piConfigResult
+          ? html`
+              <div style="margin-top: 12px;">
+                ${
+                  props.piConfigResult.sandboxPreview
+                    ? html`
+                        <div class="callout info" style="margin-bottom: 12px;">
+                          Sandbox preview: mode=${props.piConfigResult.sandboxPreview.mode}
+                          workspaceAccess=${props.piConfigResult.sandboxPreview.workspaceAccess}
+                          sandboxed=${props.piConfigResult.sandboxPreview.sandboxed}. When
+                          workspaceAccess is "ro", memory changes are not persisted.
+                        </div>
+                      `
+                    : nothing
+                }
+                ${
+                  props.piConfigResult.testMemoryPath
+                    ? html`
+                        <div class="muted" style="margin-bottom: 4px;">
+                          Test memory path: ${props.piConfigResult.testMemoryPath}
+                        </div>
+                      `
+                    : nothing
+                }
+                <div class="muted">Resolved (full)</div>
+                <div class="code-block-wrap" style="margin-top: 8px;"><pre class="code-block">${JSON.stringify(
+                  props.piConfigResult.resolvedPiConfig,
+                  null,
+                  2,
+                )}</pre></div>
+                ${
+                  props.piConfigResult.piConfig != null
+                    ? html`
+                        <div class="muted" style="margin-top: 12px;">Raw (from config/registry)</div>
+                        <div class="code-block-wrap" style="margin-top: 8px;"><pre class="code-block">${JSON.stringify(
+                          props.piConfigResult.piConfig,
+                          null,
+                          2,
+                        )}</pre></div>
+                      `
+                    : nothing
+                }
+              </div>
+            `
+          : nothing
+      }
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
       <div class="card-title">Models</div>
       <div class="card-sub">Catalog from models.list.</div>
-      <pre class="code-block" style="margin-top: 12px;">${JSON.stringify(
+      <div class="code-block-wrap" style="margin-top: 12px;"><pre class="code-block">${JSON.stringify(
         props.models ?? [],
         null,
         2,
-      )}</pre>
+      )}</pre></div>
     </section>
 
     <section class="card" style="margin-top: 18px;">
@@ -136,7 +251,7 @@ export function renderDebug(props: DebugProps) {
                       <div class="list-sub">${new Date(evt.ts).toLocaleTimeString()}</div>
                     </div>
                     <div class="list-meta">
-                      <pre class="code-block">${formatEventPayload(evt.payload)}</pre>
+                      <div class="code-block-wrap"><pre class="code-block">${formatEventPayload(evt.payload)}</pre></div>
                     </div>
                   </div>
                 `,

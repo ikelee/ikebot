@@ -36,6 +36,10 @@ import {
   AgentsFilesSetParamsSchema,
   type AgentsFilesSetResult,
   AgentsFilesSetResultSchema,
+  type AgentsPiConfigParams,
+  AgentsPiConfigParamsSchema,
+  type AgentsPiConfigResult,
+  AgentsPiConfigResultSchema,
   type AgentsListParams,
   AgentsListParamsSchema,
   type AgentsListResult,
@@ -249,6 +253,9 @@ export const validateAgentsFilesGetParams = ajv.compile<AgentsFilesGetParams>(
 );
 export const validateAgentsFilesSetParams = ajv.compile<AgentsFilesSetParams>(
   AgentsFilesSetParamsSchema,
+);
+export const validateAgentsPiConfigParams = ajv.compile<AgentsPiConfigParams>(
+  AgentsPiConfigParamsSchema,
 );
 export const validateNodePairRequestParams = ajv.compile<NodePairRequestParams>(
   NodePairRequestParamsSchema,
@@ -465,6 +472,8 @@ export {
   AgentsFilesGetResultSchema,
   AgentsFilesSetParamsSchema,
   AgentsFilesSetResultSchema,
+  AgentsPiConfigParamsSchema,
+  AgentsPiConfigResultSchema,
   AgentsListParamsSchema,
   AgentsListResultSchema,
   ModelsListParamsSchema,
@@ -552,6 +561,8 @@ export type {
   AgentsFilesGetResult,
   AgentsFilesSetParams,
   AgentsFilesSetResult,
+  AgentsPiConfigParams,
+  AgentsPiConfigResult,
   AgentsListParams,
   AgentsListResult,
   SkillsStatusParams,

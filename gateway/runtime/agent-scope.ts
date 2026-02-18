@@ -13,7 +13,21 @@ import {
   parseAgentSessionKey,
 } from "../infra/routing/session-key.js";
 import { resolveUserPath } from "../utils.js";
-import { expandToolGroups } from "./tool-policy.js";
+import { expandToolGroups, TOOL_GROUPS } from "./tool-policy.js";
+
+const FULL_BOOTSTRAP_FILES: PiBootstrapFileKey[] = [
+  "AGENTS",
+  "SOUL",
+  "TOOLS",
+  "IDENTITY",
+  "USER",
+  "HEARTBEAT",
+  "MEMORY",
+];
+
+function getAllCoreTools(): string[] {
+  return expandToolGroups(Object.keys(TOOL_GROUPS));
+}
 import { resolveDefaultAgentWorkspaceDir } from "./workspace.js";
 
 export { resolveAgentIdFromSessionKey } from "../infra/routing/session-key.js";
@@ -270,5 +284,36 @@ export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedP
     toolsDeny,
     skills,
     bootstrapMaxChars,
+  };
+}
+
+/** Full resolved Pi config for display (includes bootstrapFiles and toolsAllow expanded for full preset). */
+export function getResolvedPiConfigForDisplay(
+  cfg: OpenClawConfig,
+  agentId: string,
+): {
+  bootstrapFiles: string[];
+  promptMode: string;
+  session: boolean;
+  toolsAllow: string[];
+  toolsDeny?: string[];
+  skills: boolean;
+  bootstrapMaxChars?: number;
+} {
+  const resolved = resolvePiConfig(cfg, agentId);
+  const bootstrapFiles =
+    resolved.bootstrapFiles && resolved.bootstrapFiles.length > 0
+      ? resolved.bootstrapFiles
+      : FULL_BOOTSTRAP_FILES;
+  const toolsAllow =
+    resolved.toolsAllow && resolved.toolsAllow.length > 0 ? resolved.toolsAllow : getAllCoreTools();
+  return {
+    bootstrapFiles,
+    promptMode: resolved.promptMode,
+    session: resolved.session,
+    toolsAllow,
+    toolsDeny: resolved.toolsDeny,
+    skills: resolved.skills,
+    bootstrapMaxChars: resolved.bootstrapMaxChars,
   };
 }

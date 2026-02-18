@@ -202,12 +202,24 @@ export type AppViewState = {
   debugLoading: boolean;
   debugStatus: StatusSummary | null;
   debugHealth: HealthSnapshot | null;
+  debugAgentsList: AgentsListResult | null;
   debugModels: unknown[];
   debugHeartbeat: unknown;
   debugCallMethod: string;
   debugCallParams: string;
   debugCallResult: string | null;
   debugCallError: string | null;
+  piConfigAgentId: string | null;
+  piConfigResult: {
+    agentId: string;
+    piConfig?: unknown;
+    resolvedPiConfig: unknown;
+    sandboxPreview?: { mode: string; workspaceAccess: string; sandboxed: boolean };
+    testMemoryPath?: string;
+  } | null;
+  piConfigLoading: boolean;
+  piConfigSandboxPreview: boolean;
+  piConfigTestMemoryPath: string;
   logsLoading: boolean;
   logsError: string | null;
   logsFile: string | null;

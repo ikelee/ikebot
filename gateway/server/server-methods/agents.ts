@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
+import { getAgentPiConfig } from "../../agent/agents/pi-registry.js";
 import { movePathToTrash } from "../../browser/trash.js";
 import {
   applyAgentConfig,
@@ -12,10 +13,13 @@ import { loadConfig, writeConfigFile } from "../../infra/config/config.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../infra/config/sessions/paths.js";
 import { DEFAULT_AGENT_ID, normalizeAgentId } from "../../infra/routing/session-key.js";
 import {
+  getResolvedPiConfigForDisplay,
   listAgentIds,
   resolveAgentDir,
+  resolveAgentEntry,
   resolveAgentWorkspaceDir,
 } from "../../runtime/agent-scope.js";
+import { resolveSandboxConfigForAgent } from "../../runtime/sandbox/config.js";
 import {
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_BOOTSTRAP_FILENAME,
@@ -39,6 +43,7 @@ import {
   validateAgentsFilesListParams,
   validateAgentsFilesSetParams,
   validateAgentsListParams,
+  validateAgentsPiConfigParams,
   validateAgentsUpdateParams,
 } from "../protocol/index.js";
 import { listAgentsForGateway } from "../session-utils.js";
@@ -388,6 +393,56 @@ export const agentsHandlers: GatewayRequestHandlers = {
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const files = await listAgentFiles(workspaceDir);
     respond(true, { agentId, workspace: workspaceDir, files }, undefined);
+  },
+  "agents.piConfig": ({ params, respond }) => {
+    if (!validateAgentsPiConfigParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid agents.piConfig params: ${formatValidationErrors(
+            validateAgentsPiConfigParams.errors,
+          )}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const agentId = resolveAgentIdOrError(String(params.agentId ?? ""), cfg);
+    if (!agentId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown agent id"));
+      return;
+    }
+    const entry = resolveAgentEntry(cfg, agentId);
+    const piConfig = entry?.pi ?? getAgentPiConfig(agentId) ?? undefined;
+    const resolvedPiConfig = getResolvedPiConfigForDisplay(cfg, agentId);
+    const sandboxPreview =
+      params.sandboxPreview === true
+        ? (() => {
+            const sandboxCfg = resolveSandboxConfigForAgent(cfg, agentId);
+            return {
+              mode: sandboxCfg.mode ?? "off",
+              workspaceAccess: sandboxCfg.workspaceAccess ?? "ro",
+              sandboxed: sandboxCfg.mode !== "off",
+            };
+          })()
+        : undefined;
+    const testMemoryPath =
+      typeof params.testMemoryPath === "string" && params.testMemoryPath.trim()
+        ? params.testMemoryPath.trim()
+        : undefined;
+    respond(
+      true,
+      {
+        agentId,
+        piConfig: piConfig ? (piConfig as Record<string, unknown>) : undefined,
+        resolvedPiConfig,
+        sandboxPreview,
+        testMemoryPath,
+      },
+      undefined,
+    );
   },
   "agents.files.get": async ({ params, respond }) => {
     if (!validateAgentsFilesGetParams(params)) {

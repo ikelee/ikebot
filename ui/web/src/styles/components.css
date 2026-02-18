@@ -620,13 +620,24 @@
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
-  background: var(--secondary);
+  color: var(--text-strong);
+  background: var(--bg-elevated);
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   max-height: 360px;
   overflow: auto;
+  overflow-x: auto;
   max-width: 100%;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Prevent code blocks from stretching layout sideways */
+.code-block-wrap {
+  min-width: 0;
+  overflow: hidden;
 }
 
 :root[data-theme="light"] .code-block,
@@ -1882,6 +1893,7 @@
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
 }
 
 .agent-files-list {
@@ -1928,6 +1940,17 @@
   border-radius: var(--radius-lg);
   padding: 16px;
   background: var(--card);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.agent-files-editor .field textarea {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .agent-file-header {

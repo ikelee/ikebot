@@ -306,10 +306,22 @@ export class OpenClawApp extends LitElement {
   @state() debugHealth: HealthSnapshot | null = null;
   @state() debugModels: unknown[] = [];
   @state() debugHeartbeat: unknown = null;
+  @state() debugAgentsList: AgentsListResult | null = null;
   @state() debugCallMethod = "";
   @state() debugCallParams = "{}";
   @state() debugCallResult: string | null = null;
   @state() debugCallError: string | null = null;
+  @state() piConfigAgentId: string | null = null;
+  @state() piConfigResult: {
+    agentId: string;
+    piConfig?: unknown;
+    resolvedPiConfig: unknown;
+    sandboxPreview?: { mode: string; workspaceAccess: string; sandboxed: boolean };
+    testMemoryPath?: string;
+  } | null = null;
+  @state() piConfigLoading = false;
+  @state() piConfigSandboxPreview = false;
+  @state() piConfigTestMemoryPath = "";
 
   @state() logsLoading = false;
   @state() logsError: string | null = null;

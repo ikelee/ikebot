@@ -25,7 +25,7 @@ import {
   removeCronJob,
   addCronJob,
 } from "./controllers/cron.ts";
-import { loadDebug, callDebugMethod } from "./controllers/debug.ts";
+import { loadDebug, callDebugMethod, loadPiConfig } from "./controllers/debug.ts";
 import {
   approveDevicePairing,
   loadDevices,
@@ -1180,6 +1180,7 @@ export function renderApp(state: AppViewState) {
                 health: state.debugHealth,
                 models: state.debugModels,
                 heartbeat: state.debugHeartbeat,
+                agentsList: state.debugAgentsList,
                 eventLog: state.eventLog,
                 callMethod: state.debugCallMethod,
                 callParams: state.debugCallParams,
@@ -1189,6 +1190,16 @@ export function renderApp(state: AppViewState) {
                 onCallParamsChange: (next) => (state.debugCallParams = next),
                 onRefresh: () => loadDebug(state),
                 onCall: () => callDebugMethod(state),
+                piConfigAgentId: state.piConfigAgentId,
+                piConfigResult: state.piConfigResult,
+                piConfigLoading: state.piConfigLoading,
+                piConfigSandboxPreview: state.piConfigSandboxPreview,
+                piConfigTestMemoryPath: state.piConfigTestMemoryPath,
+                onPiConfigAgentChange: (id) => (state.piConfigAgentId = id),
+                onLoadPiConfig: () =>
+                  state.piConfigAgentId && loadPiConfig(state, state.piConfigAgentId),
+                onPiConfigSandboxPreviewChange: (v) => (state.piConfigSandboxPreview = v),
+                onPiConfigTestMemoryPathChange: (v) => (state.piConfigTestMemoryPath = v),
               })
             : nothing
         }

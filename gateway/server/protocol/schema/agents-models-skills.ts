@@ -164,6 +164,49 @@ export const AgentsFilesSetResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const AgentsPiConfigParamsSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+    /** When true, include sandbox info for display (memory would not persist when workspaceAccess is "ro"). */
+    sandboxPreview: Type.Optional(Type.Boolean()),
+    /** Optional path to a test workspace for loading different memory; included in response for display. */
+    testMemoryPath: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+const ResolvedPiConfigDisplaySchema = Type.Object(
+  {
+    bootstrapFiles: Type.Array(Type.String()),
+    promptMode: Type.String(),
+    session: Type.Boolean(),
+    toolsAllow: Type.Array(Type.String()),
+    toolsDeny: Type.Optional(Type.Array(Type.String())),
+    skills: Type.Boolean(),
+    bootstrapMaxChars: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+export const AgentsPiConfigResultSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+    piConfig: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    resolvedPiConfig: ResolvedPiConfigDisplaySchema,
+    /** When sandboxPreview was requested, shows sandbox config (memory does not persist when workspaceAccess is "ro"). */
+    sandboxPreview: Type.Optional(
+      Type.Object({
+        mode: Type.String(),
+        workspaceAccess: Type.String(),
+        sandboxed: Type.Boolean(),
+      }),
+    ),
+    /** When testMemoryPath was provided, echoed back for display. */
+    testMemoryPath: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 export const ModelsListParamsSchema = Type.Object({}, { additionalProperties: false });
 
 export const ModelsListResultSchema = Type.Object(

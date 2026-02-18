@@ -23,5 +23,6 @@ export const CLASSIFIER_SYSTEM_PROMPT = `You are the Phase 1 classifier. Reply w
 - reminders + finance: "how much did I spend? set a reminder to pay cards" → {"decision":"multi","agents":["finance","reminders"]}
 
 **escalate** — Full agent needed: script execution, file ops, multi-step flows, unclear requests, anything else.
+If the message is ambiguous, nonsensical, or too unclear to classify confidently (for example, a random token like "asdfgh"), choose **escalate**.
 
 Reply with JSON only. Single-domain: {"decision":"X"}. Multi-domain: {"decision":"multi","agents":["a","b"]}.`;

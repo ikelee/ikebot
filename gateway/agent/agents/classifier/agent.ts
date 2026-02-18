@@ -147,7 +147,7 @@ export class RouterAgent extends Agent {
       {
         apiKey: "no-api-key-needed",
         maxTokens: 128,
-        temperature: 0.3,
+        temperature: 0,
       },
     );
 
