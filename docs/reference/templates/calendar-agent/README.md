@@ -39,12 +39,21 @@ When the classifier routes a schedule/calendar query to the calendar agent, it u
                "security": "allowlist",
                "safeBins": ["gog"]
              }
+           },
+           "pi": {
+             "preset": "exec-only",
+             "bootstrapFiles": ["SOUL", "TOOLS"],
+             "promptMode": "minimal",
+             "tools": { "allow": ["exec"] },
+             "skills": false
            }
          }
        ]
      }
    }
    ```
+
+   The `pi` block makes the calendar agent lighter: SOUL+TOOLS only, exec tool only, no skills in prompt. This reduces prompt size so smaller models (e.g. Qwen) can handle it instead of requiring Opus.
 
 4. **Enable routing** (if not already):
    ```json

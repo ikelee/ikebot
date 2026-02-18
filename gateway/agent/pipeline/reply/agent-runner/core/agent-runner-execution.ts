@@ -330,6 +330,7 @@ export async function runAgentTurnWithFallback(params: {
             abortSignal: params.opts?.abortSignal,
             blockReplyBreak: params.resolvedBlockStreamingBreak,
             blockReplyChunking: params.blockReplyChunking,
+            piConfig: params.followupRun.run.piConfig,
             onPartialReply: allowPartialStream
               ? async (payload) => {
                   const textForTyping = await handlePartialForTyping(payload);

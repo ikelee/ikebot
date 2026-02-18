@@ -19,6 +19,7 @@ import {
   applyCompactionDefaults,
   applyContextPruningDefaults,
   applyAgentDefaults,
+  applyBuiltInAgents,
   applyLoggingDefaults,
   applyMessageDefaults,
   applyModelDefaults,
@@ -337,8 +338,10 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       const cfg = applyModelDefaults(
         applyCompactionDefaults(
           applyContextPruningDefaults(
-            applyAgentDefaults(
-              applySessionDefaults(applyLoggingDefaults(applyMessageDefaults(validated.config))),
+            applyBuiltInAgents(
+              applyAgentDefaults(
+                applySessionDefaults(applyLoggingDefaults(applyMessageDefaults(validated.config))),
+              ),
             ),
           ),
         ),
@@ -390,7 +393,9 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         applyModelDefaults(
           applyCompactionDefaults(
             applyContextPruningDefaults(
-              applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
+              applyBuiltInAgents(
+                applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
+              ),
             ),
           ),
         ),
@@ -520,8 +525,12 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         config: normalizeConfigPaths(
           applyTalkApiKey(
             applyModelDefaults(
-              applyAgentDefaults(
-                applySessionDefaults(applyLoggingDefaults(applyMessageDefaults(validated.config))),
+              applyBuiltInAgents(
+                applyAgentDefaults(
+                  applySessionDefaults(
+                    applyLoggingDefaults(applyMessageDefaults(validated.config)),
+                  ),
+                ),
               ),
             ),
           ),

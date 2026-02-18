@@ -7,6 +7,7 @@ import {
   resolveAgentModelFallbacksOverride,
   resolveAgentModelPrimary,
   resolveAgentWorkspaceDir,
+  resolvePiConfig,
 } from "./agent-scope.js";
 
 afterEach(() => {
@@ -214,6 +215,56 @@ describe("resolveAgentConfig", () => {
 
     const workspace = resolveAgentWorkspaceDir({} as OpenClawConfig, "main");
     expect(workspace).toBe(path.join(path.resolve(home), ".openclaw", "workspace"));
+  });
+
+  it("resolvePiConfig returns exec-only preset for calendar agent (from agent.ts registry)", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          },
+        ],
+      },
+    };
+    const result = resolvePiConfig(cfg, "calendar");
+    expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
+    expect(result.promptMode).toBe("minimal");
+    expect(result.toolsAllow).toEqual(["exec"]);
+    expect(result.skills).toBe(false);
+  });
+
+  it("resolvePiConfig uses config pi when present (overrides agent registry)", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { exec: { safeBins: ["gog"] } },
+            pi: { preset: "minimal", bootstrapFiles: ["AGENTS", "TOOLS"] },
+          },
+        ],
+      },
+    };
+    const result = resolvePiConfig(cfg, "calendar");
+    expect(result.bootstrapFiles).toEqual(["AGENTS", "TOOLS"]);
+    expect(result.promptMode).toBe("minimal");
+  });
+
+  it("resolvePiConfig returns full defaults when pi omitted", () => {
+    const cfg: OpenClawConfig = {
+      agents: { list: [{ id: "main", default: true }] },
+    };
+    const result = resolvePiConfig(cfg, "main");
+    expect(result.bootstrapFiles).toBeUndefined();
+    expect(result.promptMode).toBe("full");
+    expect(result.toolsAllow).toBeUndefined();
+    expect(result.skills).toBe(true);
   });
 
   it("uses OPENCLAW_HOME for default agentDir", () => {

@@ -45,8 +45,8 @@ export class RouterAgent extends Agent {
       },
       model: {
         tier: "small",
-        provider: "local",
-        modelId: "llama-3.2-7b",
+        provider: "ollama",
+        modelId: "qwen2.5:3b",
         maxTokens: 128,
         temperature: 0.3,
       },
@@ -105,6 +105,7 @@ export class RouterAgent extends Agent {
     const result = await this.invokeClassifierModel(model, body);
     return {
       decision: result.decision,
+      agents: result.agents,
       metadata: { modelUsed: true },
       tokenUsage: result.tokenUsage,
       durationMs: Date.now() - startTime,
@@ -115,7 +116,16 @@ export class RouterAgent extends Agent {
     model: Model<Api>,
     userInput: string,
   ): Promise<{
-    decision: "stay" | "escalate" | "calendar";
+    decision:
+      | "stay"
+      | "escalate"
+      | "calendar"
+      | "reminders"
+      | "mail"
+      | "workouts"
+      | "finance"
+      | "multi";
+    agents?: string[];
     tokenUsage?: { input: number; output: number };
   }> {
     const systemPrompt = CLASSIFIER_SYSTEM_PROMPT;
@@ -152,16 +162,28 @@ export class RouterAgent extends Agent {
 
     logModelIo(log.info.bind(log), "Router output", accumulatedText, true);
 
+    const validDecisions = [
+      "stay",
+      "escalate",
+      "calendar",
+      "reminders",
+      "mail",
+      "workouts",
+      "finance",
+      "multi",
+    ] as const;
     try {
       const trimmed = accumulatedText.trim();
       const parsed = JSON.parse(trimmed);
-      if (
-        parsed.decision === "stay" ||
-        parsed.decision === "escalate" ||
-        parsed.decision === "calendar"
-      ) {
+      if (validDecisions.includes(parsed.decision)) {
+        const agents = Array.isArray(parsed.agents)
+          ? (parsed.agents as string[]).filter(
+              (a): a is string => typeof a === "string" && a.trim().length > 0,
+            )
+          : undefined;
         return {
           decision: parsed.decision,
+          agents: agents?.length ? agents.map((a) => a.trim().toLowerCase()) : undefined,
           tokenUsage: response.usage
             ? { input: response.usage.input ?? 0, output: response.usage.output ?? 0 }
             : undefined,
@@ -175,8 +197,10 @@ export class RouterAgent extends Agent {
     if (lower.includes('"stay"') || (lower.includes("stay") && !lower.includes("escalate"))) {
       return { decision: "stay" };
     }
-    if (lower.includes('"calendar"') || lower.includes("calendar")) {
-      return { decision: "calendar" };
+    for (const d of ["multi", "calendar", "reminders", "mail", "workouts", "finance"] as const) {
+      if (lower.includes(`"${d}"`) || lower.includes(d)) {
+        return { decision: d };
+      }
     }
     if (lower.includes('"escalate"') || lower.includes("escalate")) {
       return { decision: "escalate" };

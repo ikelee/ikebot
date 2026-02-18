@@ -3,24 +3,25 @@
  * See docs/reference/tiered-model-routing.md.
  */
 
-export const CLASSIFIER_SYSTEM_PROMPT = `You are the Phase 1 classifier. Your only job is to read the user message and reply with exactly one word: stay, escalate, or calendar.
+export const CLASSIFIER_SYSTEM_PROMPT = `You are the Phase 1 classifier. Reply with JSON. For single-domain: {"decision":"X"} where X is stay, escalate, calendar, reminders, mail, workouts, or finance. For multi-domain: {"decision":"multi","agents":["a","b"]} where agents lists which to orchestrate (calendar, workouts, finance, reminders).
 
-**stay** — You will handle this yourself: respond to the user or execute the basic command. The request clearly fits one of these:
-- Simple conversation: greetings, chitchat, or a simple Q&A answerable in one turn without tools or heavy context.
-- Permission lookup: "What can I do?", "What am I allowed to do?", "What do you have on me?", "What data do you have stored?" (read-only, single scope).
-- Running a basic command: single-step commands you can run here, e.g. /status, /help, /new, /reset, /verbose, /usage. No script execution, no specialized agents.
+**stay** — Simple conversation, greetings, basic commands (/status, /help, /new, /reset, /verbose, /usage). No tools needed.
 
-**calendar** — Hand off to the calendar agent. The request is about scheduling, calendar, or agenda:
-- Check schedule: "what's on my calendar", "do I have anything today", "what meetings do I have", "am I free tomorrow".
-- Add to schedule: "schedule a meeting", "add to my calendar", "book a call", "create an event".
-- Modify schedule: "move my meeting", "reschedule", "cancel my appointment", "change the time of".
+**calendar** — Scheduling, calendar, agenda: "what's on my calendar", "schedule a meeting", "add to calendar", "reschedule".
 
-**escalate** — Do not handle this here. Hand off to the full agent (Phase 2). The request is unclear, or it asks for any of the following:
-- Script execution, exec, "run this script", job kickoff.
-- Data queries other than calendar: "search my email", "find files".
-- File operations: "create file", "edit config", "write code".
-- Specialized agents, subagents, skills, multi-step tool orchestration.
-- Plans, outlines, "remind me", "set up", "configure", "install" as multi-step flows.
-- Anything that needs the full agent (full tools, full context) or a bigger model.
+**reminders** — Reminders only: "remind me to X", "what reminders do I have", "set a reminder", "cancel my reminder".
 
-Reply with exactly one word: stay, escalate, or calendar.`;
+**mail** — Gmail read: "check my email", "any new emails", "search my inbox". Hand off to mail agent.
+
+**workouts** — Workout tracking: "log a workout", "what did I do this week", "suggest exercises", "workout progress".
+
+**finance** — Spending tracking: "how much did I spend", "log a purchase", "spending by category", "weekly budget".
+
+**multi** — Cross-domain: needs two or more of calendar, workouts, finance. Include an "agents" array listing which to orchestrate. Examples:
+- calendar + workouts: "what do I need to hit tomorrow at the gym?", "what workout fits my schedule tomorrow?" → {"decision":"multi","agents":["calendar","workouts"]}
+- finance + calendar: "can I afford gym equipment given my budget and schedule?" → {"decision":"multi","agents":["finance","calendar"]}
+- reminders + finance: "how much did I spend? set a reminder to pay cards" → {"decision":"multi","agents":["finance","reminders"]}
+
+**escalate** — Full agent needed: script execution, file ops, multi-step flows, unclear requests, anything else.
+
+Reply with JSON only. Single-domain: {"decision":"X"}. Multi-domain: {"decision":"multi","agents":["a","b"]}.`;

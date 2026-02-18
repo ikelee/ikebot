@@ -291,6 +291,111 @@ export function applyModelDefaults(cfg: OpenClawConfig): OpenClawConfig {
   };
 }
 
+/** Config stubs; pi config comes from agent/agents/* (pi-registry). */
+const BUILT_IN_AGENTS: Record<
+  string,
+  {
+    id: string;
+    skills: string[];
+    tools: Record<string, unknown>;
+    subagents?: { allowAgents?: string[] };
+  }
+> = {
+  calendar: {
+    id: "calendar",
+    skills: ["gog"],
+    tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+  },
+  reminders: {
+    id: "reminders",
+    skills: [],
+    tools: {},
+  },
+  mail: {
+    id: "mail",
+    skills: ["gog"],
+    tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+  },
+  workouts: {
+    id: "workouts",
+    skills: [],
+    tools: {
+      files: {
+        allowedPaths: [
+          "workouts.json",
+          "workout-notes.txt",
+          "workout-memo-*.md",
+          "history/",
+          "*.json",
+        ],
+      },
+    },
+  },
+  finance: {
+    id: "finance",
+    skills: [],
+    tools: {
+      files: {
+        allowedPaths: ["spendings.json", "goals.json", "history/", "*.json"],
+      },
+    },
+  },
+  multi: {
+    id: "multi",
+    skills: [],
+    tools: {},
+    subagents: {
+      allowAgents: ["calendar", "workouts", "finance", "reminders"],
+    },
+  },
+};
+
+function hasAgent(list: unknown[], id: string): boolean {
+  return (
+    Array.isArray(list) &&
+    list.some((e) => e && typeof e === "object" && (e as { id?: string }).id === id)
+  );
+}
+
+const BUILT_IN_IDS = ["calendar", "reminders", "mail", "workouts", "finance", "multi"] as const;
+
+/**
+ * Ensure built-in agents (main, calendar, reminders, mail, workouts, finance) exist in agents.list.
+ * Only runs when agents.list is explicitly set (array). Does not synthesize when absent.
+ * Multi agent requires subagents.allowAgents: ["calendar", "workouts"] to spawn.
+ */
+export function applyBuiltInAgents(cfg: OpenClawConfig): OpenClawConfig {
+  const agents = cfg.agents;
+  if (!Array.isArray(agents?.list)) {
+    return cfg;
+  }
+  const list = [...agents.list];
+  let mutated = false;
+
+  if (list.length === 0) {
+    list.push({ id: "main", default: true });
+    mutated = true;
+  }
+  for (const id of BUILT_IN_IDS) {
+    if (!hasAgent(list, id)) {
+      list.push(BUILT_IN_AGENTS[id] as Parameters<typeof list.push>[0]);
+      mutated = true;
+    }
+  }
+
+  if (!mutated) {
+    return cfg;
+  }
+
+  return {
+    ...cfg,
+    agents: {
+      ...agents,
+      list,
+    },
+  };
+}
+
 export function applyAgentDefaults(cfg: OpenClawConfig): OpenClawConfig {
   const agents = cfg.agents;
   const defaults = agents?.defaults;

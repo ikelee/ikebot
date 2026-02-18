@@ -195,6 +195,15 @@ export type ExecToolConfig = {
   };
 };
 
+export type AgentFilesConfig = {
+  /**
+   * Allowlist of paths (relative to workspace root) the agent may read/write.
+   * When set, file tools only allow access to paths matching these patterns.
+   * Patterns: exact file ("workouts.json"), directory prefix ("history/"), or glob ("*.json").
+   */
+  allowedPaths?: string[];
+};
+
 export type AgentToolsConfig = {
   /** Base tool profile applied before allow/deny lists. */
   profile?: ToolProfileId;
@@ -213,6 +222,8 @@ export type AgentToolsConfig = {
   };
   /** Exec tool defaults for this agent. */
   exec?: ExecToolConfig;
+  /** File tool path restrictions (read/write/edit). */
+  files?: AgentFilesConfig;
   sandbox?: {
     tools?: {
       allow?: string[];

@@ -1,0 +1,29 @@
+{
+  "profile": {
+    "goals": ["build muscle", "strength"],
+    "focus": "weights",
+    "program": "5/3/1"
+  },
+  "personalBests": {
+    "Bench Press": { "weight": 185, "reps": 8, "date": "2026-02-10" }
+  },
+  "program": {
+    "name": "5/3/1",
+    "cycleLength": 4,
+    "currentDay": 1,
+    "currentCycle": 1,
+    "days": [
+      {
+        "dayNumber": 1,
+        "exercises": [{ "name": "Bench Press", "sets": 3, "minReps": 5, "pushReps": 8 }]
+      }
+    ]
+  },
+  "workouts": [
+    {
+      "date": "2026-02-10",
+      "type": "strength",
+      "exercises": [{ "name": "Bench Press", "sets": 3, "reps": "8", "weight": "185" }]
+    }
+  ]
+}

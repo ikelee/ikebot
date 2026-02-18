@@ -15,7 +15,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
 
 const runPreparedReplyMock = vi.fn();
 
-const mockModel = { provider: "ollama", id: "llama-3.2-3b", api: "openai-completions" };
+const mockModel = { provider: "ollama", id: "qwen2.5:3b", api: "openai-completions" };
 vi.mock("../runtime/pi-embedded-runner/model.js", () => ({
   resolveModel: vi.fn(() => ({ model: mockModel })),
 }));
@@ -33,7 +33,7 @@ const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =
       defaults: {
         routing: {
           enabled: true,
-          classifierModel: "ollama/llama-3.2-3b",
+          classifierModel: "ollama/qwen2.5:3b",
         },
       },
     },
@@ -44,8 +44,8 @@ const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =
           api: "openai-completions",
           models: [
             {
-              id: "llama-3.2-3b",
-              name: "Llama",
+              id: "qwen2.5:3b",
+              name: "Qwen 2.5 3B",
               api: "openai-completions",
               contextWindow: 8192,
               cost: { input: 0, output: 0 },
@@ -81,7 +81,7 @@ const createMinimalRunPreparedReplyParams = () => ({
   resolvedBlockStreamingBreak: "text_end" as const,
   modelState: {} as any,
   provider: "ollama",
-  model: "llama-3.2-3b",
+  model: "qwen2.5:3b",
   replyTier: "complex" as const,
   typing: {} as any,
   defaultProvider: "ollama",
@@ -107,7 +107,20 @@ describe("runAgentFlow", () => {
       usage: { input: 10, output: 8 },
     });
 
-    const cfg = createMockConfig();
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { exec: { safeBins: ["gog"] } },
+            pi: { preset: "exec-only" },
+          },
+        ],
+      },
+    });
     const params = createMinimalRunPreparedReplyParams();
     params.cfg = cfg;
 
@@ -166,7 +179,15 @@ describe("runAgentFlow", () => {
       usage: { input: 12, output: 10 },
     });
 
-    const cfg = createMockConfig();
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
     const params = createMinimalRunPreparedReplyParams();
     params.cfg = cfg;
 
@@ -193,7 +214,15 @@ describe("runAgentFlow", () => {
       usage: { input: 14, output: 10 },
     });
 
-    const cfg = createMockConfig();
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
     const params = createMinimalRunPreparedReplyParams();
     params.cfg = cfg;
 
@@ -244,5 +273,232 @@ describe("runAgentFlow", () => {
     expect(routingCall?.[0]?.data?.decision).toBe("calendar");
 
     emitSpy.mockRestore();
+  });
+
+  describe("multi and cross-domain routing", () => {
+    const createConfigWithAllAgents = () =>
+      createMockConfig({
+        agents: {
+          defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+          list: [
+            { id: "main", default: true },
+            { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+            { id: "mail", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+            { id: "workouts", skills: [], tools: {} },
+            { id: "finance", skills: [], tools: {} },
+            {
+              id: "multi",
+              skills: [],
+              tools: {},
+              subagents: { allowAgents: ["calendar", "workouts", "finance", "reminders"] },
+            },
+          ],
+        },
+      });
+
+    it("routes multi (calendar+workouts) prompts to multi agent", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"multi"}' }],
+        usage: { input: 20, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "what do I need to hit tomorrow at the gym?",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("multi");
+      expect(call.agentDir).toContain("multi");
+    });
+
+    it("routes fake multi (email + workout keyword) to mail agent", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"mail"}' }],
+        usage: { input: 25, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "Check email for workout supplement deals I got",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("mail");
+      expect(call.agentId).not.toBe("multi");
+    });
+
+    it("routes supplement discounts in mail to mail agent (not multi)", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"mail"}' }],
+        usage: { input: 25, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "Do I have any supplement discounts in the mail recently?",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("mail");
+      expect(call.agentId).not.toBe("multi");
+    });
+
+    it("routes finance+workout keyword (spending) to finance agent", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"finance"}' }],
+        usage: { input: 20, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "How much did I spend on gym last month?",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("finance");
+      expect(call.agentId).not.toBe("multi");
+    });
+
+    it("routes workout + schedule to multi agent", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"multi"}' }],
+        usage: { input: 25, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "What workout fits my schedule tomorrow evening?",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("multi");
+    });
+
+    it("routes reminders+finance (multi-domain) to multi agent with orchestrateAgents", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [
+          {
+            type: "text",
+            text: '{"decision":"multi","agents":["finance","reminders"]}',
+          },
+        ],
+        usage: { input: 30, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody:
+          "How much did I spend this month so far? Set a reminder to pay off my credit cards",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+      const call = runPreparedReplyMock.mock.calls[0][0];
+      expect(call.agentId).toBe("multi");
+      expect(call.orchestrateAgents).toEqual(["finance", "reminders"]);
+    });
+
+    it("emits routing event with tier=multi for multi prompts", async () => {
+      const emitSpy = vi.spyOn(await import("../infra/agent-events.js"), "emitAgentEvent");
+
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"multi"}' }],
+        usage: { input: 20, output: 8 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runAgentFlow({
+        cleanedBody: "what workout fits my schedule tomorrow?",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      const routingCall = emitSpy.mock.calls.find((c) => c[0]?.stream === "routing");
+      expect(routingCall).toBeDefined();
+      expect(routingCall?.[0]?.data?.tier).toBe("multi");
+      expect(routingCall?.[0]?.data?.decision).toBe("multi");
+
+      emitSpy.mockRestore();
+    });
   });
 });

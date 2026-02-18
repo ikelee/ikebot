@@ -40,8 +40,8 @@ export class SimpleResponderAgent extends Agent {
       },
       model: {
         tier: "small",
-        provider: "local",
-        modelId: "llama-3.2-3b",
+        provider: "ollama",
+        modelId: "qwen2.5:3b",
         maxTokens: 2048,
         temperature: 0.7,
       },

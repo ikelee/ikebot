@@ -7,12 +7,12 @@ import {
   loadSessionStore,
   saveSessionStore,
   type SessionEntry,
-} from "../../../infra/config/sessions.js";
+} from "../../../../../infra/config/sessions.js";
 import { createMockTypingController } from "../../utilities/test-helpers.js";
 
 const runEmbeddedPiAgentMock = vi.fn();
 
-vi.mock("../../runtime/model-fallback.js", () => ({
+vi.mock("../../../../../runtime/model-fallback.js", () => ({
   runWithModelFallback: async ({
     provider,
     model,
@@ -28,7 +28,7 @@ vi.mock("../../runtime/model-fallback.js", () => ({
   }),
 }));
 
-vi.mock("../../runtime/pi-embedded.js", () => ({
+vi.mock("../../../../../runtime/pi-embedded.js", () => ({
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
 
@@ -259,6 +259,35 @@ describe("createFollowupRunner messaging tool dedupe", () => {
     await runner(baseQueuedRun("slack"));
 
     expect(onBlockReply).not.toHaveBeenCalled();
+  });
+
+  it("passes piConfig from queued run to runEmbeddedPiAgent", async () => {
+    runEmbeddedPiAgentMock.mockClear();
+    const onBlockReply = vi.fn(async () => {});
+    const calendarPiConfig = {
+      bootstrapFiles: ["SOUL", "TOOLS"],
+      promptMode: "minimal" as const,
+      skills: false,
+      toolsAllow: ["exec"],
+    };
+    runEmbeddedPiAgentMock.mockImplementationOnce(async (params: { piConfig?: unknown }) => {
+      expect(params.piConfig).toEqual(calendarPiConfig);
+      return { payloads: [{ text: "ok" }], meta: {} };
+    });
+
+    const runner = createFollowupRunner({
+      opts: { onBlockReply },
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "anthropic/claude-opus-4-5",
+    });
+
+    const queued = baseQueuedRun();
+    (queued.run as { piConfig?: unknown }).piConfig = calendarPiConfig;
+    await runner(queued);
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
+    expect(runEmbeddedPiAgentMock.mock.calls[0][0].piConfig).toEqual(calendarPiConfig);
   });
 
   it("persists usage even when replies are suppressed", async () => {

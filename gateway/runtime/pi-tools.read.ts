@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { detectMime } from "../media/mime.js";
-import { assertSandboxPath } from "./sandbox-paths.js";
+import { assertSandboxPath, resolveSandboxPath } from "./sandbox-paths.js";
 import { sanitizeToolResultImages } from "./tool-images.js";
 
 // NOTE(steipete): Upstream read now does file-magic MIME detection; we keep the wrapper
@@ -130,10 +130,18 @@ export function normalizeToolParams(params: unknown): Record<string, unknown> | 
   }
   const record = params as Record<string, unknown>;
   const normalized = { ...record };
-  // file_path → path (read, write, edit)
-  if ("file_path" in normalized && !("path" in normalized)) {
-    normalized.path = normalized.file_path;
-    delete normalized.file_path;
+  // file_path, filename → path (read, write, edit) – some models use alternate param names
+  const pathAliases = ["file_path", "filename", "file"] as const;
+  for (const alias of pathAliases) {
+    if (
+      alias in normalized &&
+      typeof (normalized[alias] as string) === "string" &&
+      !("path" in normalized)
+    ) {
+      normalized.path = normalized[alias];
+      delete normalized[alias];
+      break;
+    }
   }
   // old_string → oldText (edit)
   if ("old_string" in normalized && !("oldText" in normalized)) {
@@ -268,19 +276,96 @@ function wrapSandboxPathGuard(tool: AnyAgentTool, root: string): AnyAgentTool {
   };
 }
 
-export function createSandboxedReadTool(root: string) {
+/**
+ * Check if a path (relative to workspace root) matches any allowed pattern.
+ * Patterns: exact file ("workouts.json"), directory prefix ("history/"), or glob ("*.json").
+ */
+export function isPathAllowed(relativePath: string, allowedPaths: string[]): boolean {
+  const normalized = relativePath.replace(/\\/g, "/").replace(/\/+/g, "/").trim();
+  if (!normalized) {
+    return false;
+  }
+  for (const pattern of allowedPaths) {
+    const p = pattern.replace(/\\/g, "/").trim();
+    if (!p) {
+      continue;
+    }
+    if (normalized === p) {
+      return true;
+    }
+    if (p.endsWith("/") && (normalized === p.slice(0, -1) || normalized.startsWith(p))) {
+      return true;
+    }
+    if (p.endsWith("/*") && normalized.startsWith(p.slice(0, -2))) {
+      return true;
+    }
+    const re = p.replace(/[.*+?^${}()|[\]\\]/g, (c) => (c === "*" ? ".*" : `\\${c}`));
+    if (new RegExp(`^${re}$`).test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function wrapAllowedPathsGuard(
+  tool: AnyAgentTool,
+  root: string,
+  allowedPaths: string[],
+): AnyAgentTool {
+  return {
+    ...tool,
+    execute: async (toolCallId, args, signal, onUpdate) => {
+      const normalized = normalizeToolParams(args);
+      const record =
+        normalized ??
+        (args && typeof args === "object" ? (args as Record<string, unknown>) : undefined);
+      const filePath = record?.path;
+      if (typeof filePath === "string" && filePath.trim()) {
+        const { relative } = resolveSandboxPath({ filePath, cwd: root, root });
+        if (!isPathAllowed(relative, allowedPaths)) {
+          throw new Error(
+            `Path not allowed: ${filePath}. This agent may only access: ${allowedPaths.join(", ")}`,
+          );
+        }
+      }
+      return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
+    },
+  };
+}
+
+function applyAllowedPathsIfNeeded(
+  tool: AnyAgentTool,
+  root: string,
+  allowedPaths?: string[],
+): AnyAgentTool {
+  if (!allowedPaths || allowedPaths.length === 0) {
+    return tool;
+  }
+  return wrapAllowedPathsGuard(tool, root, allowedPaths);
+}
+
+export function createSandboxedReadTool(root: string, allowedPaths?: string[]) {
   const base = createReadTool(root) as unknown as AnyAgentTool;
-  return wrapSandboxPathGuard(createOpenClawReadTool(base), root);
+  const guarded = wrapSandboxPathGuard(createOpenClawReadTool(base), root);
+  return applyAllowedPathsIfNeeded(guarded, root, allowedPaths);
 }
 
-export function createSandboxedWriteTool(root: string) {
+export function createSandboxedWriteTool(root: string, allowedPaths?: string[]) {
   const base = createWriteTool(root) as unknown as AnyAgentTool;
-  return wrapSandboxPathGuard(wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write), root);
+  const guarded = wrapSandboxPathGuard(
+    wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write),
+    root,
+  );
+  return applyAllowedPathsIfNeeded(guarded, root, allowedPaths);
 }
 
-export function createSandboxedEditTool(root: string) {
+export function createSandboxedEditTool(root: string, allowedPaths?: string[]) {
   const base = createEditTool(root) as unknown as AnyAgentTool;
-  return wrapSandboxPathGuard(wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.edit), root);
+  const guarded = wrapSandboxPathGuard(
+    wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.edit),
+    root,
+  );
+  return applyAllowedPathsIfNeeded(guarded, root, allowedPaths);
 }
 
 export function createOpenClawReadTool(base: AnyAgentTool): AnyAgentTool {

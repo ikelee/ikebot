@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../../../../../infra/config/config.js";
 import type { SessionEntry } from "../../../../../infra/config/sessions.js";
+import type { ResolvedPiConfig } from "../../../../../infra/config/types.agents.js";
 import type { ExecToolDefaults } from "../../../../../runtime/bash-tools.js";
 import type { SkillSnapshot } from "../../../../../runtime/skills.js";
 import type { OriginatingChannelType } from "../../../templating.js";
@@ -49,6 +50,7 @@ export type FollowupRun = {
   run: {
     agentId: string;
     agentDir: string;
+    piConfig?: ResolvedPiConfig;
     sessionId: string;
     sessionKey?: string;
     messageProvider?: string;

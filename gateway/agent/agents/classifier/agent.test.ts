@@ -124,6 +124,25 @@ describe("RouterAgent", () => {
     expect(completeSimple).toHaveBeenCalledTimes(1);
   });
 
+  it("returns multi when model returns multi", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"multi"}' }],
+      usage: { input: 20, output: 8 },
+    });
+
+    const modelResolver = vi.fn().mockResolvedValue(createMockModel());
+    const agent = new RouterAgent(modelResolver);
+
+    const output = await executeAgent(
+      agent,
+      { userIdentifier: "user", message: "what do I need to hit tomorrow at the gym?" },
+      { recordTrace: false },
+    );
+
+    expect(output.decision).toBe("multi");
+    expect(completeSimple).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to keyword extraction when JSON parse fails", async () => {
     vi.mocked(completeSimple).mockResolvedValue({
       content: [{ type: "text", text: 'The decision is "calendar" for this request.' }],

@@ -156,7 +156,7 @@ describe("Nix integration (U3, U5, U9)", () => {
                   {
                     id: "main",
                     workspace: "~/ws-agent",
-                    agentDir: "~/.openclaw/runtime/main",
+                    agentDir: "~/.openclaw/agents/main",
                     sandbox: { workspaceRoot: "~/sandbox-root" },
                   },
                 ],

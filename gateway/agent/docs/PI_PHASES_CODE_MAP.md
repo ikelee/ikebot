@@ -164,3 +164,5 @@ Code pointers for each phase so you can optimize based on classification (e.g. c
 | **Agent-specific workspace** | 1     | `workspaceDir`                                               | Already per-agent via `resolveAgentWorkspaceDir`       |
 
 **Classification is available:** `params.agentId` and `params.sessionKey` (which encodes agentId) are in `runEmbeddedAttempt`. Router decision (`calendar` vs `complex`) is not passed through today, but `agentId` is. You can key optimizations off `agentId === "calendar"`.
+
+**Calendar agent in config:** Ensure `agents.list` includes `{ id: "calendar", pi: { preset: "exec-only" } }` so `runCalendarReply` does not fall back to `runComplexReply` (main agent with full prompt). See [SYSTEM_PROMPT_BLOAT_ANALYSIS.md](./SYSTEM_PROMPT_BLOAT_ANALYSIS.md).

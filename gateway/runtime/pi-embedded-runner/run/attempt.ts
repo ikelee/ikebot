@@ -4,6 +4,7 @@ import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
 import os from "node:os";
+import type { PiBootstrapFileKey } from "../../../infra/config/types.agents.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../agent/pipeline/heartbeat.js";
 import { resolveSignalReactionLevel } from "../../../entrypoints/signal/reaction-level.js";
@@ -23,7 +24,7 @@ import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { checkVerboseSentinelExists } from "../../../verbose-sentinel.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
-import { resolveSessionAgentIds } from "../../agent-scope.js";
+import { resolveAgentConfig, resolvePiConfig, resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
 import { createCacheTrace } from "../../cache-trace.js";
@@ -47,6 +48,7 @@ import {
 } from "../../pi-settings.js";
 import { toClientToolDefinitions } from "../../pi-tool-definition-adapter.js";
 import { createOpenClawCodingTools } from "../../pi-tools.js";
+import { filterToolsByPolicy } from "../../pi-tools.policy.js";
 import { resolveSandboxContext } from "../../sandbox.js";
 import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
 import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
@@ -63,7 +65,28 @@ import {
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
-import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
+import {
+  DEFAULT_AGENTS_FILENAME,
+  DEFAULT_BOOTSTRAP_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
+  DEFAULT_IDENTITY_FILENAME,
+  DEFAULT_MEMORY_ALT_FILENAME,
+  DEFAULT_MEMORY_FILENAME,
+  DEFAULT_SOUL_FILENAME,
+  DEFAULT_TOOLS_FILENAME,
+  DEFAULT_USER_FILENAME,
+} from "../../workspace.js";
+import { createOllamaNonStreamingStreamFn } from "../ollama-stream-fn.js";
+
+const PI_BOOTSTRAP_KEY_TO_FILENAMES: Record<PiBootstrapFileKey, string[]> = {
+  AGENTS: [DEFAULT_AGENTS_FILENAME],
+  SOUL: [DEFAULT_SOUL_FILENAME],
+  TOOLS: [DEFAULT_TOOLS_FILENAME],
+  IDENTITY: [DEFAULT_IDENTITY_FILENAME],
+  USER: [DEFAULT_USER_FILENAME],
+  HEARTBEAT: [DEFAULT_HEARTBEAT_FILENAME],
+  MEMORY: [DEFAULT_MEMORY_FILENAME, DEFAULT_MEMORY_ALT_FILENAME],
+};
 import { isRunnerAbortError } from "../abort.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";
@@ -220,6 +243,13 @@ export async function runEmbeddedAttempt(
   let restoreSkillEnv: (() => void) | undefined;
   process.chdir(effectiveWorkspace);
   try {
+    // Resolve piConfig from run's agentId when not passed (e.g. calendar path via queue)
+    const piConfig =
+      params.piConfig ??
+      (params.agentId && params.config
+        ? resolvePiConfig(params.config, params.agentId)
+        : undefined);
+
     const shouldLoadSkillEntries = !params.skillsSnapshot || !params.skillsSnapshot.resolvedSkills;
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
@@ -234,22 +264,42 @@ export async function runEmbeddedAttempt(
           config: params.config,
         });
 
-    const skillsPrompt = resolveSkillsPromptForRun({
-      skillsSnapshot: params.skillsSnapshot,
-      entries: shouldLoadSkillEntries ? skillEntries : undefined,
-      config: params.config,
-      workspaceDir: effectiveWorkspace,
-    });
+    const skillsPrompt =
+      piConfig?.skills === false
+        ? ""
+        : resolveSkillsPromptForRun({
+            skillsSnapshot: params.skillsSnapshot,
+            entries: shouldLoadSkillEntries ? skillEntries : undefined,
+            config: params.config,
+            workspaceDir: effectiveWorkspace,
+          });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
-    const { bootstrapFiles: hookAdjustedBootstrapFiles, contextFiles } =
+    const { bootstrapFiles: hookAdjustedBootstrapFiles, contextFiles: contextFilesRaw } =
       await resolveBootstrapContextForRun({
         workspaceDir: effectiveWorkspace,
         config: params.config,
         sessionKey: params.sessionKey,
         sessionId: params.sessionId,
+        agentId: params.agentId,
         warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
+        maxCharsOverride: piConfig?.bootstrapMaxChars,
       });
+    const contextFiles =
+      piConfig?.bootstrapFiles && piConfig.bootstrapFiles.length > 0
+        ? (() => {
+            const allowed = new Set<string>();
+            for (const key of piConfig.bootstrapFiles) {
+              const filenames = PI_BOOTSTRAP_KEY_TO_FILENAMES[key];
+              if (filenames) {
+                for (const f of filenames) {
+                  allowed.add(f);
+                }
+              }
+            }
+            return contextFilesRaw.filter((f) => allowed.has(f.path));
+          })()
+        : contextFilesRaw;
     const workspaceNotes = hookAdjustedBootstrapFiles.some(
       (file) => file.name === DEFAULT_BOOTSTRAP_FILENAME && !file.missing,
     )
@@ -257,6 +307,15 @@ export async function runEmbeddedAttempt(
       : undefined;
 
     const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
+
+    const { defaultAgentId, sessionAgentId } = resolveSessionAgentIds({
+      sessionKey: params.sessionKey ?? params.sessionId,
+      config: params.config,
+    });
+    const agentConfig = params.config
+      ? resolveAgentConfig(params.config, params.agentId ?? sessionAgentId)
+      : undefined;
+    const allowedPaths = agentConfig?.tools?.files?.allowedPaths;
 
     // Check if the model supports native image input
     const modelHasVision = params.model.input?.includes("image") ?? false;
@@ -297,8 +356,16 @@ export async function runEmbeddedAttempt(
           requireExplicitMessageTarget:
             params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
           disableMessageTool: params.disableMessageTool,
+          allowedPaths,
         });
-    const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
+    const toolsFiltered =
+      piConfig?.toolsAllow && piConfig.toolsAllow.length > 0
+        ? filterToolsByPolicy(toolsRaw, {
+            allow: piConfig.toolsAllow,
+            deny: piConfig.toolsDeny,
+          })
+        : toolsRaw;
+    const tools = sanitizeToolsForGoogle({ tools: toolsFiltered, provider: params.provider });
     logToolSchemasForGoogle({ tools, provider: params.provider });
 
     const machineName = await getMachineDisplayName();
@@ -348,10 +415,6 @@ export async function runEmbeddedAttempt(
             return undefined;
           })()
         : undefined;
-    const { defaultAgentId, sessionAgentId } = resolveSessionAgentIds({
-      sessionKey: params.sessionKey,
-      config: params.config,
-    });
     const sandboxInfo = buildEmbeddedSandboxInfo(sandbox, params.bashElevated);
     const reasoningTagHint = isReasoningTagProvider(params.provider);
     // Resolve channel-specific message actions for system prompt
@@ -393,7 +456,8 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : "full";
+    const promptMode =
+      piConfig?.promptMode ?? (isSubagentSessionKey(params.sessionKey) ? "minimal" : "full");
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
@@ -431,6 +495,19 @@ export async function runEmbeddedAttempt(
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
     });
+    const systemPromptChars = appendPrompt.length;
+    const systemPromptTokensEst = Math.ceil(systemPromptChars / 4);
+    const isPiAllowlistActive =
+      piConfig &&
+      (piConfig.bootstrapFiles?.length ||
+        piConfig.promptMode !== "full" ||
+        piConfig.toolsAllow?.length ||
+        !piConfig.skills);
+    if (isPiAllowlistActive) {
+      log.info(
+        `[pi allowlist] agentId=${params.agentId ?? "?"} systemPrompt=${systemPromptChars} chars (~${systemPromptTokensEst} tokens) bootstrapFiles=${piConfig.bootstrapFiles?.join(",") ?? "all"} promptMode=${piConfig.promptMode ?? "full"} toolsAllow=${piConfig.toolsAllow?.join(",") ?? "*"} skills=${piConfig.skills}`,
+      );
+    }
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -577,7 +654,8 @@ export async function runEmbeddedAttempt(
       });
 
       // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
-      activeSession.agent.streamFn = streamSimple;
+      // Ollama streaming drops tool_calls; use non-streaming when tools present.
+      activeSession.agent.streamFn = createOllamaNonStreamingStreamFn(streamSimple);
 
       applyExtraParamsToAgent(
         activeSession.agent,

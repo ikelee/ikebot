@@ -17,6 +17,7 @@ import {
 } from "../../../../infra/config/sessions.js";
 import { normalizeMainKey } from "../../../../infra/routing/session-key.js";
 import { clearCommandLane, getQueueSize } from "../../../../process/command-queue.js";
+import { resolvePiConfig } from "../../../../runtime/agent-scope.js";
 import { resolveSessionAuthProfileOverride } from "../../../../runtime/auth-profiles/session-override.js";
 import {
   abortEmbeddedPiRun,
@@ -114,6 +115,8 @@ type RunPreparedReplyParams = {
   storePath?: string;
   workspaceDir: string;
   abortedLastRun: boolean;
+  /** For multi agent: agent ids to orchestrate (from classifier). Injected into system prompt. */
+  orchestrateAgents?: string[];
 };
 
 export async function runPreparedReply(
@@ -158,6 +161,7 @@ export async function runPreparedReply(
     storePath,
     workspaceDir,
     sessionStore,
+    orchestrateAgents,
   } = params;
   let {
     sessionEntry,
@@ -198,7 +202,11 @@ export async function runPreparedReply(
   const inboundMetaPrompt = buildInboundMetaSystemPrompt(
     isNewSession ? sessionCtx : { ...sessionCtx, ThreadStarterBody: undefined },
   );
-  const extraSystemPrompt = [inboundMetaPrompt, groupIntro, groupSystemPrompt]
+  const orchestratePrompt =
+    agentId === "multi" && orchestrateAgents?.length
+      ? `For this request, spawn and orchestrate the following agents: ${orchestrateAgents.join(", ")}. Use sessions_spawn with agentId for each. Do not spawn agents not in this list.`
+      : "";
+  const extraSystemPrompt = [inboundMetaPrompt, groupIntro, groupSystemPrompt, orchestratePrompt]
     .filter(Boolean)
     .join("\n\n");
   const baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";
@@ -406,6 +414,7 @@ export async function runPreparedReply(
     run: {
       agentId,
       agentDir,
+      piConfig: resolvePiConfig(cfg, agentId),
       sessionId: sessionIdFinal,
       sessionKey,
       messageProvider: sessionCtx.Provider?.trim().toLowerCase() || undefined,

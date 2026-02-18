@@ -34,7 +34,7 @@ describe("normalizeConfigPaths", () => {
             {
               id: "main",
               workspace: "~/ws-agent",
-              agentDir: "~/.openclaw/runtime/main",
+              agentDir: "~/.openclaw/agents/main",
               identity: {
                 name: "~not-a-path",
               },

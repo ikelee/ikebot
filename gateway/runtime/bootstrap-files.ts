@@ -47,13 +47,19 @@ export async function resolveBootstrapContextForRun(params: {
   sessionId?: string;
   agentId?: string;
   warn?: (message: string) => void;
+  /** Override max chars per bootstrap file (e.g. from agent pi config). */
+  maxCharsOverride?: number;
 }): Promise<{
   bootstrapFiles: WorkspaceBootstrapFile[];
   contextFiles: EmbeddedContextFile[];
 }> {
   const bootstrapFiles = await resolveBootstrapFilesForRun(params);
+  const maxChars =
+    typeof params.maxCharsOverride === "number" && params.maxCharsOverride > 0
+      ? params.maxCharsOverride
+      : resolveBootstrapMaxChars(params.config);
   const contextFiles = buildBootstrapContextFiles(bootstrapFiles, {
-    maxChars: resolveBootstrapMaxChars(params.config),
+    maxChars,
     warn: params.warn,
   });
   return { bootstrapFiles, contextFiles };

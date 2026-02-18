@@ -23,6 +23,8 @@ export interface AgentInput {
 export interface AgentOutput {
   /** Classification or routing decision */
   decision?: string;
+  /** For multi decision: agent ids to orchestrate (e.g. ["calendar","workouts"]) */
+  agents?: string[];
   /** Response text (if applicable) */
   response?: string;
   /** Additional metadata for next agent */
@@ -165,11 +167,11 @@ Respond directly and helpfully.`;
   private getDefaultModelForTier(tier: ModelTier): string {
     switch (tier) {
       case "small":
-        return "llama-3.2-3b";
+        return "qwen2.5:3b";
       case "medium":
-        return "llama-3.1-70b";
+        return "qwen2.5:14b";
       case "large":
-        return "claude-3-5-sonnet-20241022";
+        return "qwen2.5:72b";
     }
   }
 }

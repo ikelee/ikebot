@@ -212,3 +212,54 @@ describe("sandboxed workspace paths", () => {
     });
   });
 });
+
+describe("allowedPaths file access gating", () => {
+  it("allows read/write to paths matching allowedPaths", async () => {
+    await withTempDir("openclaw-allowed-", async (workspaceDir) => {
+      await fs.writeFile(path.join(workspaceDir, "workouts.json"), "{}", "utf8");
+      await fs.mkdir(path.join(workspaceDir, "history"), { recursive: true });
+      await fs.writeFile(path.join(workspaceDir, "history", "backup.json"), "{}", "utf8");
+
+      const tools = createOpenClawCodingTools({
+        workspaceDir,
+        allowedPaths: ["workouts.json", "history/", "*.json"],
+      });
+      const readTool = tools.find((tool) => tool.name === "read");
+      const writeTool = tools.find((tool) => tool.name === "write");
+
+      const r1 = await readTool?.execute("allowed-read", { path: "workouts.json" });
+      expect(getTextContent(r1)).toContain("{}");
+
+      const r2 = await readTool?.execute("allowed-read", { path: "history/backup.json" });
+      expect(getTextContent(r2)).toContain("{}");
+
+      await writeTool?.execute("allowed-write", {
+        path: "goals.json",
+        content: '{"target": 100}',
+      });
+      const written = await fs.readFile(path.join(workspaceDir, "goals.json"), "utf8");
+      expect(written).toContain("target");
+    });
+  });
+
+  it("rejects read/write to paths not in allowedPaths", async () => {
+    await withTempDir("openclaw-denied-", async (workspaceDir) => {
+      await fs.writeFile(path.join(workspaceDir, "workouts.json"), "{}", "utf8");
+      await fs.writeFile(path.join(workspaceDir, "secret.txt"), "private", "utf8");
+
+      const tools = createOpenClawCodingTools({
+        workspaceDir,
+        allowedPaths: ["workouts.json"],
+      });
+      const readTool = tools.find((tool) => tool.name === "read");
+      const writeTool = tools.find((tool) => tool.name === "write");
+
+      await expect(readTool?.execute("denied-read", { path: "secret.txt" })).rejects.toThrow(
+        /Path not allowed/,
+      );
+      await expect(
+        writeTool?.execute("denied-write", { path: "other.json", content: "{}" }),
+      ).rejects.toThrow(/Path not allowed/);
+    });
+  });
+});

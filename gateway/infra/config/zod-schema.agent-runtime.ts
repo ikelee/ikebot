@@ -471,6 +471,46 @@ export const AgentEntrySchema = z
       .optional(),
     sandbox: AgentSandboxSchema,
     tools: AgentToolsSchema,
+    pi: z
+      .object({
+        preset: z
+          .union([
+            z.literal("full"),
+            z.literal("minimal"),
+            z.literal("exec-only"),
+            z.literal("messaging-only"),
+          ])
+          .optional(),
+        bootstrapFiles: z
+          .array(
+            z.union([
+              z.literal("AGENTS"),
+              z.literal("SOUL"),
+              z.literal("TOOLS"),
+              z.literal("IDENTITY"),
+              z.literal("USER"),
+              z.literal("HEARTBEAT"),
+              z.literal("MEMORY"),
+            ]),
+          )
+          .optional(),
+        promptMode: z
+          .union([z.literal("full"), z.literal("minimal"), z.literal("none")])
+          .optional(),
+        session: z.boolean().optional(),
+        tools: z
+          .object({
+            profile: z.string().optional(),
+            allow: z.array(z.string()).optional(),
+            deny: z.array(z.string()).optional(),
+          })
+          .strict()
+          .optional(),
+        skills: z.boolean().optional(),
+        bootstrapMaxChars: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

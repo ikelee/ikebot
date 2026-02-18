@@ -4,6 +4,7 @@ import type { ReasoningLevel, ThinkLevel, VerboseLevel } from "../../../agent/pi
 import type { AgentStreamParams } from "../../../entrypoints/entry/commands/agent/types.js";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import type { SessionSystemPromptReport } from "../../../infra/config/sessions/types.js";
+import type { ResolvedPiConfig } from "../../../infra/config/types.agents.js";
 import type { InputProvenance } from "../../../infra/sessions/input-provenance.js";
 import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.js";
 import type { MessagingToolSend } from "../../pi-embedded-messaging.js";
@@ -94,6 +95,8 @@ export type EmbeddedRunAttemptParams = {
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  /** Pi allowlist: bootstrap, tools, skills, prompt mode. Omit = full behavior. */
+  piConfig?: ResolvedPiConfig;
 };
 
 export type EmbeddedRunAttemptResult = {

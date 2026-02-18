@@ -63,6 +63,38 @@ export type AgentConfig = {
     prune?: SandboxPruneSettings;
   };
   tools?: AgentToolsConfig;
+  /** Pi runner allowlist: bootstrap, tools, skills, prompt mode. Omit = full behavior. */
+  pi?: AgentPiConfig;
+};
+
+/** Short keys for bootstrap file filtering (map to AGENTS.md, SOUL.md, etc.). */
+export type PiBootstrapFileKey =
+  | "AGENTS"
+  | "SOUL"
+  | "TOOLS"
+  | "IDENTITY"
+  | "USER"
+  | "HEARTBEAT"
+  | "MEMORY";
+
+export type AgentPiConfig = {
+  preset?: "full" | "minimal" | "exec-only" | "messaging-only";
+  bootstrapFiles?: PiBootstrapFileKey[];
+  promptMode?: "full" | "minimal" | "none";
+  session?: boolean;
+  tools?: { profile?: string; allow?: string[]; deny?: string[] };
+  skills?: boolean;
+  bootstrapMaxChars?: number;
+};
+
+export type ResolvedPiConfig = {
+  bootstrapFiles?: PiBootstrapFileKey[];
+  promptMode: "full" | "minimal" | "none";
+  session: boolean;
+  toolsAllow?: string[];
+  toolsDeny?: string[];
+  skills: boolean;
+  bootstrapMaxChars?: number;
 };
 
 export type AgentsConfig = {

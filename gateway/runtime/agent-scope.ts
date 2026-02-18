@@ -1,5 +1,11 @@
 import path from "node:path";
 import type { OpenClawConfig } from "../infra/config/config.js";
+import type {
+  AgentPiConfig,
+  PiBootstrapFileKey,
+  ResolvedPiConfig,
+} from "../infra/config/types.agents.js";
+import { getAgentPiConfig } from "../agent/agents/pi-registry.js";
 import { resolveStateDir } from "../infra/config/paths.js";
 import {
   DEFAULT_AGENT_ID,
@@ -7,6 +13,7 @@ import {
   parseAgentSessionKey,
 } from "../infra/routing/session-key.js";
 import { resolveUserPath } from "../utils.js";
+import { expandToolGroups } from "./tool-policy.js";
 import { resolveDefaultAgentWorkspaceDir } from "./workspace.js";
 
 export { resolveAgentIdFromSessionKey } from "../infra/routing/session-key.js";
@@ -189,4 +196,79 @@ export function resolveAgentDir(cfg: OpenClawConfig, agentId: string) {
   }
   const root = resolveStateDir(process.env);
   return path.join(root, "agents", id, "agent");
+}
+
+const PI_PRESET_DEFAULTS: Record<
+  NonNullable<AgentPiConfig["preset"]>,
+  Pick<ResolvedPiConfig, "bootstrapFiles" | "promptMode" | "session" | "skills"> & {
+    toolsAllow?: string[];
+  }
+> = {
+  full: {
+    bootstrapFiles: undefined,
+    promptMode: "full",
+    session: true,
+    skills: true,
+  },
+  minimal: {
+    bootstrapFiles: ["AGENTS", "TOOLS"] as PiBootstrapFileKey[],
+    promptMode: "minimal",
+    session: true,
+    skills: false,
+  },
+  "exec-only": {
+    bootstrapFiles: ["SOUL", "TOOLS"] as PiBootstrapFileKey[],
+    promptMode: "minimal",
+    session: true,
+    skills: false,
+    toolsAllow: ["exec"],
+  },
+  "messaging-only": {
+    bootstrapFiles: ["SOUL", "TOOLS"] as PiBootstrapFileKey[],
+    promptMode: "minimal",
+    session: true,
+    skills: false,
+    toolsAllow: ["message", "sessions_list", "sessions_send"],
+  },
+};
+
+/**
+ * Resolve Pi runner config for an agent.
+ * Agent-defined pi (from agent.ts) is the base; config agents.list[].pi overrides when present.
+ */
+export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedPiConfig {
+  const agentPi = getAgentPiConfig(agentId);
+  const entry = resolveAgentEntry(cfg, agentId);
+  const configPi = entry?.pi;
+  const pi = configPi ?? agentPi;
+  const preset = pi?.preset ?? "full";
+  const presetDefaults = PI_PRESET_DEFAULTS[preset];
+
+  const bootstrapFiles = pi?.bootstrapFiles ?? presetDefaults.bootstrapFiles;
+  const promptMode = pi?.promptMode ?? presetDefaults.promptMode;
+  const session = pi?.session ?? presetDefaults.session;
+  const skills = pi?.skills ?? presetDefaults.skills;
+
+  let toolsAllow: string[] | undefined = presetDefaults.toolsAllow;
+  let toolsDeny: string[] | undefined;
+  if (pi?.tools) {
+    if (pi.tools.allow && pi.tools.allow.length > 0) {
+      toolsAllow = expandToolGroups(pi.tools.allow);
+    }
+    if (pi.tools.deny && pi.tools.deny.length > 0) {
+      toolsDeny = expandToolGroups(pi.tools.deny);
+    }
+  }
+
+  const bootstrapMaxChars = pi?.bootstrapMaxChars ?? cfg.agents?.defaults?.bootstrapMaxChars;
+
+  return {
+    bootstrapFiles,
+    promptMode,
+    session,
+    toolsAllow,
+    toolsDeny,
+    skills,
+    bootstrapMaxChars,
+  };
 }
