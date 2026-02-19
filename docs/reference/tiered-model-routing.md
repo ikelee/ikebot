@@ -122,7 +122,7 @@ When Phase 1 returns **escalate**, we go to Phase 2. Details TBD.
   - **Execution paths:**
     - **Simple tier:** `runSimpleTierFastPath` in `gateway/runtime/pi-embedded-runner/run/attempt.ts` — no session, no full prompt, no tools, direct `completeSimple()` call.
     - **Complex tier:** Full agent path in same file — `buildEmbeddedSystemPrompt`, session creation, tools, streaming.
-  - **E2E tests:** Coverage in `gateway/agent/pipeline/reply/e2e/tiered-routing.e2e.test.ts`.
+  - **E2E tests:** Coverage in `gateway/agent/e2e/reply/tiered-routing.e2e.test.ts`.
 
 - **Phase 2 / Phase 3:** Not yet implemented.
 

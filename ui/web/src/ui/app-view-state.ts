@@ -1,5 +1,7 @@
 import type { EventLogEntry, RoutingEventEntry } from "./app-events.ts";
 import type { CompactionStatus } from "./app-tool-stream.ts";
+import type { DebugAgentFileChange } from "./controllers/debug.ts";
+import type { DebugAgentChatMessage } from "./controllers/debug.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
@@ -129,7 +131,7 @@ export type AppViewState = {
   agentsList: AgentsListResult | null;
   agentsError: string | null;
   agentsSelectedId: string | null;
-  agentsPanel: "overview" | "files" | "tools" | "skills" | "channels" | "cron";
+  agentsPanel: "overview" | "files" | "tools" | "skills" | "channels" | "cron" | "testing";
   agentFilesLoading: boolean;
   agentFilesError: string | null;
   agentFilesList: AgentsFilesListResult | null;
@@ -220,6 +222,41 @@ export type AppViewState = {
   piConfigLoading: boolean;
   piConfigSandboxPreview: boolean;
   piConfigTestMemoryPath: string;
+  agentTestAgentId: string | null;
+  agentTestMessage: string;
+  agentTestBusy: boolean;
+  agentTestRunId: string | null;
+  agentTestTotalDurationMs: number | null;
+  agentTestStatus: string | null;
+  agentTestError: string | null;
+  agentTestReply: string | null;
+  agentTestBaselineFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestCurrentFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestChanges: DebugAgentFileChange[];
+  agentTestUndoBusy: boolean;
+  agentTestHistoryLoading: boolean;
+  agentTestHistoryError: string | null;
+  agentTestHistory: DebugAgentChatMessage[];
   logsLoading: boolean;
   logsError: string | null;
   logsFile: string | null;

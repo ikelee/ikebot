@@ -64,6 +64,55 @@ export async function runAgentFlow(
   console.log(`[runAgentFlow] user input: ${cleanedBody.length} chars`);
   logModelIo(log.info.bind(log), "user input", cleanedBody, true);
 
+  const directAgentId = (params.runPreparedReplyParams.agentId ?? "").trim().toLowerCase();
+  if (!enabled && directAgentId && directAgentId !== "main") {
+    console.log(
+      `[runAgentFlow] routing disabled; bypassing classifier and using direct agent=${directAgentId}`,
+    );
+    if (directAgentId === "calendar") {
+      return runCalendarReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+    if (directAgentId === "reminders") {
+      return runRemindersReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+    if (directAgentId === "mail") {
+      return runMailReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+    if (directAgentId === "workouts") {
+      return runWorkoutsReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+    if (directAgentId === "finance") {
+      return runFinanceReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+    if (directAgentId === "multi") {
+      return runMultiReply({
+        ...params.runPreparedReplyParams,
+        provider,
+        model,
+      });
+    }
+  }
+
   // ─── STEP 1: Invoke Router Agent ─────────────────────────────────────────
   const modelResolver: RouterAgentModelResolver = async () => {
     if (!enabled || !classifierModelRaw) {

@@ -60,7 +60,7 @@ export class RouterAgent extends Agent {
     }
   }
 
-  async execute(input: AgentInput, context: AgentExecutionContext): Promise<AgentOutput> {
+  async execute(input: AgentInput, _context: AgentExecutionContext): Promise<AgentOutput> {
     await this.validateInput(input);
 
     const startTime = Date.now();

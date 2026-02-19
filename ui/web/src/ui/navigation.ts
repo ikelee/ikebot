@@ -6,7 +6,7 @@ export const TAB_GROUPS = [
     label: "Control",
     tabs: ["overview", "channels", "instances", "sessions", "usage", "cron", "routing"],
   },
-  { label: "Agent", tabs: ["agents", "skills", "nodes"] },
+  { label: "Agent", tabs: ["agents", "agent-testing", "skills", "nodes"] },
   { label: "Settings", tabs: ["config", "debug", "logs"] },
 ] as const;
 
@@ -21,6 +21,7 @@ export type Tab =
   | "routing"
   | "skills"
   | "nodes"
+  | "agent-testing"
   | "chat"
   | "config"
   | "debug"
@@ -37,6 +38,7 @@ const TAB_PATHS: Record<Tab, string> = {
   routing: "/routing",
   skills: "/skills",
   nodes: "/nodes",
+  "agent-testing": "/agent-testing",
   chat: "/chat",
   config: "/config",
   debug: "/debug",
@@ -148,6 +150,8 @@ export function iconForTab(tab: Tab): IconName {
       return "zap";
     case "nodes":
       return "monitor";
+    case "agent-testing":
+      return "messageSquare";
     case "config":
       return "settings";
     case "debug":
@@ -181,6 +185,8 @@ export function titleForTab(tab: Tab) {
       return "Skills";
     case "nodes":
       return "Nodes";
+    case "agent-testing":
+      return "Agent Testing";
     case "chat":
       return "Chat";
     case "config":
@@ -216,6 +222,8 @@ export function subtitleForTab(tab: Tab) {
       return "Manage skill availability and API key injection.";
     case "nodes":
       return "Paired devices, capabilities, and command exposure.";
+    case "agent-testing":
+      return "Run agent prompts and inspect file changes in one place.";
     case "chat":
       return "Direct gateway chat session for quick interventions.";
     case "config":

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, ImageContent } from "@mariozechner/pi-ai";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
@@ -111,7 +111,6 @@ import { prepareSessionManagerForRun } from "../session-manager-init.js";
 import {
   applySystemPromptOverrideToSession,
   buildEmbeddedSystemPrompt,
-  buildSimpleSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
 import { splitSdkTools } from "../tool-split.js";
@@ -680,37 +679,44 @@ export async function runEmbeddedAttempt(
       }
 
       try {
-        const sanitizeStart = Date.now();
-        const prior = await sanitizeSessionHistory({
-          messages: activeSession.messages,
-          modelApi: params.model.api,
-          modelId: params.modelId,
-          provider: params.provider,
-          sessionManager,
-          sessionId: params.sessionId,
-          policy: transcriptPolicy,
-        });
-        log.info(`[timing] sanitizeSessionHistory took ${Date.now() - sanitizeStart}ms`);
-        cacheTrace?.recordStage("session:sanitized", { messages: prior });
-        const validatedGemini = transcriptPolicy.validateGeminiTurns
-          ? validateGeminiTurns(prior)
-          : prior;
-        const validated = transcriptPolicy.validateAnthropicTurns
-          ? validateAnthropicTurns(validatedGemini)
-          : validatedGemini;
-        const truncated = limitHistoryTurns(
-          validated,
-          getDmHistoryLimitFromSessionKey(params.sessionKey, params.config),
-        );
-        // Re-run tool_use/tool_result pairing repair after truncation, since
-        // limitHistoryTurns can orphan tool_result blocks by removing the
-        // assistant message that contained the matching tool_use.
-        const limited = transcriptPolicy.repairToolUseResultPairing
-          ? sanitizeToolUseResultPairing(truncated)
-          : truncated;
-        cacheTrace?.recordStage("session:limited", { messages: limited });
-        if (limited.length > 0) {
-          activeSession.agent.replaceMessages(limited);
+        if (piConfig?.session === false) {
+          // Explicit per-agent opt-out of transcript context: keep runs stateless
+          // and rely on workspace files as the source of truth.
+          activeSession.agent.replaceMessages([]);
+          cacheTrace?.recordStage("session:limited", { messages: [] });
+        } else {
+          const sanitizeStart = Date.now();
+          const prior = await sanitizeSessionHistory({
+            messages: activeSession.messages,
+            modelApi: params.model.api,
+            modelId: params.modelId,
+            provider: params.provider,
+            sessionManager,
+            sessionId: params.sessionId,
+            policy: transcriptPolicy,
+          });
+          log.info(`[timing] sanitizeSessionHistory took ${Date.now() - sanitizeStart}ms`);
+          cacheTrace?.recordStage("session:sanitized", { messages: prior });
+          const validatedGemini = transcriptPolicy.validateGeminiTurns
+            ? validateGeminiTurns(prior)
+            : prior;
+          const validated = transcriptPolicy.validateAnthropicTurns
+            ? validateAnthropicTurns(validatedGemini)
+            : validatedGemini;
+          const truncated = limitHistoryTurns(
+            validated,
+            getDmHistoryLimitFromSessionKey(params.sessionKey, params.config),
+          );
+          // Re-run tool_use/tool_result pairing repair after truncation, since
+          // limitHistoryTurns can orphan tool_result blocks by removing the
+          // assistant message that contained the matching tool_use.
+          const limited = transcriptPolicy.repairToolUseResultPairing
+            ? sanitizeToolUseResultPairing(truncated)
+            : truncated;
+          cacheTrace?.recordStage("session:limited", { messages: limited });
+          if (limited.length > 0) {
+            activeSession.agent.replaceMessages(limited);
+          }
         }
       } catch (err) {
         sessionManager.flushPendingToolResults?.();
@@ -969,10 +975,21 @@ export async function runEmbeddedAttempt(
             `[timing] calling activeSession.prompt() with ${imageResult.images.length} images...`,
           );
           const promptCallStart = Date.now();
-          if (imageResult.images.length > 0) {
-            await abortable(activeSession.prompt(effectivePrompt, { images: imageResult.images }));
-          } else {
-            await abortable(activeSession.prompt(effectivePrompt));
+          const promptWatchdog = setInterval(() => {
+            log.warn(
+              `[timing] activeSession.prompt() still running after ${Date.now() - promptCallStart}ms provider=${params.provider} model=${params.modelId}`,
+            );
+          }, 15_000);
+          try {
+            if (imageResult.images.length > 0) {
+              await abortable(
+                activeSession.prompt(effectivePrompt, { images: imageResult.images }),
+              );
+            } else {
+              await abortable(activeSession.prompt(effectivePrompt));
+            }
+          } finally {
+            clearInterval(promptWatchdog);
           }
           log.info(`[timing] activeSession.prompt() took ${Date.now() - promptCallStart}ms`);
         } catch (err) {

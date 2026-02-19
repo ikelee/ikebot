@@ -16,6 +16,8 @@ import type {
   AgentsDeleteResultSchema,
   AgentsFilesGetParamsSchema,
   AgentsFilesGetResultSchema,
+  AgentsFilesDeleteParamsSchema,
+  AgentsFilesDeleteResultSchema,
   AgentsFilesListParamsSchema,
   AgentsFilesListResultSchema,
   AgentsFilesSetParamsSchema,
@@ -199,6 +201,8 @@ export type AgentsFilesListParams = Static<typeof AgentsFilesListParamsSchema>;
 export type AgentsFilesListResult = Static<typeof AgentsFilesListResultSchema>;
 export type AgentsFilesGetParams = Static<typeof AgentsFilesGetParamsSchema>;
 export type AgentsFilesGetResult = Static<typeof AgentsFilesGetResultSchema>;
+export type AgentsFilesDeleteParams = Static<typeof AgentsFilesDeleteParamsSchema>;
+export type AgentsFilesDeleteResult = Static<typeof AgentsFilesDeleteResultSchema>;
 export type AgentsFilesSetParams = Static<typeof AgentsFilesSetParamsSchema>;
 export type AgentsFilesSetResult = Static<typeof AgentsFilesSetResultSchema>;
 export type AgentsPiConfigParams = Static<typeof AgentsPiConfigParamsSchema>;

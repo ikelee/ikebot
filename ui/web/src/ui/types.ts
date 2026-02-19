@@ -377,6 +377,13 @@ export type AgentsFilesSetResult = {
   file: AgentFileEntry;
 };
 
+export type AgentsFilesDeleteResult = {
+  ok: true;
+  agentId: string;
+  workspace: string;
+  file: AgentFileEntry;
+};
+
 export type GatewaySessionRow = {
   key: string;
   kind: "direct" | "group" | "global" | "unknown";

@@ -389,9 +389,13 @@ export function buildAgentSystemPrompt(params: {
   const lines = [
     "You are a personal assistant running inside OpenClaw.",
     "",
-    "## Conversational replies",
-    "When the user sends a normal message (e.g. a greeting, question, or short request), reply directly and concisely. If they ask you to say something (e.g. 'say hi back', 'just say hello', 'reply with bye'), your reply must be only that content—e.g. 'Hi!' or 'Bye!'—with no explanation, no tool names, no JSON, and no 'your question isn't related to...' or 'here are possible actions'. Do not call the message, sessions_send, or tts tool for that—just output the text in your reply (e.g. inside <final>). Do not ask 'what would you like to do' or 'how can I assist'. Do not mention functions, commands, or tools unless the user explicitly asks for help with those. Do not identify as 'the X bot' or prefix your reply with channel names or conversation labels. Just answer or react to what they said.",
-    "",
+    ...(isMinimal
+      ? []
+      : [
+          "## Conversational replies",
+          "When the user sends a normal message (e.g. a greeting, question, or short request), reply directly and concisely. If they ask you to say something (e.g. 'say hi back', 'just say hello', 'reply with bye'), your reply must be only that content—e.g. 'Hi!' or 'Bye!'—with no explanation, no tool names, no JSON, and no 'your question isn't related to...' or 'here are possible actions'. Do not call the message, sessions_send, or tts tool for that—just output the text in your reply (e.g. inside <final>). Do not ask 'what would you like to do' or 'how can I assist'. Do not mention functions, commands, or tools unless the user explicitly asks for help with those. Do not identify as 'the X bot' or prefix your reply with channel names or conversation labels. Just answer or react to what they said.",
+          "",
+        ]),
     "## Tooling",
     "Tool availability (filtered by policy):",
     "Tool names are case-sensitive. Call tools exactly as listed.",
@@ -415,24 +419,36 @@ export function buildAgentSystemPrompt(params: {
           '- session_status: show usage/time/model state and answer "what model are we using?"',
         ].join("\n"),
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
-    "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
+    ...(isMinimal
+      ? []
+      : [
+          "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
+        ]),
     "",
-    "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
-    "",
+    ...(isMinimal
+      ? []
+      : [
+          "## Tool Call Style",
+          "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+          "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+          "Keep narration brief and value-dense; avoid repeating obvious steps.",
+          "Use plain human language for narration unless in a technical context.",
+          "",
+        ]),
     ...safetySection,
-    "## OpenClaw CLI Quick Reference",
-    "OpenClaw is controlled via subcommands. Do not invent commands.",
-    "To manage the Gateway daemon service (start/stop/restart):",
-    "- openclaw gateway status",
-    "- openclaw gateway start",
-    "- openclaw gateway stop",
-    "- openclaw gateway restart",
-    "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
-    "",
+    ...(isMinimal
+      ? []
+      : [
+          "## OpenClaw CLI Quick Reference",
+          "OpenClaw is controlled via subcommands. Do not invent commands.",
+          "To manage the Gateway daemon service (start/stop/restart):",
+          "- openclaw gateway status",
+          "- openclaw gateway start",
+          "- openclaw gateway stop",
+          "- openclaw gateway restart",
+          "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
+          "",
+        ]),
     ...skillsSection,
     ...memorySection,
     // Skip self-update for subagent/none modes
@@ -458,7 +474,7 @@ export function buildAgentSystemPrompt(params: {
       ? params.modelAliasLines.join("\n")
       : "",
     params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal ? "" : "",
-    userTimezone
+    userTimezone && !isMinimal
       ? "If you need the current date, time, or day of week, run session_status (📊 session_status)."
       : "",
     "## Workspace",

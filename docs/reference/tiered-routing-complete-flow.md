@@ -659,7 +659,7 @@ The complex path is **~10x slower** but provides the full agent experience with 
 
 ## Testing
 
-**E2E tests:** `gateway/agent/pipeline/reply/e2e/tiered-routing.e2e.test.ts`
+**E2E tests:** `gateway/agent/e2e/reply/tiered-routing.e2e.test.ts`
 
 Tests cover:
 

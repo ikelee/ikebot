@@ -28,6 +28,8 @@ import {
   AgentsFilesGetParamsSchema,
   type AgentsFilesGetResult,
   AgentsFilesGetResultSchema,
+  type AgentsFilesDeleteParams,
+  AgentsFilesDeleteParamsSchema,
   type AgentsFilesListParams,
   AgentsFilesListParamsSchema,
   type AgentsFilesListResult,
@@ -250,6 +252,9 @@ export const validateAgentsFilesListParams = ajv.compile<AgentsFilesListParams>(
 );
 export const validateAgentsFilesGetParams = ajv.compile<AgentsFilesGetParams>(
   AgentsFilesGetParamsSchema,
+);
+export const validateAgentsFilesDeleteParams = ajv.compile<AgentsFilesDeleteParams>(
+  AgentsFilesDeleteParamsSchema,
 );
 export const validateAgentsFilesSetParams = ajv.compile<AgentsFilesSetParams>(
   AgentsFilesSetParamsSchema,

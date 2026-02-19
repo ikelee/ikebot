@@ -38,6 +38,9 @@ describe("buildAgentSystemPrompt", () => {
     });
 
     expect(prompt).not.toContain("## User Identity");
+    expect(prompt).not.toContain("## Conversational replies");
+    expect(prompt).not.toContain("## OpenClaw CLI Quick Reference");
+    expect(prompt).not.toContain("## Tool Call Style");
     expect(prompt).not.toContain("## Skills");
     expect(prompt).not.toContain("## Memory Recall");
     expect(prompt).not.toContain("## Documentation");
@@ -101,7 +104,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("## Conversational replies");
     expect(prompt).toContain("reply directly and concisely");
     expect(prompt).toContain("Do not ask 'what would you like to do'");
-    expect(prompt).toContain("Do not mention functions, commands, tools");
+    expect(prompt).toContain("Do not mention functions, commands, or tools");
     expect(prompt).toMatch(/Just answer or react to what they said/);
   });
 

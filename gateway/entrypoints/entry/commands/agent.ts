@@ -100,6 +100,7 @@ export async function agentCommand(
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
     ensureBootstrapFiles: !agentCfg?.skipBootstrap,
+    agentId: sessionAgentId,
   });
   const workspaceDir = workspace.dir;
   const configuredModel = resolveConfiguredModelRef({

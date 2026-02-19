@@ -157,6 +157,7 @@ export async function runCronIsolatedAgentTurn(params: {
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
     ensureBootstrapFiles: !agentCfg?.skipBootstrap,
+    agentId,
   });
   const workspaceDir = workspace.dir;
 

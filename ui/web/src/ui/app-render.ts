@@ -25,7 +25,16 @@ import {
   removeCronJob,
   addCronJob,
 } from "./controllers/cron.ts";
-import { loadDebug, callDebugMethod, loadPiConfig } from "./controllers/debug.ts";
+import {
+  callDebugMethod,
+  loadDebugAgentHistory,
+  loadDebug,
+  loadPiConfig,
+  refreshDebugAgentFiles,
+  runDebugAgentTest,
+  undoAllDebugAgentFileChanges,
+  undoDebugAgentFileChange,
+} from "./controllers/debug.ts";
 import {
   approveDevicePairing,
   loadDevices,
@@ -62,6 +71,7 @@ const debouncedLoadUsage = (state: UsageState) => {
   }
   usageDateDebounceTimeout = window.setTimeout(() => void loadUsage(state), 400);
 };
+import { renderAgentTesting } from "./views/agent-testing.ts";
 import { renderAgents } from "./views/agents.ts";
 import { renderChannels } from "./views/channels.ts";
 import { renderChat } from "./views/chat.ts";
@@ -642,6 +652,17 @@ export function renderApp(state: AppViewState) {
                 agentSkillsError: state.agentSkillsError,
                 agentSkillsAgentId: state.agentSkillsAgentId,
                 skillsFilter: state.skillsFilter,
+                agentTestBusy: state.agentTestBusy,
+                agentTestRunId: state.agentTestRunId,
+                agentTestTotalDurationMs: state.agentTestTotalDurationMs,
+                agentTestStatus: state.agentTestStatus,
+                agentTestError: state.agentTestError,
+                agentTestReply: state.agentTestReply,
+                agentTestMessage: state.agentTestMessage,
+                agentTestChanges: state.agentTestChanges,
+                agentTestBaselineFiles: state.agentTestBaselineFiles,
+                agentTestCurrentFiles: state.agentTestCurrentFiles,
+                agentTestUndoBusy: state.agentTestUndoBusy,
                 onRefresh: async () => {
                   await loadAgents(state);
                   const agentIds = state.agentsList?.agents?.map((entry) => entry.id) ?? [];
@@ -670,6 +691,9 @@ export function renderApp(state: AppViewState) {
                   if (state.agentsPanel === "skills") {
                     void loadAgentSkills(state, agentId);
                   }
+                  if (state.agentsPanel === "testing") {
+                    state.agentTestAgentId = agentId;
+                  }
                 },
                 onSelectPanel: (panel) => {
                   state.agentsPanel = panel;
@@ -693,6 +717,9 @@ export function renderApp(state: AppViewState) {
                   }
                   if (panel === "cron") {
                     void state.loadCron();
+                  }
+                  if (panel === "testing" && resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
                   }
                 },
                 onLoadFiles: (agentId) => loadAgentFiles(state, agentId),
@@ -864,6 +891,31 @@ export function renderApp(state: AppViewState) {
                   }
                   updateConfigFormValue(state, ["agents", "list", index, "skills"], []);
                 },
+                onAgentTestMessageChange: (value) => (state.agentTestMessage = value),
+                onRunAgentTest: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return runDebugAgentTest(state);
+                },
+                onRefreshAgentTestFiles: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return refreshDebugAgentFiles(state);
+                },
+                onUndoAgentFileChange: (name) => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return undoDebugAgentFileChange(state, name);
+                },
+                onUndoAllAgentFileChanges: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return undoAllDebugAgentFileChanges(state);
+                },
                 onModelChange: (agentId, modelId) => {
                   if (!configValue) {
                     return;
@@ -948,6 +1000,98 @@ export function renderApp(state: AppViewState) {
                     ? { primary, fallbacks: normalized }
                     : { fallbacks: normalized };
                   updateConfigFormValue(state, basePath, next);
+                },
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "agent-testing"
+            ? renderAgentTesting({
+                agentsList: state.agentsList,
+                selectedAgentId: resolvedAgentId,
+                onSelectAgent: (agentId) => {
+                  if (state.agentsSelectedId !== agentId) {
+                    state.agentsSelectedId = agentId;
+                  }
+                  state.agentTestAgentId = agentId;
+                  void loadAgentIdentity(state, agentId);
+                  void loadAgentFiles(state, agentId);
+                  void loadDebugAgentHistory(state);
+                },
+                agentFilesList: state.agentFilesList,
+                agentFilesLoading: state.agentFilesLoading,
+                agentFilesError: state.agentFilesError,
+                agentFileActive: state.agentFileActive,
+                agentFileContents: state.agentFileContents,
+                agentFileDrafts: state.agentFileDrafts,
+                agentFileSaving: state.agentFileSaving,
+                onLoadFiles: (agentId) => loadAgentFiles(state, agentId),
+                onSelectFile: (name) => {
+                  state.agentFileActive = name;
+                  if (!resolvedAgentId) {
+                    return;
+                  }
+                  void loadAgentFileContent(state, resolvedAgentId, name);
+                },
+                onFileDraftChange: (name, content) => {
+                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: content };
+                },
+                onFileReset: (name) => {
+                  const base = state.agentFileContents[name] ?? "";
+                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: base };
+                },
+                onFileSave: (name) => {
+                  if (!resolvedAgentId) {
+                    return;
+                  }
+                  const content =
+                    state.agentFileDrafts[name] ?? state.agentFileContents[name] ?? "";
+                  void saveAgentFile(state, resolvedAgentId, name, content);
+                },
+                agentTestBusy: state.agentTestBusy,
+                agentTestRunId: state.agentTestRunId,
+                agentTestStatus: state.agentTestStatus,
+                agentTestError: state.agentTestError,
+                agentTestReply: state.agentTestReply,
+                agentTestMessage: state.agentTestMessage,
+                agentTestChanges: state.agentTestChanges,
+                agentTestBaselineFiles: state.agentTestBaselineFiles,
+                agentTestCurrentFiles: state.agentTestCurrentFiles,
+                agentTestUndoBusy: state.agentTestUndoBusy,
+                onAgentTestMessageChange: (value) => (state.agentTestMessage = value),
+                onRunAgentTest: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return runDebugAgentTest(state);
+                },
+                onRefreshAgentFiles: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return refreshDebugAgentFiles(state);
+                },
+                onUndoAgentFileChange: (name) => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return undoDebugAgentFileChange(state, name);
+                },
+                onUndoAllAgentFileChanges: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return undoAllDebugAgentFileChanges(state);
+                },
+                historyLoading: state.agentTestHistoryLoading,
+                historyError: state.agentTestHistoryError,
+                history: state.agentTestHistory,
+                onRefreshHistory: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return loadDebugAgentHistory(state);
                 },
               })
             : nothing
@@ -1200,6 +1344,23 @@ export function renderApp(state: AppViewState) {
                   state.piConfigAgentId && loadPiConfig(state, state.piConfigAgentId),
                 onPiConfigSandboxPreviewChange: (v) => (state.piConfigSandboxPreview = v),
                 onPiConfigTestMemoryPathChange: (v) => (state.piConfigTestMemoryPath = v),
+                agentTestAgentId: state.agentTestAgentId,
+                agentTestMessage: state.agentTestMessage,
+                agentTestBusy: state.agentTestBusy,
+                agentTestRunId: state.agentTestRunId,
+                agentTestStatus: state.agentTestStatus,
+                agentTestError: state.agentTestError,
+                agentTestReply: state.agentTestReply,
+                agentTestChanges: state.agentTestChanges,
+                agentTestBaselineFiles: state.agentTestBaselineFiles,
+                agentTestCurrentFiles: state.agentTestCurrentFiles,
+                agentTestUndoBusy: state.agentTestUndoBusy,
+                onAgentTestAgentChange: (id) => (state.agentTestAgentId = id),
+                onAgentTestMessageChange: (v) => (state.agentTestMessage = v),
+                onRunAgentTest: () => runDebugAgentTest(state),
+                onRefreshAgentFiles: () => refreshDebugAgentFiles(state),
+                onUndoAgentFileChange: (name) => undoDebugAgentFileChange(state, name),
+                onUndoAllAgentFileChanges: () => undoAllDebugAgentFileChanges(state),
               })
             : nothing
         }

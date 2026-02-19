@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import type { EventLogEntry } from "../app-events.ts";
+import type { DebugAgentFileChange } from "../controllers/debug.ts";
 import type { AgentsListResult } from "../types.ts";
 import { formatEventPayload } from "../presenter.ts";
 
@@ -34,6 +35,43 @@ export type DebugProps = {
   onLoadPiConfig: () => void;
   onPiConfigSandboxPreviewChange: (v: boolean) => void;
   onPiConfigTestMemoryPathChange: (v: string) => void;
+  agentTestAgentId: string | null;
+  agentTestMessage: string;
+  agentTestBusy: boolean;
+  agentTestRunId: string | null;
+  agentTestStatus: string | null;
+  agentTestError: string | null;
+  agentTestReply: string | null;
+  agentTestChanges: DebugAgentFileChange[];
+  agentTestBaselineFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestCurrentFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestUndoBusy: boolean;
+  onAgentTestAgentChange: (agentId: string | null) => void;
+  onAgentTestMessageChange: (v: string) => void;
+  onRunAgentTest: () => void;
+  onRefreshAgentFiles: () => void;
+  onUndoAgentFileChange: (name: string) => void;
+  onUndoAllAgentFileChanges: () => void;
 };
 
 export function renderDebug(props: DebugProps) {
@@ -221,6 +259,130 @@ export function renderDebug(props: DebugProps) {
             `
           : nothing
       }
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <div class="card-title">Agent Test Bench</div>
+      <div class="card-sub">Run a prompt against one agent session, inspect file mutations, and undo them.</div>
+      <div class="row" style="gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+        <label class="field" style="min-width: 200px;">
+          <span>Agent</span>
+          <select
+            .value=${props.agentTestAgentId ?? ""}
+            ?disabled=${props.agentTestBusy || !props.agentsList}
+            @change=${(e: Event) => {
+              const v = (e.target as HTMLSelectElement).value;
+              props.onAgentTestAgentChange(v ? v : null);
+            }}
+          >
+            <option value="">Select agent</option>
+            ${(props.agentsList?.agents ?? []).map(
+              (a) => html`<option value=${a.id}>${a.name ?? a.id}</option>`,
+            )}
+          </select>
+        </label>
+      </div>
+      <label class="field" style="margin-top: 12px;">
+        <span>Prompt</span>
+        <textarea
+          .value=${props.agentTestMessage}
+          rows="4"
+          @input=${(e: Event) =>
+            props.onAgentTestMessageChange((e.target as HTMLTextAreaElement).value)}
+          placeholder="e.g. log bench press 3x10 at 135"
+        ></textarea>
+      </label>
+      <div class="row" style="margin-top: 12px; gap: 8px; flex-wrap: wrap;">
+        <button
+          class="btn primary"
+          ?disabled=${!props.agentTestAgentId || !props.agentTestMessage.trim() || props.agentTestBusy}
+          @click=${props.onRunAgentTest}
+        >
+          ${props.agentTestBusy ? "Running…" : "Run Agent Test"}
+        </button>
+        <button class="btn" ?disabled=${!props.agentTestAgentId || props.agentTestBusy} @click=${props.onRefreshAgentFiles}>
+          Refresh Files
+        </button>
+        <button
+          class="btn"
+          ?disabled=${props.agentTestChanges.length === 0 || props.agentTestUndoBusy || props.agentTestBusy}
+          @click=${props.onUndoAllAgentFileChanges}
+        >
+          ${props.agentTestUndoBusy ? "Undoing…" : "Undo All"}
+        </button>
+      </div>
+      ${
+        props.agentTestRunId
+          ? html`<div class="muted mono" style="margin-top: 10px;">runId: ${props.agentTestRunId}</div>`
+          : nothing
+      }
+      ${
+        props.agentTestStatus
+          ? html`<div class="callout info" style="margin-top: 10px;">${props.agentTestStatus}</div>`
+          : nothing
+      }
+      ${
+        props.agentTestError
+          ? html`<div class="callout danger" style="margin-top: 10px;">${props.agentTestError}</div>`
+          : nothing
+      }
+      ${
+        props.agentTestReply
+          ? html`
+              <div class="muted" style="margin-top: 12px;">Latest assistant reply</div>
+              <div class="code-block-wrap" style="margin-top: 8px;"><pre class="code-block">${props.agentTestReply}</pre></div>
+            `
+          : nothing
+      }
+      <div style="margin-top: 14px;">
+        <div class="muted">Detected file changes (${props.agentTestChanges.length})</div>
+        ${
+          props.agentTestChanges.length === 0
+            ? html`
+                <div class="muted" style="margin-top: 8px">No differences detected against baseline.</div>
+              `
+            : html`
+                <div class="list" style="margin-top: 10px;">
+                  ${props.agentTestChanges.map((change) => {
+                    const baseline = props.agentTestBaselineFiles[change.name];
+                    const current = props.agentTestCurrentFiles[change.name];
+                    const beforeText = baseline?.content ?? "";
+                    const afterText = current?.content ?? "";
+                    return html`
+                      <div class="list-item" style="align-items: flex-start;">
+                        <div class="list-main" style="min-width: 240px;">
+                          <div class="list-title mono">${change.name}</div>
+                          <div class="list-sub mono">${change.path}</div>
+                          <div class="list-sub">${change.status} · ${change.beforeLines} → ${change.afterLines} lines</div>
+                          <div style="margin-top: 8px;">
+                            <button
+                              class="btn btn--sm"
+                              ?disabled=${props.agentTestUndoBusy || props.agentTestBusy}
+                              @click=${() => props.onUndoAgentFileChange(change.name)}
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        </div>
+                        <div class="list-meta" style="flex: 1; min-width: 300px;">
+                          <div class="row" style="gap: 12px; align-items: flex-start; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 220px;">
+                              <div class="muted">Before</div>
+                              <div class="code-block-wrap"><pre class="code-block">${beforeText}</pre></div>
+                            </div>
+                            <div style="flex: 1; min-width: 220px;">
+                              <div class="muted">After</div>
+                              <div class="code-block-wrap"><pre class="code-block">${afterText}</pre></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  })}
+                </div>
+              `
+        }
+      </div>
     </section>
 
     <section class="card" style="margin-top: 18px;">

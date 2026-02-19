@@ -206,8 +206,14 @@ export class OpenClawApp extends LitElement {
   @state() agentsList: AgentsListResult | null = null;
   @state() agentsError: string | null = null;
   @state() agentsSelectedId: string | null = null;
-  @state() agentsPanel: "overview" | "files" | "tools" | "skills" | "channels" | "cron" =
-    "overview";
+  @state() agentsPanel:
+    | "overview"
+    | "files"
+    | "tools"
+    | "skills"
+    | "channels"
+    | "cron"
+    | "testing" = "overview";
   @state() agentFilesLoading = false;
   @state() agentFilesError: string | null = null;
   @state() agentFilesList: AgentsFilesListResult | null = null;
@@ -322,6 +328,67 @@ export class OpenClawApp extends LitElement {
   @state() piConfigLoading = false;
   @state() piConfigSandboxPreview = false;
   @state() piConfigTestMemoryPath = "";
+  @state() agentTestAgentId: string | null = null;
+  @state() agentTestMessage = "";
+  @state() agentTestBusy = false;
+  @state() agentTestRunId: string | null = null;
+  @state() agentTestTotalDurationMs: number | null = null;
+  @state() agentTestStatus: string | null = null;
+  @state() agentTestError: string | null = null;
+  @state() agentTestReply: string | null = null;
+  @state() agentTestBaselineFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  > = {};
+  @state() agentTestCurrentFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  > = {};
+  @state() agentTestChanges: Array<{
+    name: string;
+    path: string;
+    status: "created" | "modified" | "deleted";
+    before: {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    };
+    after: {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    };
+    beforeLines: number;
+    afterLines: number;
+  }> = [];
+  @state() agentTestUndoBusy = false;
+  @state() agentTestHistoryLoading = false;
+  @state() agentTestHistoryError: string | null = null;
+  @state() agentTestHistory: Array<{
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number | null;
+  }> = [];
 
   @state() logsLoading = false;
   @state() logsError: string | null = null;

@@ -71,9 +71,30 @@ export function wrapToolWithBeforeToolCallHook(
     return tool;
   }
   const toolName = tool.name || "tool";
+  const normalizedToolName = normalizeToolName(toolName);
+
+  const describeReadWriteParams = (value: unknown): string => {
+    if (!isPlainObject(value)) {
+      return "params=non-object";
+    }
+    const pathValue = typeof value.path === "string" ? value.path : undefined;
+    if (normalizedToolName === "read") {
+      return pathValue ? `path=${pathValue}` : "path=(missing)";
+    }
+    if (normalizedToolName === "write") {
+      const contentLen = typeof value.content === "string" ? value.content.length : undefined;
+      const pathPart = pathValue ? `path=${pathValue}` : "path=(missing)";
+      const contentPart =
+        contentLen !== undefined ? `contentChars=${contentLen}` : "contentChars=(missing)";
+      return `${pathPart} ${contentPart}`;
+    }
+    return "";
+  };
+
   return {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate) => {
+      const toolStartAt = Date.now();
       const outcome = await runBeforeToolCallHook({
         toolName,
         params,
@@ -83,7 +104,30 @@ export function wrapToolWithBeforeToolCallHook(
       if (outcome.blocked) {
         throw new Error(outcome.reason);
       }
-      return await execute(toolCallId, outcome.params, signal, onUpdate);
+      const shouldLogReadWrite = normalizedToolName === "read" || normalizedToolName === "write";
+      if (shouldLogReadWrite) {
+        const details = describeReadWriteParams(outcome.params);
+        const idPart = toolCallId ? ` id=${toolCallId}` : "";
+        log.info(`[tool-call] start tool=${normalizedToolName}${idPart} ${details}`.trim());
+      }
+      try {
+        const result = await execute(toolCallId, outcome.params, signal, onUpdate);
+        if (shouldLogReadWrite) {
+          const durationMs = Date.now() - toolStartAt;
+          const idPart = toolCallId ? ` id=${toolCallId}` : "";
+          log.info(`[tool-call] done tool=${normalizedToolName}${idPart} durationMs=${durationMs}`);
+        }
+        return result;
+      } catch (err) {
+        if (shouldLogReadWrite) {
+          const durationMs = Date.now() - toolStartAt;
+          const idPart = toolCallId ? ` id=${toolCallId}` : "";
+          log.warn(
+            `[tool-call] error tool=${normalizedToolName}${idPart} durationMs=${durationMs} error=${String(err)}`,
+          );
+        }
+        throw err;
+      }
     },
   };
 }

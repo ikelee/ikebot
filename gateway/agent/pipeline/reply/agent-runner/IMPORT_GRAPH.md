@@ -208,7 +208,7 @@ Move `session*` → `session/`, `agent-runner-*` → `core/`, routing files → 
 Use IDE "Move to" refactor so TypeScript updates all imports automatically.
 
 **Phase 3 – Verify**  
-Run `pnpm build` and `pnpm test:e2e gateway/agent/pipeline/reply/e2e`.
+Run `pnpm build` and `pnpm test:e2e gateway/agent/e2e/reply`.
 
 ---
 

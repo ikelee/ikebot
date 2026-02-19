@@ -10,13 +10,46 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type {
   AssistantMessage,
   AssistantMessageEventStream,
-  Context,
   Model,
   ToolCall,
 } from "@mariozechner/pi-ai";
 import { convertMessages } from "@mariozechner/pi-ai";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
+import { isLogFullModelIoEnabled, shouldLogVerbose } from "../../globals.js";
+import { checkVerboseSentinelExists } from "../../verbose-sentinel.js";
 import { log } from "./logger.js";
+
+const PREVIEW_CHARS = 400;
+const VERBOSE_CHUNK_CHARS = 2000;
+let ollamaRequestCounter = 0;
+
+function isFullModelIoLogEnabled(): boolean {
+  return shouldLogVerbose() || isLogFullModelIoEnabled() || checkVerboseSentinelExists();
+}
+
+function previewForLog(text: string, maxChars: number): string {
+  const t = text?.trim() ?? "";
+  if (!t) {
+    return "(empty)";
+  }
+  const oneLine = t.replace(/\s+/g, " ").slice(0, maxChars);
+  return oneLine.length < t.length ? `${oneLine}…` : oneLine;
+}
+
+function logLongContent(prefix: string, text: string): void {
+  const t = text?.trim() ?? "";
+  if (isFullModelIoLogEnabled() && t.length > 0) {
+    for (let i = 0; i < t.length; i += VERBOSE_CHUNK_CHARS) {
+      const chunk = t.slice(i, i + VERBOSE_CHUNK_CHARS);
+      const part = Math.floor(i / VERBOSE_CHUNK_CHARS) + 1;
+      const total = Math.ceil(t.length / VERBOSE_CHUNK_CHARS);
+      const suffix = total > 1 ? ` (part ${part}/${total})` : "";
+      log.info(`${prefix}${suffix}: ${chunk}`);
+    }
+  } else {
+    log.info(`${prefix}: ${previewForLog(t, PREVIEW_CHARS)}`);
+  }
+}
 
 function isOllamaProvider(model: { provider?: string; baseUrl?: string }): boolean {
   const p = (model.provider ?? "").trim().toLowerCase();
@@ -212,8 +245,10 @@ export function createOllamaNonStreamingStreamFn(baseStreamFn: StreamFn): Stream
       input: ollamaModel.input ?? ["text"],
     };
 
-    (async () => {
+    void (async () => {
       try {
+        const requestId = ++ollamaRequestCounter;
+        const startedAt = Date.now();
         const baseUrl = (modelForConvert.baseUrl ?? "http://localhost:11434/v1").replace(/\/$/, "");
         const url = `${baseUrl}/chat/completions`;
 
@@ -227,6 +262,23 @@ export function createOllamaNonStreamingStreamFn(baseStreamFn: StreamFn): Stream
           max_completion_tokens: options?.maxTokens ?? 4096,
           temperature: options?.temperature ?? 0.3,
         };
+
+        const lastMessage = messages.at(-1);
+        const lastRole = lastMessage?.role ?? "unknown";
+        const lastContent =
+          typeof lastMessage?.content === "string"
+            ? lastMessage.content
+            : Array.isArray(lastMessage?.content)
+              ? JSON.stringify(lastMessage.content)
+              : "";
+        log.info(
+          `[ollama-stream-fn] req#${requestId} start model=${ollamaModel.id} messages=${messages.length} tools=${tools.length} maxTokens=${body.max_completion_tokens} temp=${body.temperature}`,
+        );
+        logLongContent(
+          `[ollama-stream-fn] req#${requestId} input lastMessage role=${lastRole}`,
+          lastContent,
+        );
+        logLongContent(`[ollama-stream-fn] req#${requestId} input body`, JSON.stringify(body));
 
         const controller = new AbortController();
         if (options?.signal) {
@@ -256,6 +308,18 @@ export function createOllamaNonStreamingStreamFn(baseStreamFn: StreamFn): Stream
         const choice = response.choices?.[0];
         if (!choice) {
           throw new Error("No choice in Ollama response");
+        }
+        const outputText = choice.message?.content ?? "";
+        const toolCalls = choice.message?.tool_calls ?? [];
+        log.info(
+          `[ollama-stream-fn] req#${requestId} done ${Date.now() - startedAt}ms finish=${choice.finish_reason ?? "unknown"} toolCalls=${toolCalls.length} usage.in=${response.usage?.prompt_tokens ?? "?"} usage.out=${response.usage?.completion_tokens ?? "?"}`,
+        );
+        logLongContent(`[ollama-stream-fn] req#${requestId} output text`, outputText);
+        if (toolCalls.length > 0) {
+          logLongContent(
+            `[ollama-stream-fn] req#${requestId} output toolCalls`,
+            JSON.stringify(toolCalls),
+          );
         }
         const msg = chatCompletionToAssistantMessage(choice, response.usage, ollamaModel);
         pushCompleteResultToStream(stream, msg);

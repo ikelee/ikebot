@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
 import type { AnyAgentTool } from "./pi-tools.types.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { detectMime } from "../media/mime.js";
 import { assertSandboxPath, resolveSandboxPath } from "./sandbox-paths.js";
 import { sanitizeToolResultImages } from "./tool-images.js";
@@ -10,6 +11,7 @@ import { sanitizeToolResultImages } from "./tool-images.js";
 type ToolContentBlock = AgentToolResult<unknown>["content"][number];
 type ImageContentBlock = Extract<ToolContentBlock, { type: "image" }>;
 type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
+const log = createSubsystemLogger("agents/tools");
 
 async function sniffMimeFromBase64(base64: string): Promise<string | undefined> {
   const trimmed = base64.trim();
@@ -254,6 +256,17 @@ export function wrapToolParamNormalization(
       if (requiredParamGroups?.length) {
         assertRequiredParams(record, requiredParamGroups, tool.name);
       }
+      const normalizedToolName = String(tool.name || "")
+        .trim()
+        .toLowerCase();
+      if (normalizedToolName === "write") {
+        const pathValue = typeof record?.path === "string" ? record.path : "(missing)";
+        const contentChars =
+          typeof record?.content === "string" ? String(record.content.length) : "(missing)";
+        log.info(
+          `[tool-call] normalized tool=write path=${pathValue} contentChars=${contentChars}`,
+        );
+      }
       return tool.execute(toolCallId, normalized ?? params, signal, onUpdate);
     },
   };
@@ -378,6 +391,8 @@ export function createOpenClawReadTool(base: AnyAgentTool): AnyAgentTool {
         normalized ??
         (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
       assertRequiredParams(record, CLAUDE_PARAM_GROUPS.read, base.name);
+      const normalizedPath = typeof record?.path === "string" ? String(record.path) : "(missing)";
+      log.info(`[tool-call] normalized tool=read path=${normalizedPath}`);
       const result = await base.execute(toolCallId, normalized ?? params, signal);
       const filePath = typeof record?.path === "string" ? String(record.path) : "<unknown>";
       const normalizedResult = await normalizeReadImageResult(result, filePath);

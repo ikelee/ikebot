@@ -23,8 +23,10 @@ export const WORKOUTS_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
+  session: false,
   tools: { allow: ["read", "write"] },
   skills: false,
+  bootstrapMaxChars: 1_500,
 };
 
 export class WorkoutsAgent extends Agent {

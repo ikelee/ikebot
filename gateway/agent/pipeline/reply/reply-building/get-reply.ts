@@ -1,6 +1,5 @@
 import type { MsgContext } from "../../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../../types.js";
-import { logVerbose } from "../../../../globals.js";
 import { type OpenClawConfig, loadConfig } from "../../../../infra/config/config.js";
 import { resolveModelRefFromString } from "../../../../models/model-selection.js";
 import { defaultRuntime } from "../../../../runtime.js";
@@ -106,6 +105,7 @@ export async function getReplyFromConfig(
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
     ensureBootstrapFiles: !agentCfg?.skipBootstrap && !isFastTestEnv,
+    agentId,
   });
   const workspaceDir = workspace.dir;
   const agentDir = resolveAgentDir(cfg, agentId);

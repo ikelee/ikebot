@@ -38,21 +38,23 @@ Validate and harden the routing flow:
 Use these for fast signal on the multi-agent routing work:
 
 ```bash
-pnpm exec vitest run --config vitest.e2e.config.ts \
+pnpm run test:e2e:agent-level -- \
   gateway/agent/agents/classifier/agent.e2e.test.ts \
-  gateway/agent/agents/workouts/workouts.e2e.test.ts
+  gateway/agent/agents/workouts/workouts.agent.e2e.test.ts
 ```
 
 ```bash
-pnpm exec vitest run --config vitest.e2e.config.ts \
-  gateway/agent/pipeline/reply/e2e/tiered-routing.e2e.test.ts
+pnpm run test:e2e:full-flow -- \
+  gateway/agent/e2e/workouts/workouts-routing.e2e.test.ts \
+  gateway/agent/e2e/reply/tiered-routing.e2e.test.ts
 ```
 
 ## Last Verified Results
 
 - `gateway/agent/agents/classifier/agent.e2e.test.ts`: PASS (12/12)
-- `gateway/agent/agents/workouts/workouts.e2e.test.ts`: PASS (2/2)
-- `gateway/agent/pipeline/reply/e2e/tiered-routing.e2e.test.ts`: PASS (2/2)
+- `gateway/agent/agents/workouts/workouts.agent.e2e.test.ts`: moved and compiles (collection pass); run pending
+- `gateway/agent/e2e/workouts/workouts-routing.e2e.test.ts`: moved and compiles (collection pass); run pending
+- `gateway/agent/e2e/reply/tiered-routing.e2e.test.ts`: PASS (2/2)
 
 ## Local Runtime Caveat (Non-test)
 

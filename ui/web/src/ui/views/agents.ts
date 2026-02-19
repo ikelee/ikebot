@@ -4,6 +4,7 @@ import {
   resolveToolProfilePolicy,
 } from "gateway/runtime/tool-policy.js";
 import { html, nothing } from "lit";
+import type { DebugAgentFileChange } from "../controllers/debug.ts";
 import type {
   AgentFileEntry,
   AgentsFilesListResult,
@@ -24,7 +25,14 @@ import {
   formatNextRun,
 } from "../presenter.ts";
 
-export type AgentsPanel = "overview" | "files" | "tools" | "skills" | "channels" | "cron";
+export type AgentsPanel =
+  | "overview"
+  | "files"
+  | "tools"
+  | "skills"
+  | "channels"
+  | "cron"
+  | "testing";
 
 export type AgentsProps = {
   loading: boolean;
@@ -80,6 +88,41 @@ export type AgentsProps = {
   onAgentSkillToggle: (agentId: string, skillName: string, enabled: boolean) => void;
   onAgentSkillsClear: (agentId: string) => void;
   onAgentSkillsDisableAll: (agentId: string) => void;
+  agentTestBusy: boolean;
+  agentTestRunId: string | null;
+  agentTestStatus: string | null;
+  agentTestError: string | null;
+  agentTestReply: string | null;
+  agentTestMessage: string;
+  agentTestChanges: DebugAgentFileChange[];
+  agentTestBaselineFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestCurrentFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  agentTestUndoBusy: boolean;
+  onAgentTestMessageChange: (value: string) => void;
+  onRunAgentTest: () => void;
+  onRefreshAgentTestFiles: () => void;
+  onUndoAgentFileChange: (name: string) => void;
+  onUndoAllAgentFileChanges: () => void;
 };
 
 const TOOL_SECTIONS = [
@@ -713,6 +756,28 @@ export function renderAgents(props: AgentsProps) {
                     })
                   : nothing
               }
+              ${
+                props.activePanel === "testing"
+                  ? renderAgentTesting({
+                      agent: selectedAgent,
+                      busy: props.agentTestBusy,
+                      runId: props.agentTestRunId,
+                      status: props.agentTestStatus,
+                      error: props.agentTestError,
+                      reply: props.agentTestReply,
+                      message: props.agentTestMessage,
+                      changes: props.agentTestChanges,
+                      baselineFiles: props.agentTestBaselineFiles,
+                      currentFiles: props.agentTestCurrentFiles,
+                      undoBusy: props.agentTestUndoBusy,
+                      onMessageChange: props.onAgentTestMessageChange,
+                      onRun: props.onRunAgentTest,
+                      onRefresh: props.onRefreshAgentTestFiles,
+                      onUndo: props.onUndoAgentFileChange,
+                      onUndoAll: props.onUndoAllAgentFileChanges,
+                    })
+                  : nothing
+              }
             `
         }
       </section>
@@ -756,6 +821,7 @@ function renderAgentTabs(active: AgentsPanel, onSelect: (panel: AgentsPanel) => 
     { id: "skills", label: "Skills" },
     { id: "channels", label: "Channels" },
     { id: "cron", label: "Cron Jobs" },
+    { id: "testing", label: "Testing" },
   ];
   return html`
     <div class="agent-tabs">
@@ -771,6 +837,138 @@ function renderAgentTabs(active: AgentsPanel, onSelect: (panel: AgentsPanel) => 
         `,
       )}
     </div>
+  `;
+}
+
+function renderAgentTesting(params: {
+  agent: AgentsListResult["agents"][number];
+  busy: boolean;
+  runId: string | null;
+  status: string | null;
+  error: string | null;
+  reply: string | null;
+  message: string;
+  changes: DebugAgentFileChange[];
+  baselineFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  currentFiles: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      missing: boolean;
+      content: string;
+      size?: number;
+      updatedAtMs?: number;
+    }
+  >;
+  undoBusy: boolean;
+  onMessageChange: (value: string) => void;
+  onRun: () => void;
+  onRefresh: () => void;
+  onUndo: (name: string) => void;
+  onUndoAll: () => void;
+}) {
+  return html`
+    <section class="card">
+      <div class="card-title">Agent Test Bench</div>
+      <div class="card-sub">
+        Prompt <span class="mono">${params.agent.id}</span>, inspect file mutations, and undo changes.
+      </div>
+      <label class="field" style="margin-top: 12px;">
+        <span>Prompt</span>
+        <textarea
+          .value=${params.message}
+          rows="4"
+          @input=${(e: Event) => params.onMessageChange((e.target as HTMLTextAreaElement).value)}
+          placeholder="e.g. log bench press 3x10 at 135"
+        ></textarea>
+      </label>
+      <div class="row" style="margin-top: 12px; gap: 8px; flex-wrap: wrap;">
+        <button class="btn primary" ?disabled=${!params.message.trim() || params.busy} @click=${params.onRun}>
+          ${params.busy ? "Running…" : "Run Agent Test"}
+        </button>
+        <button class="btn" ?disabled=${params.busy} @click=${params.onRefresh}>
+          Refresh Files
+        </button>
+        <button
+          class="btn"
+          ?disabled=${params.changes.length === 0 || params.undoBusy || params.busy}
+          @click=${params.onUndoAll}
+        >
+          ${params.undoBusy ? "Undoing…" : "Undo All"}
+        </button>
+      </div>
+      ${params.runId ? html`<div class="muted mono" style="margin-top: 10px;">runId: ${params.runId}</div>` : nothing}
+      ${params.status ? html`<div class="callout info" style="margin-top: 10px;">${params.status}</div>` : nothing}
+      ${params.error ? html`<div class="callout danger" style="margin-top: 10px;">${params.error}</div>` : nothing}
+      ${
+        params.reply
+          ? html`
+              <div class="muted" style="margin-top: 12px;">Latest assistant reply</div>
+              <div class="code-block-wrap" style="margin-top: 8px;"><pre class="code-block">${params.reply}</pre></div>
+            `
+          : nothing
+      }
+      <div style="margin-top: 14px;">
+        <div class="muted">Detected file changes (${params.changes.length})</div>
+        ${
+          params.changes.length === 0
+            ? html`
+                <div class="muted" style="margin-top: 8px">No differences detected against baseline.</div>
+              `
+            : html`
+                <div class="list" style="margin-top: 10px;">
+                  ${params.changes.map((change) => {
+                    const baseline = params.baselineFiles[change.name];
+                    const current = params.currentFiles[change.name];
+                    const beforeText = baseline?.content ?? "";
+                    const afterText = current?.content ?? "";
+                    return html`
+                      <div class="list-item" style="align-items: flex-start;">
+                        <div class="list-main" style="min-width: 240px;">
+                          <div class="list-title mono">${change.name}</div>
+                          <div class="list-sub mono">${change.path}</div>
+                          <div class="list-sub">${change.status} · ${change.beforeLines} → ${change.afterLines} lines</div>
+                          <div style="margin-top: 8px;">
+                            <button
+                              class="btn btn--sm"
+                              ?disabled=${params.undoBusy || params.busy}
+                              @click=${() => params.onUndo(change.name)}
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        </div>
+                        <div class="list-meta" style="flex: 1; min-width: 300px;">
+                          <div class="row" style="gap: 12px; align-items: flex-start; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 220px;">
+                              <div class="muted">Before</div>
+                              <div class="code-block-wrap"><pre class="code-block">${beforeText}</pre></div>
+                            </div>
+                            <div style="flex: 1; min-width: 220px;">
+                              <div class="muted">After</div>
+                              <div class="code-block-wrap"><pre class="code-block">${afterText}</pre></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  })}
+                </div>
+              `
+        }
+      </div>
+    </section>
   `;
 }
 

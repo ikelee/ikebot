@@ -8,13 +8,14 @@ import {
   stopDebugPolling,
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
+import { loadAgentFiles } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
 import { loadCronJobs, loadCronStatus } from "./controllers/cron.ts";
-import { loadDebug } from "./controllers/debug.ts";
+import { loadDebug, loadDebugAgentHistory } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
@@ -50,7 +51,7 @@ type SettingsHost = {
   basePath: string;
   agentsList?: AgentsListResult | null;
   agentsSelectedId?: string | null;
-  agentsPanel?: "overview" | "files" | "tools" | "skills" | "channels" | "cron";
+  agentsPanel?: "overview" | "files" | "tools" | "skills" | "channels" | "cron" | "testing";
   themeMedia: MediaQueryList | null;
   themeMediaHandler: ((event: MediaQueryListEvent) => void) | null;
   pendingGatewayUrl?: string | null;
@@ -220,6 +221,25 @@ export async function refreshActiveTab(host: SettingsHost) {
       if (host.agentsPanel === "cron") {
         void loadCron(host);
       }
+    }
+  }
+  if (host.tab === "agent-testing") {
+    await loadAgents(host as unknown as OpenClawApp);
+    await loadConfig(host as unknown as OpenClawApp);
+    const agentIds = host.agentsList?.agents?.map((entry) => entry.id) ?? [];
+    if (agentIds.length > 0) {
+      void loadAgentIdentities(host as unknown as OpenClawApp, agentIds);
+    }
+    const agentId =
+      host.agentsSelectedId ?? host.agentsList?.defaultId ?? host.agentsList?.agents?.[0]?.id;
+    if (agentId) {
+      void loadAgentIdentity(host as unknown as OpenClawApp, agentId);
+      const openClawHost = host as unknown as OpenClawApp & {
+        agentTestAgentId: string | null;
+      };
+      openClawHost.agentTestAgentId = agentId;
+      void loadAgentFiles(host as unknown as OpenClawApp, agentId);
+      void loadDebugAgentHistory(openClawHost);
     }
   }
   if (host.tab === "nodes") {

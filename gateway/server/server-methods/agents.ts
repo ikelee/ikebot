@@ -40,6 +40,7 @@ import {
   validateAgentsCreateParams,
   validateAgentsDeleteParams,
   validateAgentsFilesGetParams,
+  validateAgentsFilesDeleteParams,
   validateAgentsFilesListParams,
   validateAgentsFilesSetParams,
   validateAgentsListParams,
@@ -59,8 +60,21 @@ const BOOTSTRAP_FILE_NAMES = [
 ] as const;
 
 const MEMORY_FILE_NAMES = [DEFAULT_MEMORY_FILENAME, DEFAULT_MEMORY_ALT_FILENAME] as const;
+const WORKOUTS_FILE_NAMES = ["workouts.json", "workout-notes.txt"] as const;
+const WORKOUTS_MEMO_FILENAME_RE = /^workout-memo-[a-z0-9_-]+\.md$/i;
 
 const ALLOWED_FILE_NAMES = new Set<string>([...BOOTSTRAP_FILE_NAMES, ...MEMORY_FILE_NAMES]);
+const WORKOUTS_ALLOWED_FILE_NAMES = new Set<string>(WORKOUTS_FILE_NAMES);
+
+function isAllowedAgentFileName(agentId: string, name: string): boolean {
+  if (ALLOWED_FILE_NAMES.has(name)) {
+    return true;
+  }
+  if (agentId === "workouts") {
+    return WORKOUTS_ALLOWED_FILE_NAMES.has(name) || WORKOUTS_MEMO_FILENAME_RE.test(name);
+  }
+  return false;
+}
 
 type FileMeta = {
   size: number;
@@ -82,7 +96,7 @@ async function statFile(filePath: string): Promise<FileMeta | null> {
   }
 }
 
-async function listAgentFiles(workspaceDir: string) {
+async function listAgentFiles(workspaceDir: string, agentId: string) {
   const files: Array<{
     name: string;
     path: string;
@@ -130,6 +144,51 @@ async function listAgentFiles(workspaceDir: string) {
       });
     } else {
       files.push({ name: DEFAULT_MEMORY_FILENAME, path: primaryMemoryPath, missing: true });
+    }
+  }
+
+  if (agentId === "workouts") {
+    for (const name of WORKOUTS_FILE_NAMES) {
+      const filePath = path.join(workspaceDir, name);
+      const meta = await statFile(filePath);
+      if (meta) {
+        files.push({
+          name,
+          path: filePath,
+          missing: false,
+          size: meta.size,
+          updatedAtMs: meta.updatedAtMs,
+        });
+      } else {
+        files.push({ name, path: filePath, missing: true });
+      }
+    }
+
+    try {
+      const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) {
+          continue;
+        }
+        const name = entry.name;
+        if (!WORKOUTS_MEMO_FILENAME_RE.test(name)) {
+          continue;
+        }
+        const filePath = path.join(workspaceDir, name);
+        const meta = await statFile(filePath);
+        if (!meta) {
+          continue;
+        }
+        files.push({
+          name,
+          path: filePath,
+          missing: false,
+          size: meta.size,
+          updatedAtMs: meta.updatedAtMs,
+        });
+      }
+    } catch {
+      // Ignore workspace enumeration errors; fixed files are still returned.
     }
   }
 
@@ -238,7 +297,11 @@ export const agentsHandlers: GatewayRequestHandlers = {
     // Ensure workspace & transcripts exist BEFORE writing config so a failure
     // here does not leave a broken config entry behind.
     const skipBootstrap = Boolean(nextConfig.agents?.defaults?.skipBootstrap);
-    await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: !skipBootstrap });
+    await ensureAgentWorkspace({
+      dir: workspaceDir,
+      ensureBootstrapFiles: !skipBootstrap,
+      agentId,
+    });
     await fs.mkdir(resolveSessionTranscriptsDirForAgent(agentId), { recursive: true });
 
     await writeConfigFile(nextConfig);
@@ -306,7 +369,11 @@ export const agentsHandlers: GatewayRequestHandlers = {
 
     if (workspaceDir) {
       const skipBootstrap = Boolean(nextConfig.agents?.defaults?.skipBootstrap);
-      await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: !skipBootstrap });
+      await ensureAgentWorkspace({
+        dir: workspaceDir,
+        ensureBootstrapFiles: !skipBootstrap,
+        agentId,
+      });
     }
 
     if (avatar) {
@@ -391,7 +458,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
       return;
     }
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
-    const files = await listAgentFiles(workspaceDir);
+    const files = await listAgentFiles(workspaceDir, agentId);
     respond(true, { agentId, workspace: workspaceDir, files }, undefined);
   },
   "agents.piConfig": ({ params, respond }) => {
@@ -465,7 +532,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
       return;
     }
     const name = String(params.name ?? "").trim();
-    if (!ALLOWED_FILE_NAMES.has(name)) {
+    if (!isAllowedAgentFileName(agentId, name)) {
       respond(
         false,
         undefined,
@@ -527,7 +594,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
       return;
     }
     const name = String(params.name ?? "").trim();
-    if (!ALLOWED_FILE_NAMES.has(name)) {
+    if (!isAllowedAgentFileName(agentId, name)) {
       respond(
         false,
         undefined,
@@ -554,6 +621,53 @@ export const agentsHandlers: GatewayRequestHandlers = {
           size: meta?.size,
           updatedAtMs: meta?.updatedAtMs,
           content,
+        },
+      },
+      undefined,
+    );
+  },
+  "agents.files.delete": async ({ params, respond }) => {
+    if (!validateAgentsFilesDeleteParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid agents.files.delete params: ${formatValidationErrors(
+            validateAgentsFilesDeleteParams.errors,
+          )}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const agentId = resolveAgentIdOrError(String(params.agentId ?? ""), cfg);
+    if (!agentId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown agent id"));
+      return;
+    }
+    const name = String(params.name ?? "").trim();
+    if (!isAllowedAgentFileName(agentId, name)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, `unsupported file "${name}"`),
+      );
+      return;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    const filePath = path.join(workspaceDir, name);
+    await fs.rm(filePath, { force: true });
+    respond(
+      true,
+      {
+        ok: true,
+        agentId,
+        workspace: workspaceDir,
+        file: {
+          name,
+          path: filePath,
+          missing: true,
         },
       },
       undefined,

@@ -127,6 +127,7 @@ async function ensureGitRepo(dir: string, isBrandNewWorkspace: boolean) {
 export async function ensureAgentWorkspace(params?: {
   dir?: string;
   ensureBootstrapFiles?: boolean;
+  agentId?: string;
 }): Promise<{
   dir: string;
   agentsPath?: string;
@@ -169,12 +170,37 @@ export async function ensureAgentWorkspace(params?: {
   })();
 
   const agentsTemplate = await loadTemplate(DEFAULT_AGENTS_FILENAME);
-  const soulTemplate = await loadTemplate(DEFAULT_SOUL_FILENAME);
-  const toolsTemplate = await loadTemplate(DEFAULT_TOOLS_FILENAME);
+  const soulTemplateDefault = await loadTemplate(DEFAULT_SOUL_FILENAME);
+  const toolsTemplateDefault = await loadTemplate(DEFAULT_TOOLS_FILENAME);
   const identityTemplate = await loadTemplate(DEFAULT_IDENTITY_FILENAME);
   const userTemplate = await loadTemplate(DEFAULT_USER_FILENAME);
   const heartbeatTemplate = await loadTemplate(DEFAULT_HEARTBEAT_FILENAME);
   const bootstrapTemplate = await loadTemplate(DEFAULT_BOOTSTRAP_FILENAME);
+  const normalizedAgentId = params?.agentId?.trim().toLowerCase();
+  const agentTemplateDirName =
+    normalizedAgentId === "multi"
+      ? "multi-agent"
+      : normalizedAgentId
+        ? `${normalizedAgentId}-agent`
+        : "";
+
+  let soulTemplate = soulTemplateDefault;
+  let toolsTemplate = toolsTemplateDefault;
+  if (agentTemplateDirName) {
+    const templateDir = await resolveWorkspaceTemplateDir();
+    const agentSoulPath = path.join(templateDir, agentTemplateDirName, DEFAULT_SOUL_FILENAME);
+    const agentToolsPath = path.join(templateDir, agentTemplateDirName, DEFAULT_TOOLS_FILENAME);
+    try {
+      soulTemplate = stripFrontMatter(await fs.readFile(agentSoulPath, "utf-8"));
+    } catch {
+      soulTemplate = soulTemplateDefault;
+    }
+    try {
+      toolsTemplate = stripFrontMatter(await fs.readFile(agentToolsPath, "utf-8"));
+    } catch {
+      toolsTemplate = toolsTemplateDefault;
+    }
+  }
 
   await writeFileIfMissing(agentsPath, agentsTemplate);
   await writeFileIfMissing(soulPath, soulTemplate);
@@ -184,6 +210,26 @@ export async function ensureAgentWorkspace(params?: {
   await writeFileIfMissing(heartbeatPath, heartbeatTemplate);
   if (isBrandNewWorkspace) {
     await writeFileIfMissing(bootstrapPath, bootstrapTemplate);
+  }
+  // If SOUL/TOOLS were previously seeded from generic templates, upgrade to
+  // agent-specific templates once available. Never overwrite custom edits.
+  if (agentTemplateDirName) {
+    try {
+      const existingSoul = await fs.readFile(soulPath, "utf-8");
+      if (existingSoul === soulTemplateDefault && soulTemplate !== soulTemplateDefault) {
+        await fs.writeFile(soulPath, soulTemplate, { encoding: "utf-8" });
+      }
+    } catch {
+      // Ignore SOUL migration failures.
+    }
+    try {
+      const existingTools = await fs.readFile(toolsPath, "utf-8");
+      if (existingTools === toolsTemplateDefault && toolsTemplate !== toolsTemplateDefault) {
+        await fs.writeFile(toolsPath, toolsTemplate, { encoding: "utf-8" });
+      }
+    } catch {
+      // Ignore TOOLS migration failures.
+    }
   }
   await ensureGitRepo(dir, isBrandNewWorkspace);
 

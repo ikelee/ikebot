@@ -193,7 +193,7 @@ pnpm test gateway/agent/pipeline/reply/agent-runner
 pnpm test gateway/agent/pipeline/reply/commands
 
 # E2E only
-pnpm test:e2e gateway/agent/pipeline/reply/e2e
+pnpm test:e2e gateway/agent/e2e/reply
 ```
 
 ## Status: Complete ✅
