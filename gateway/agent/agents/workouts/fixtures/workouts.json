@@ -1,11 +1,12 @@
 {
+  "schemaVersion": 2,
   "profile": {
     "goals": ["build muscle", "strength"],
     "focus": "weights",
-    "program": "5/3/1"
-  },
-  "personalBests": {
-    "Bench Press": { "weight": 185, "reps": 8, "date": "2026-02-10" }
+    "program": "5/3/1",
+    "bodyWeightLb": 182,
+    "equipment": ["barbell", "dumbbells", "cable"],
+    "daysPerWeek": 4
   },
   "program": {
     "name": "5/3/1",
@@ -18,6 +19,25 @@
         "exercises": [{ "name": "Bench Press", "sets": 3, "minReps": 5, "pushReps": 8 }]
       }
     ]
+  },
+  "events": [
+    {
+      "id": "evt-2026-02-10-bench",
+      "timestamp": "2026-02-10T18:00:00Z",
+      "modality": "strength",
+      "exercise": "Bench Press",
+      "metrics": { "sets": 3, "reps": 8, "weightLb": 185 }
+    }
+  ],
+  "views": {
+    "personalBests": {
+      "strength": {
+        "Bench Press": { "weight": 185, "reps": 8, "date": "2026-02-10" }
+      }
+    }
+  },
+  "personalBests": {
+    "Bench Press": { "weight": 185, "reps": 8, "date": "2026-02-10" }
   },
   "workouts": [
     {

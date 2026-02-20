@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { peekSystemEvents, resetSystemEventsForTest } from "../infra/system-events.js";
@@ -331,6 +333,51 @@ describe("exec PATH handling", () => {
 
     const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
     expect(text).toBe([...prepend, basePath].join(path.delimiter));
+  });
+});
+
+describe("exec calendar command normalization", () => {
+  it("rewrites placeholder calendar IDs using calendar-settings.json", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ agentId: "calendar", cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command: "echo gog calendar events user@gmail.com",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("gog calendar events ikelee98@gmail.com");
+    expect(text).not.toContain("user@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("fails fast when calendar command uses placeholder but settings are missing", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    const tool = createExecTool({ agentId: "calendar", cwd: workspaceDir });
+
+    await expect(
+      tool.execute("call1", {
+        command:
+          "gog calendar events user@gmail.com --from 2026-02-20T00:00:00Z --to 2026-02-21T00:00:00Z",
+      }),
+    ).rejects.toThrow(
+      "calendar exec denied: placeholder calendarId found but profile.calendarId is missing in calendar-settings.json",
+    );
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
   });
 });
 

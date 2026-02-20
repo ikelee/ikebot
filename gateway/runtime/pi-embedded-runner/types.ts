@@ -33,6 +33,7 @@ export type EmbeddedPiAgentMeta = {
 export type EmbeddedPiRunMeta = {
   durationMs: number;
   agentMeta?: EmbeddedPiAgentMeta;
+  toolExecutions?: Array<{ toolName: string; isError: boolean }>;
   aborted?: boolean;
   systemPromptReport?: SessionSystemPromptReport;
   error?: {

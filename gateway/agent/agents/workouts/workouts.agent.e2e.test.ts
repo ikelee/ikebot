@@ -5,13 +5,13 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { withTempHome } from "../../../../test/helpers/temp-home.js";
 import { getReplyFromConfig } from "../../pipeline/reply.js";
 import { memoFilenameForIdentifier, parseWorkoutState } from "./state.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
-const MODEL = "qwen2.5:14b";
+const MODEL = process.env.OPENCLAW_WORKOUTS_TEST_MODEL?.trim() || "qwen2.5:14b";
 const TEST_USER = "testuser";
 const FIXTURES_DIR = path.join(path.dirname(__filename), "fixtures");
 const TEMPLATES_DIR = path.join(
@@ -48,7 +48,7 @@ async function modelAvailable(): Promise<boolean> {
   }
 }
 
-async function setupWorkspaceWithFixtures(workspaceDir: string) {
+async function setupWorkspaceWithFixtures(workspaceDir: string, senderId = TEST_USER) {
   await fs.mkdir(workspaceDir, { recursive: true });
   await fs.copyFile(
     path.join(FIXTURES_DIR, "workouts.json"),
@@ -60,7 +60,7 @@ async function setupWorkspaceWithFixtures(workspaceDir: string) {
   );
   await fs.copyFile(
     path.join(FIXTURES_DIR, "workout-memo-testuser.md"),
-    path.join(workspaceDir, memoFilenameForIdentifier(TEST_USER)),
+    path.join(workspaceDir, memoFilenameForIdentifier(senderId)),
   );
   await fs.copyFile(
     path.join(TEMPLATES_DIR, "workouts-agent", "SOUL.md"),
@@ -122,6 +122,136 @@ function workoutAgentConfig(workspaceDir: string, home: string) {
   };
 }
 
+function resolvePersonalBestWeight(
+  strengthPersonalBests: Record<string, unknown> | undefined,
+  exercise: string,
+): number | undefined {
+  if (!strengthPersonalBests || typeof strengthPersonalBests !== "object") {
+    return undefined;
+  }
+  const normalize = (value: string) =>
+    value
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const target = normalize(exercise);
+  const key = Object.keys(strengthPersonalBests).find(
+    (candidate) => normalize(candidate) === target,
+  );
+  if (!key) {
+    return undefined;
+  }
+  const entry = strengthPersonalBests[key];
+  if (typeof entry === "number") {
+    return Number.isFinite(entry) ? entry : undefined;
+  }
+  if (typeof entry === "string") {
+    const parsed = Number.parseFloat(entry);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return undefined;
+  }
+  const weight = (entry as { weight?: unknown }).weight;
+  if (typeof weight === "number") {
+    return Number.isFinite(weight) ? weight : undefined;
+  }
+  if (typeof weight === "string") {
+    const parsed = Number.parseFloat(weight);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function resolveEntryCount(state: ReturnType<typeof parseWorkoutState>): number {
+  return Array.isArray(state.events) ? state.events.length : 0;
+}
+
+function resolveStrengthPersonalBests(state: ReturnType<typeof parseWorkoutState>) {
+  const strength = state.views?.personalBests?.strength;
+  if (!strength || typeof strength !== "object") {
+    return undefined;
+  }
+  return strength as Record<string, unknown>;
+}
+
+function extractReplyText(reply: unknown): string {
+  const payload = Array.isArray(reply) ? reply[0] : reply;
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const text = (payload as { text?: unknown }).text;
+  return typeof text === "string" ? text : "";
+}
+
+function stringifyLogArg(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function countReqStarts(lines: string[]): number {
+  let count = 0;
+  for (const line of lines) {
+    const match = line.match(/\[ollama-stream-fn\] req#(\d+) start\b/i);
+    if (!match) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function buildSenderId(prefix: string): string {
+  return `${TEST_USER}-${prefix}-${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+}
+
+async function runWorkoutsAgentWithLoopCount(params: {
+  workspaceDir: string;
+  home: string;
+  body: string;
+  senderId?: string;
+}): Promise<{ reply: unknown; loops: number }> {
+  const capturedLogs: string[] = [];
+  const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+    capturedLogs.push(args.map((entry) => stringifyLogArg(entry)).join(" "));
+  });
+  const senderId = params.senderId ?? TEST_USER;
+  try {
+    const reply = await getReplyFromConfig(
+      {
+        Body: params.body,
+        From: senderId,
+        To: senderId,
+        Provider: "whatsapp",
+      },
+      {},
+      workoutAgentConfig(params.workspaceDir, params.home),
+    );
+    return {
+      reply,
+      loops: countReqStarts(capturedLogs),
+    };
+  } finally {
+    logSpy.mockRestore();
+  }
+}
+
+function daysAgoIso(daysAgo: number): string {
+  const timestamp = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
+  return new Date(timestamp).toISOString();
+}
+
 describe("workouts agent-level e2e – real model", () => {
   let canRun = false;
 
@@ -140,69 +270,236 @@ describe("workouts agent-level e2e – real model", () => {
     }
   });
 
-  it("logs workout and updates workouts.json without router", { timeout: 180_000 }, async () => {
+  it(
+    "logs new strength training item and records PR in v2 views",
+    { timeout: 180_000 },
+    async () => {
+      if (!canRun) {
+        return;
+      }
+      await withTempHome(
+        async (home) => {
+          const workspaceDir = path.join(home, "openclaw");
+          const senderId = buildSenderId("strength-pr");
+          await setupWorkspaceWithFixtures(workspaceDir, senderId);
+
+          const beforeRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+          const beforeState = parseWorkoutState(beforeRaw);
+          const beforeCount = resolveEntryCount(beforeState);
+          const beforeDeadlift = resolvePersonalBestWeight(
+            resolveStrengthPersonalBests(beforeState),
+            "Deadlift",
+          );
+
+          const run = await runWorkoutsAgentWithLoopCount({
+            workspaceDir,
+            home,
+            body: "Log a new strength training item: Deadlift 305 lb for 5 reps.",
+            senderId,
+          });
+          expect(run.loops).toBeLessThanOrEqual(3);
+
+          const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+          const afterState = parseWorkoutState(afterRaw);
+          expect(resolveEntryCount(afterState)).toBeGreaterThan(beforeCount);
+          const afterDeadlift = resolvePersonalBestWeight(
+            resolveStrengthPersonalBests(afterState),
+            "Deadlift",
+          );
+          expect(typeof afterDeadlift).toBe("number");
+          expect((afterDeadlift ?? 0) >= (beforeDeadlift ?? 0)).toBe(true);
+        },
+        { prefix: "workouts-agent-e2e-" },
+      );
+    },
+  );
+
+  it("logs running exercise entries", { timeout: 180_000 }, async () => {
     if (!canRun) {
       return;
     }
     await withTempHome(
       async (home) => {
         const workspaceDir = path.join(home, "openclaw");
-        await setupWorkspaceWithFixtures(workspaceDir);
+        const senderId = buildSenderId("running-log");
+        await setupWorkspaceWithFixtures(workspaceDir, senderId);
 
         const beforeRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const beforeState = parseWorkoutState(beforeRaw);
-        const beforeCount = (beforeState.workouts as unknown[])?.length ?? 0;
+        const beforeCount = resolveEntryCount(beforeState);
 
-        await getReplyFromConfig(
-          {
-            Body: "Use read and write tools to append this workout to workouts.json: Bench Press 3x10 at 135 lb. Preserve existing keys.",
-            From: TEST_USER,
-            To: TEST_USER,
-            Provider: "whatsapp",
-          },
-          {},
-          workoutAgentConfig(workspaceDir, home),
-        );
+        const run = await runWorkoutsAgentWithLoopCount({
+          workspaceDir,
+          home,
+          body: "Log a running workout: ran 3.2 miles in 28 minutes.",
+          senderId,
+        });
+        expect(run.loops).toBeLessThanOrEqual(3);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
-        expect((afterState.workouts as unknown[])?.length ?? 0).toBeGreaterThan(beforeCount);
+        expect(resolveEntryCount(afterState)).toBeGreaterThan(beforeCount);
+        const hasRunEvent = (afterState.events ?? []).some((event) => {
+          const exercise = String(event.exercise ?? "").toLowerCase();
+          const modality = String(event.modality ?? "").toLowerCase();
+          return (
+            exercise.includes("run") ||
+            modality.includes("cardio") ||
+            modality.includes("endurance")
+          );
+        });
+        expect(hasRunEvent).toBe(true);
       },
       { prefix: "workouts-agent-e2e-" },
     );
   });
 
-  it("updates personalBests when logging a PR", { timeout: 180_000 }, async () => {
+  it("suggests chest-day plan similar to prior exercises", { timeout: 120_000 }, async () => {
     if (!canRun) {
       return;
     }
     await withTempHome(
       async (home) => {
         const workspaceDir = path.join(home, "openclaw");
-        await setupWorkspaceWithFixtures(workspaceDir);
+        const senderId = buildSenderId("chest-similar");
+        await setupWorkspaceWithFixtures(workspaceDir, senderId);
+
+        const run = await runWorkoutsAgentWithLoopCount({
+          workspaceDir,
+          home,
+          body: "What should I work out today for my chest day? Keep it similar to my past exercises.",
+          senderId,
+        });
+        expect(run.loops).toBeLessThanOrEqual(3);
+        const text = extractReplyText(run.reply).toLowerCase();
+        expect(text).toMatch(/chest|bench|press|dips|fly/);
+        expect(text).toMatch(/bench|press/);
+      },
+      { prefix: "workouts-agent-e2e-" },
+    );
+  });
+
+  it("suggests chest-day options that are new", { timeout: 180_000 }, async () => {
+    if (!canRun) {
+      return;
+    }
+    await withTempHome(
+      async (home) => {
+        const workspaceDir = path.join(home, "openclaw");
+        const senderId = buildSenderId("chest-new");
+        await setupWorkspaceWithFixtures(workspaceDir, senderId);
+
+        const run = await runWorkoutsAgentWithLoopCount({
+          workspaceDir,
+          home,
+          body: "Read workouts.json, then suggest 4 chest exercises that are different from my usual bench work.",
+          senderId,
+        });
+        expect(run.loops).toBeLessThanOrEqual(3);
+        const text = extractReplyText(run.reply).toLowerCase();
+        expect(text).toMatch(/chest|press|fly|dip|push/);
+        expect(text).toMatch(/incline|dumbbell|cable|machine|fly|pec|dip|push/);
+      },
+      { prefix: "workouts-agent-e2e-" },
+    );
+  });
+
+  it("returns past-week workout records from data", { timeout: 120_000 }, async () => {
+    if (!canRun) {
+      return;
+    }
+    await withTempHome(
+      async (home) => {
+        const workspaceDir = path.join(home, "openclaw");
+        const senderId = buildSenderId("past-week");
+        await setupWorkspaceWithFixtures(workspaceDir, senderId);
+
+        const workoutsPath = path.join(workspaceDir, "workouts.json");
+        const seededRaw = await fs.readFile(workoutsPath, "utf8");
+        const seededState = parseWorkoutState(seededRaw);
+        const seededEvents = [
+          ...(seededState.events ?? []),
+          {
+            id: "evt-recent-bench",
+            timestamp: daysAgoIso(1),
+            modality: "strength",
+            exercise: "Bench Press",
+            metrics: { sets: 3, reps: 5, weightLb: 195 },
+          },
+          {
+            id: "evt-recent-row",
+            timestamp: daysAgoIso(3),
+            modality: "strength",
+            exercise: "Dumbbell Row",
+            metrics: { sets: 4, reps: 8, weightLb: 70 },
+          },
+          {
+            id: "evt-recent-run",
+            timestamp: daysAgoIso(5),
+            modality: "cardio",
+            exercise: "Running",
+            metrics: { durationMin: 26, distanceMi: 3.2 },
+          },
+          {
+            id: "evt-old-deadlift",
+            timestamp: daysAgoIso(12),
+            modality: "strength",
+            exercise: "Deadlift",
+            metrics: { sets: 3, reps: 5, weightLb: 275 },
+          },
+        ];
+        const updated = {
+          ...seededState,
+          schemaVersion: 2,
+          events: seededEvents,
+        };
+        await fs.writeFile(workoutsPath, JSON.stringify(updated, null, 2), "utf8");
+
+        const run = await runWorkoutsAgentWithLoopCount({
+          workspaceDir,
+          home,
+          body: "Give me past week's worth of workout records.",
+          senderId,
+        });
+        expect(run.loops).toBeLessThanOrEqual(3);
+        const text = extractReplyText(run.reply).toLowerCase();
+        expect(text).toMatch(/bench|row|run|running|workout/);
+      },
+      { prefix: "workouts-agent-e2e-" },
+    );
+  });
+
+  it("updates views.personalBests.strength when logging a PR", { timeout: 180_000 }, async () => {
+    if (!canRun) {
+      return;
+    }
+    await withTempHome(
+      async (home) => {
+        const workspaceDir = path.join(home, "openclaw");
+        const senderId = buildSenderId("bench-pr");
+        await setupWorkspaceWithFixtures(workspaceDir, senderId);
 
         const beforeRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const beforeState = parseWorkoutState(beforeRaw);
-        const beforeBench = (
-          beforeState.personalBests?.["Bench Press"] as { weight?: number } | undefined
-        )?.weight;
-
-        await getReplyFromConfig(
-          {
-            Body: "Use read and write tools to log this PR in workouts.json and update personalBests: Bench Press 195 for 5 reps.",
-            From: TEST_USER,
-            To: TEST_USER,
-            Provider: "whatsapp",
-          },
-          {},
-          workoutAgentConfig(workspaceDir, home),
+        const beforeBench = resolvePersonalBestWeight(
+          resolveStrengthPersonalBests(beforeState),
+          "Bench Press",
         );
+
+        const run = await runWorkoutsAgentWithLoopCount({
+          workspaceDir,
+          home,
+          body: "Use read and write tools to log this PR in workouts.json and update views.personalBests.strength: Bench Press 195 for 5 reps.",
+          senderId,
+        });
+        expect(run.loops).toBeLessThanOrEqual(3);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
-        const afterBench = (
-          afterState.personalBests?.["Bench Press"] as { weight?: number } | undefined
-        )?.weight;
+        const afterBench = resolvePersonalBestWeight(
+          resolveStrengthPersonalBests(afterState),
+          "Bench Press",
+        );
 
         expect(typeof afterBench).toBe("number");
         expect((afterBench ?? 0) >= (beforeBench ?? 0)).toBe(true);

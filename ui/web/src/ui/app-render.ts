@@ -31,6 +31,7 @@ import {
   loadDebug,
   loadPiConfig,
   refreshDebugAgentFiles,
+  resetDebugAgentOnboarding,
   runDebugAgentTest,
   undoAllDebugAgentFileChanges,
   undoDebugAgentFileChange,
@@ -118,6 +119,11 @@ export function renderApp(state: AppViewState) {
   const showThinking = state.onboarding ? false : state.settings.chatShowThinking;
   const assistantAvatarUrl = resolveAssistantAvatarUrl(state);
   const chatAvatarUrl = state.chatAvatarUrl ?? assistantAvatarUrl ?? null;
+  const chatSessionAgentId =
+    parseAgentSessionKey(state.sessionKey)?.agentId ?? state.agentsList?.defaultId ?? "main";
+  const chatSessionAgent =
+    state.agentsList?.agents?.find((entry) => entry.id === chatSessionAgentId) ?? null;
+  const chatSessionAgentEmoji = chatSessionAgent?.identity?.emoji ?? null;
   const configValue =
     state.configForm ?? (state.configSnapshot?.config as Record<string, unknown> | null);
   const basePath = normalizeBasePath(state.basePath ?? "");
@@ -898,6 +904,12 @@ export function renderApp(state: AppViewState) {
                   }
                   return runDebugAgentTest(state);
                 },
+                onResetAgentOnboarding: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return resetDebugAgentOnboarding(state);
+                },
                 onRefreshAgentTestFiles: () => {
                   if (resolvedAgentId) {
                     state.agentTestAgentId = resolvedAgentId;
@@ -1051,6 +1063,7 @@ export function renderApp(state: AppViewState) {
                 },
                 agentTestBusy: state.agentTestBusy,
                 agentTestRunId: state.agentTestRunId,
+                agentTestTotalDurationMs: state.agentTestTotalDurationMs,
                 agentTestStatus: state.agentTestStatus,
                 agentTestError: state.agentTestError,
                 agentTestReply: state.agentTestReply,
@@ -1065,6 +1078,12 @@ export function renderApp(state: AppViewState) {
                     state.agentTestAgentId = resolvedAgentId;
                   }
                   return runDebugAgentTest(state);
+                },
+                onResetAgentOnboarding: () => {
+                  if (resolvedAgentId) {
+                    state.agentTestAgentId = resolvedAgentId;
+                  }
+                  return resetDebugAgentOnboarding(state);
                 },
                 onRefreshAgentFiles: () => {
                   if (resolvedAgentId) {
@@ -1230,6 +1249,8 @@ export function renderApp(state: AppViewState) {
                 toolMessages: state.chatToolMessages,
                 stream: state.chatStream,
                 streamStartedAt: state.chatStreamStartedAt,
+                loopCompletedAt: state.chatLastCompletedAt,
+                loopCompletedRunId: state.chatLastCompletedRunId,
                 draft: state.chatMessage,
                 queue: state.chatQueue,
                 connected: state.connected,
@@ -1272,6 +1293,8 @@ export function renderApp(state: AppViewState) {
                 onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
                 assistantName: state.assistantName,
                 assistantAvatar: state.assistantAvatar,
+                agentId: chatSessionAgentId,
+                agentEmoji: chatSessionAgentEmoji,
               })
             : nothing
         }

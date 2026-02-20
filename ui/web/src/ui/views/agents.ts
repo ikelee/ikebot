@@ -90,6 +90,7 @@ export type AgentsProps = {
   onAgentSkillsDisableAll: (agentId: string) => void;
   agentTestBusy: boolean;
   agentTestRunId: string | null;
+  agentTestTotalDurationMs: number | null;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;
@@ -120,6 +121,7 @@ export type AgentsProps = {
   agentTestUndoBusy: boolean;
   onAgentTestMessageChange: (value: string) => void;
   onRunAgentTest: () => void;
+  onResetAgentOnboarding: () => void;
   onRefreshAgentTestFiles: () => void;
   onUndoAgentFileChange: (name: string) => void;
   onUndoAllAgentFileChanges: () => void;
@@ -762,6 +764,7 @@ export function renderAgents(props: AgentsProps) {
                       agent: selectedAgent,
                       busy: props.agentTestBusy,
                       runId: props.agentTestRunId,
+                      totalDurationMs: props.agentTestTotalDurationMs,
                       status: props.agentTestStatus,
                       error: props.agentTestError,
                       reply: props.agentTestReply,
@@ -772,6 +775,7 @@ export function renderAgents(props: AgentsProps) {
                       undoBusy: props.agentTestUndoBusy,
                       onMessageChange: props.onAgentTestMessageChange,
                       onRun: props.onRunAgentTest,
+                      onResetOnboarding: props.onResetAgentOnboarding,
                       onRefresh: props.onRefreshAgentTestFiles,
                       onUndo: props.onUndoAgentFileChange,
                       onUndoAll: props.onUndoAllAgentFileChanges,
@@ -844,6 +848,7 @@ function renderAgentTesting(params: {
   agent: AgentsListResult["agents"][number];
   busy: boolean;
   runId: string | null;
+  totalDurationMs: number | null;
   status: string | null;
   error: string | null;
   reply: string | null;
@@ -874,6 +879,7 @@ function renderAgentTesting(params: {
   undoBusy: boolean;
   onMessageChange: (value: string) => void;
   onRun: () => void;
+  onResetOnboarding: () => void;
   onRefresh: () => void;
   onUndo: (name: string) => void;
   onUndoAll: () => void;
@@ -897,6 +903,9 @@ function renderAgentTesting(params: {
         <button class="btn primary" ?disabled=${!params.message.trim() || params.busy} @click=${params.onRun}>
           ${params.busy ? "Running…" : "Run Agent Test"}
         </button>
+        <button class="btn" ?disabled=${params.busy} @click=${params.onResetOnboarding}>
+          Reset Onboarding
+        </button>
         <button class="btn" ?disabled=${params.busy} @click=${params.onRefresh}>
           Refresh Files
         </button>
@@ -909,6 +918,11 @@ function renderAgentTesting(params: {
         </button>
       </div>
       ${params.runId ? html`<div class="muted mono" style="margin-top: 10px;">runId: ${params.runId}</div>` : nothing}
+      ${
+        typeof params.totalDurationMs === "number"
+          ? html`<div class="muted mono">latency: ${params.totalDurationMs}ms</div>`
+          : nothing
+      }
       ${params.status ? html`<div class="callout info" style="margin-top: 10px;">${params.status}</div>` : nothing}
       ${params.error ? html`<div class="callout danger" style="margin-top: 10px;">${params.error}</div>` : nothing}
       ${

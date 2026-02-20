@@ -7,7 +7,8 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../infra/config/config.js";
-import { runAgentFlow } from "./run.js";
+import { maybeRunAgentOnboarding } from "./onboarding/service.js";
+import { __resetOnboardingStateForTests, runAgentFlow } from "./run.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
   completeSimple: vi.fn(),
@@ -25,6 +26,9 @@ vi.mock("../runtime/agent-paths.js", () => ({
 }));
 vi.mock("./pipeline/reply/reply-building/get-reply-run.js", () => ({
   runPreparedReply: (...args: unknown[]) => runPreparedReplyMock(...args),
+}));
+vi.mock("./onboarding/service.js", () => ({
+  maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
@@ -97,8 +101,233 @@ const createMinimalRunPreparedReplyParams = () => ({
 
 describe("runAgentFlow", () => {
   beforeEach(() => {
+    __resetOnboardingStateForTests();
     vi.clearAllMocks();
     runPreparedReplyMock.mockResolvedValue({ text: "ok" });
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue(undefined);
+  });
+
+  it("routes through classifier first, then returns workouts onboarding", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"workouts"}' }],
+      usage: { input: 10, output: 8 },
+    });
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue({
+      text: "Before we continue, quick workouts onboarding.",
+    });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    const result = await runAgentFlow({
+      cleanedBody: "let's start logging my workouts",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(result).toEqual({
+      text: "Before we continue, quick workouts onboarding.",
+    });
+    expect(maybeRunAgentOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "workouts",
+        cleanedBody: "let's start logging my workouts",
+      }),
+    );
+    expect(completeSimple).toHaveBeenCalledTimes(1);
+    expect(runPreparedReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("supports explicit top-level onboarding intent for any agent", async () => {
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue({
+      text: "Calendar onboarding",
+    });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    const result = await runAgentFlow({
+      cleanedBody: "onboard calendar agent",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(result).toEqual({ text: "Calendar onboarding" });
+    expect(maybeRunAgentOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "calendar",
+      }),
+    );
+    expect(completeSimple).not.toHaveBeenCalled();
+    expect(runPreparedReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps workouts onboarding follow-up field messages in top-level onboarding flow", async () => {
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue({
+      text: "Onboarding step",
+    });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    const result = await runAgentFlow({
+      cleanedBody: "style: assertive",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(result).toEqual({ text: "Onboarding step" });
+    expect(maybeRunAgentOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "workouts",
+        cleanedBody: "style: assertive",
+      }),
+    );
+    expect(completeSimple).not.toHaveBeenCalled();
+    expect(runPreparedReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps active onboarding pinned to the same agent across unstructured follow-ups", async () => {
+    vi.mocked(maybeRunAgentOnboarding).mockImplementation(async ({ cleanedBody }) => {
+      if (!cleanedBody) {
+        return { text: "Before we continue, quick workouts onboarding." };
+      }
+      return { text: "Before we continue, quick workouts onboarding." };
+    });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    const first = await runAgentFlow({
+      cleanedBody: "style: assertive",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+    expect(first).toEqual({ text: "Before we continue, quick workouts onboarding." });
+
+    const second = await runAgentFlow({
+      cleanedBody: "supportive",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+    expect(second).toEqual({ text: "Before we continue, quick workouts onboarding." });
+
+    expect(maybeRunAgentOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "workouts",
+        cleanedBody: "supportive",
+      }),
+    );
+    expect(completeSimple).not.toHaveBeenCalled();
+    expect(runPreparedReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("clears active onboarding after completion and resumes normal routing", async () => {
+    let completed = false;
+    vi.mocked(maybeRunAgentOnboarding).mockImplementation(async ({ cleanedBody }) => {
+      if (cleanedBody === "style: assertive") {
+        return { text: "Before we continue, quick workouts onboarding." };
+      }
+      if (cleanedBody === "supportive") {
+        completed = true;
+        return { text: "Onboarding saved." };
+      }
+      if (!cleanedBody) {
+        return completed ? undefined : { text: "Before we continue, quick workouts onboarding." };
+      }
+      return undefined;
+    });
+
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"calendar"}' }],
+      usage: { input: 10, output: 8 },
+    });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "style: assertive",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    const completion = await runAgentFlow({
+      cleanedBody: "supportive",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+    expect(completion).toEqual({ text: "Onboarding saved." });
+
+    await runAgentFlow({
+      cleanedBody: "what's on my calendar today",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(completeSimple).toHaveBeenCalledTimes(1);
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
   });
 
   it("routes calendar prompts to calendar agent", async () => {
@@ -141,6 +370,358 @@ describe("runAgentFlow", () => {
     expect(call.agentId).toBe("calendar");
     expect(call.agentDir).toContain("calendar");
     expect(call.agentDir).toContain("agent");
+  });
+
+  it("keeps short confirmation follow-ups on calendar after a calendar turn", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"calendar"}' }],
+        usage: { input: 10, output: 8 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 8, output: 6 },
+      });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "schedule singing lesson thursday at 4:45pm",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    await runAgentFlow({
+      cleanedBody: "yes do it",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(2);
+    const secondCall = runPreparedReplyMock.mock.calls[1][0];
+    expect(secondCall.agentId).toBe("calendar");
+  });
+
+  it("keeps confirmation follow-ups on calendar even if session key changes", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"calendar"}' }],
+        usage: { input: 10, output: 8 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 8, output: 6 },
+      });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "schedule singing lesson thursday at 4:45pm",
+      sessionKey: "session-a",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: "yes",
+      sessionKey: "session-b",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(2);
+    const secondCall = runPreparedReplyMock.mock.calls[1][0];
+    expect(secondCall.agentId).toBe("calendar");
+  });
+
+  it("keeps calendar follow-ups when confirmation contains wrapped conversation context", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"calendar"}' }],
+        usage: { input: 10, output: 8 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 8, output: 6 },
+      });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody:
+        "[Thu 2026-02-19 19:05 PST] add singing lesson to my calendar for next Thursday at 445pm",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: [
+        "[Thu 2026-02-19 19:06 PST] yes",
+        "",
+        "Conversation info (context only; reply to the user's message above—do not output this JSON):",
+        "```json",
+        '{ "conversation_label": "openclaw-tui" }',
+        "```",
+      ].join("\n"),
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(2);
+    const secondCall = runPreparedReplyMock.mock.calls[1][0];
+    expect(secondCall.agentId).toBe("calendar");
+  });
+
+  it("auto-routes while router hold is active and resumes classifier after release", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"calendar"}' }],
+        usage: { input: 10, output: 8 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 8, output: 6 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "thanks" }],
+        usage: { input: 8, output: 6 },
+      });
+
+    runPreparedReplyMock
+      .mockResolvedValueOnce({
+        text: "Is the singing lesson next Thursday at 4:45 PM for one hour and recurring weekly? [[router_hold:acquire reason=awaiting_confirmation]]",
+      })
+      .mockResolvedValueOnce({
+        text: "Done, recurring event created. [[router_hold:release]]",
+      });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    const first = await runAgentFlow({
+      cleanedBody: "add singing lesson next thursday at 4:45pm",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+    expect((first as { text?: string }).text).not.toContain("[[router_hold:");
+
+    await runAgentFlow({
+      cleanedBody: "yes",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: "thanks",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    // First turn classifier + third turn classifier. Second turn should bypass due to hold.
+    expect(completeSimple).toHaveBeenCalledTimes(3);
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(2);
+    const firstCall = runPreparedReplyMock.mock.calls[0][0];
+    const secondCall = runPreparedReplyMock.mock.calls[1][0];
+    expect(firstCall.agentId).toBe("calendar");
+    expect(secondCall.agentId).toBe("calendar");
+  });
+
+  it("supports explicit handoff queue from calendar to mail", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"calendar"}' }],
+        usage: { input: 10, output: 8 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 8, output: 6 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "thanks" }],
+        usage: { input: 8, output: 6 },
+      });
+
+    runPreparedReplyMock
+      .mockResolvedValueOnce({
+        text: "I found two invites. Which one should I use? [[router_hold:acquire reason=calendar_disambiguation]]",
+      })
+      .mockResolvedValueOnce({
+        text: "Great, now I'll draft and send the email. [[router_hold:release]] [[router_handoff:mail]]",
+      })
+      .mockResolvedValueOnce({
+        text: "Sent from your selected account. [[router_hold:release]]",
+      });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          { id: "mail", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "send an email to my 4 o clock meeting next Tuesday",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: "the second meeting",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: "use my work account",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    await runAgentFlow({
+      cleanedBody: "thanks",
+      sessionKey: "openclaw-tui",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+      userIdentifier: "same-user",
+    });
+
+    // completeSimple includes router + SimpleResponder model calls.
+    // Expected: first router, final router, final SimpleResponder.
+    expect(completeSimple).toHaveBeenCalledTimes(3);
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(3);
+    expect(runPreparedReplyMock.mock.calls[0][0].agentId).toBe("calendar");
+    expect(runPreparedReplyMock.mock.calls[1][0].agentId).toBe("calendar");
+    expect(runPreparedReplyMock.mock.calls[2][0].agentId).toBe("mail");
   });
 
   it("routes escalate prompts to main agent", async () => {

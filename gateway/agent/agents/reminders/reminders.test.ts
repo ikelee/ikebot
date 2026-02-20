@@ -7,7 +7,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import { resolvePiConfig } from "../../../runtime/agent-scope.js";
-import { runAgentFlow } from "../../run.js";
+import { maybeRunAgentOnboarding } from "../../onboarding/service.js";
+import { __resetOnboardingStateForTests, runAgentFlow } from "../../run.js";
 import { runRemindersReply } from "./run.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
@@ -25,6 +26,9 @@ vi.mock("../../../runtime/agent-paths.js", () => ({
 }));
 vi.mock("../../pipeline/reply/reply-building/get-reply-run.js", () => ({
   runPreparedReply: (...args: unknown[]) => runPreparedReplyMock(...args),
+}));
+vi.mock("../../onboarding/service.js", () => ({
+  maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
@@ -102,7 +106,9 @@ const createMinimalRunPreparedReplyParams = () => ({
 
 describe("reminders agent", () => {
   beforeEach(() => {
+    __resetOnboardingStateForTests();
     vi.clearAllMocks();
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue(undefined);
     runPreparedReplyMock.mockResolvedValue({ text: "ok" });
   });
 
@@ -177,7 +183,21 @@ describe("reminders agent", () => {
     });
 
     it("runRemindersReply passes agentId=reminders to runPreparedReply", async () => {
-      const cfg = createMockConfig();
+      const remindersWorkspace = path.join("/tmp", "reminders-agent-workspace");
+      const cfg = createMockConfig({
+        agents: {
+          defaults: { routing: { enabled: true, classifierModel: "ollama/qwen2.5:3b" } },
+          list: [
+            { id: "main", default: true },
+            {
+              id: "reminders",
+              skills: [] as string[],
+              tools: { exec: { security: "allowlist" as const, safeBins: [] } },
+              workspace: remindersWorkspace,
+            },
+          ],
+        },
+      });
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
 
@@ -186,6 +206,7 @@ describe("reminders agent", () => {
       expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("reminders");
+      expect(call.workspaceDir).toBe(remindersWorkspace);
       expect(call.replyTier).toBe("complex");
     });
   });

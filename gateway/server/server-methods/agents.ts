@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
 import { getAgentPiConfig } from "../../agent/agents/pi-registry.js";
+import { resetWorkoutsOnboardingFiles } from "../../agent/agents/workouts/onboarding.js";
 import { movePathToTrash } from "../../browser/trash.js";
 import {
   applyAgentConfig,
@@ -44,6 +45,7 @@ import {
   validateAgentsFilesListParams,
   validateAgentsFilesSetParams,
   validateAgentsListParams,
+  validateAgentsOnboardingResetParams,
   validateAgentsPiConfigParams,
   validateAgentsUpdateParams,
 } from "../protocol/index.js";
@@ -245,6 +247,42 @@ export const agentsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const result = listAgentsForGateway(cfg);
     respond(true, result, undefined);
+  },
+  "agents.onboarding.reset": async ({ params, respond }) => {
+    if (!validateAgentsOnboardingResetParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid agents.onboarding.reset params: ${formatValidationErrors(validateAgentsOnboardingResetParams.errors)}`,
+        ),
+      );
+      return;
+    }
+
+    const cfg = loadConfig();
+    const agentId = resolveAgentIdOrError(String(params.agentId ?? ""), cfg);
+    if (!agentId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown agentId"));
+      return;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    if (!workspaceDir) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "workspace not configured"));
+      return;
+    }
+
+    if (agentId === "workouts") {
+      await resetWorkoutsOnboardingFiles(workspaceDir, "testing");
+      respond(true, { ok: true, agentId, workspace: workspaceDir }, undefined);
+      return;
+    }
+
+    // Generic reset for non-workouts: keep bootstrap files, clear memory.
+    await fs.mkdir(workspaceDir, { recursive: true });
+    await fs.writeFile(path.join(workspaceDir, DEFAULT_MEMORY_FILENAME), "", "utf8");
+    respond(true, { ok: true, agentId, workspace: workspaceDir }, undefined);
   },
   "agents.create": async ({ params, respond }) => {
     if (!validateAgentsCreateParams(params)) {

@@ -16,7 +16,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import { resolvePiConfig } from "../../../runtime/agent-scope.js";
-import { runAgentFlow } from "../../run.js";
+import { maybeRunAgentOnboarding } from "../../onboarding/service.js";
+import { __resetOnboardingStateForTests, runAgentFlow } from "../../run.js";
 import { runCalendarReply } from "./run.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
@@ -34,6 +35,9 @@ vi.mock("../../../runtime/agent-paths.js", () => ({
 }));
 vi.mock("../../pipeline/reply/reply-building/get-reply-run.js", () => ({
   runPreparedReply: (...args: unknown[]) => runPreparedReplyMock(...args),
+}));
+vi.mock("../../onboarding/service.js", () => ({
+  maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
@@ -112,65 +116,49 @@ const createMinimalRunPreparedReplyParams = () => ({
 
 describe("calendar agent", () => {
   beforeEach(() => {
+    __resetOnboardingStateForTests();
     vi.clearAllMocks();
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue(undefined);
     runPreparedReplyMock.mockResolvedValue({ text: "ok" });
   });
 
   describe("routing", () => {
-    it('routes "what do I have on Friday, the 21st" to calendar agent', async () => {
-      vi.mocked(completeSimple).mockResolvedValue({
-        content: [{ type: "text", text: '{"decision":"calendar"}' }],
-        usage: { input: 12, output: 10 },
+    const CALENDAR_ROUTING_CASES = [
+      "what do I have on Friday, the 21st",
+      "schedule a meeting with James tomorrow",
+      "move my dentist appointment to next Tuesday at 3pm",
+      "what's on my calendar this weekend",
+    ] as const;
+
+    for (const prompt of CALENDAR_ROUTING_CASES) {
+      it(`routes "${prompt}" to calendar agent`, async () => {
+        vi.mocked(completeSimple).mockResolvedValue({
+          content: [{ type: "text", text: '{"decision":"calendar"}' }],
+          usage: { input: 14, output: 10 },
+        });
+
+        const cfg = createMockConfig();
+        const params = createMinimalRunPreparedReplyParams();
+        params.cfg = cfg;
+
+        await runAgentFlow({
+          cleanedBody: prompt,
+          sessionKey: "main",
+          provider: "ollama",
+          model: "qwen2.5:3b",
+          defaultProvider: "ollama",
+          defaultModel: "qwen2.5:3b",
+          aliasIndex: {},
+          cfg,
+          runPreparedReplyParams: params,
+        });
+
+        expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+        const call = runPreparedReplyMock.mock.calls[0][0];
+        expect(call.agentId).toBe("calendar");
+        expect(call.agentDir).toContain("calendar");
       });
-
-      const cfg = createMockConfig();
-      const params = createMinimalRunPreparedReplyParams();
-      params.cfg = cfg;
-
-      await runAgentFlow({
-        cleanedBody: "what do I have on Friday, the 21st",
-        sessionKey: "main",
-        provider: "ollama",
-        model: "qwen2.5:3b",
-        defaultProvider: "ollama",
-        defaultModel: "qwen2.5:3b",
-        aliasIndex: {},
-        cfg,
-        runPreparedReplyParams: params,
-      });
-
-      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
-      const call = runPreparedReplyMock.mock.calls[0][0];
-      expect(call.agentId).toBe("calendar");
-      expect(call.agentDir).toContain("calendar");
-    });
-
-    it('routes "schedule a meeting with James tomorrow" to calendar agent', async () => {
-      vi.mocked(completeSimple).mockResolvedValue({
-        content: [{ type: "text", text: '{"decision":"calendar"}' }],
-        usage: { input: 14, output: 10 },
-      });
-
-      const cfg = createMockConfig();
-      const params = createMinimalRunPreparedReplyParams();
-      params.cfg = cfg;
-
-      await runAgentFlow({
-        cleanedBody: "schedule a meeting with James tomorrow",
-        sessionKey: "main",
-        provider: "ollama",
-        model: "qwen2.5:3b",
-        defaultProvider: "ollama",
-        defaultModel: "qwen2.5:3b",
-        aliasIndex: {},
-        cfg,
-        runPreparedReplyParams: params,
-      });
-
-      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
-      const call = runPreparedReplyMock.mock.calls[0][0];
-      expect(call.agentId).toBe("calendar");
-    });
+    }
   });
 
   describe("piConfig", () => {
@@ -186,7 +174,21 @@ describe("calendar agent", () => {
     });
 
     it("runCalendarReply passes agentId=calendar to runPreparedReply", async () => {
-      const cfg = createMockConfig();
+      const calendarWorkspace = path.join("/tmp", "calendar-agent-workspace");
+      const cfg = createMockConfig({
+        agents: {
+          defaults: { routing: { enabled: true, classifierModel: "ollama/qwen2.5:3b" } },
+          list: [
+            { id: "main", default: true },
+            {
+              id: "calendar",
+              skills: ["gog"],
+              tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+              workspace: calendarWorkspace,
+            },
+          ],
+        },
+      });
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
 
@@ -195,6 +197,7 @@ describe("calendar agent", () => {
       expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("calendar");
+      expect(call.workspaceDir).toBe(calendarWorkspace);
       expect(call.replyTier).toBe("complex");
     });
   });

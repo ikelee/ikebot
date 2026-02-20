@@ -2,7 +2,11 @@
  * Finance Agent – Pi path invocation
  */
 
-import { resolveAgentConfig, resolveAgentDir } from "../../../runtime/agent-scope.js";
+import {
+  resolveAgentConfig,
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+} from "../../../runtime/agent-scope.js";
 import { runPreparedReply } from "../../pipeline/reply/reply-building/get-reply-run.js";
 import { runComplexReply } from "../complex/index.js";
 
@@ -24,10 +28,12 @@ export async function runFinanceReply(
   }
 
   const agentDir = resolveAgentDir(cfg, FINANCE_AGENT_ID);
+  const workspaceDir = resolveAgentWorkspaceDir(cfg, FINANCE_AGENT_ID);
   return runPreparedReply({
     ...params,
     agentId: FINANCE_AGENT_ID,
     agentDir,
+    workspaceDir,
     replyTier: "complex",
   });
 }

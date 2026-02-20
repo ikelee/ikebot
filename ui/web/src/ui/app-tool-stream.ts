@@ -32,6 +32,14 @@ type ToolStreamHost = {
   toolStreamOrder: string[];
   chatToolMessages: Record<string, unknown>[];
   toolStreamSyncTimer: number | null;
+  agentTestRunId?: string | null;
+  agentTestBusy?: boolean;
+  agentTestStatus?: string | null;
+  agentTestHistory?: Array<{
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number | null;
+  }>;
 };
 
 function extractToolOutputText(value: unknown): string | null {
@@ -204,10 +212,110 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
   }
 }
 
+function formatToolProgressStatus(payload: AgentEventPayload): string | null {
+  const data = payload.data ?? {};
+  const phase = typeof data.phase === "string" ? data.phase : "";
+  const name = typeof data.name === "string" ? data.name : "tool";
+  if (phase === "start") {
+    if (name === "read") {
+      return "Reading…";
+    }
+    if (name === "write") {
+      return "Saving…";
+    }
+    return `${name}…`;
+  }
+  if (phase === "result") {
+    const isError = data.isError === true;
+    if (isError) {
+      return `${name} failed`;
+    }
+    if (name === "write") {
+      return "Saved. Finalizing…";
+    }
+    return `${name} done`;
+  }
+  return null;
+}
+
+function applyAgentTestingRunProgress(host: ToolStreamHost, payload: AgentEventPayload) {
+  if (!host.agentTestBusy || !host.agentTestRunId || payload.runId !== host.agentTestRunId) {
+    return;
+  }
+  if (payload.stream === "lifecycle") {
+    const data = payload.data ?? {};
+    const phase = typeof data.phase === "string" ? data.phase : "";
+    if (phase === "start") {
+      host.agentTestStatus = "Agent started. Preparing response…";
+      return;
+    }
+    if (phase === "end") {
+      host.agentTestStatus = "Agent run finished. Refreshing files…";
+      return;
+    }
+    return;
+  }
+  if (payload.stream !== "tool") {
+    return;
+  }
+  const status = formatToolProgressStatus(payload);
+  if (status) {
+    host.agentTestStatus = status;
+  }
+}
+
+function formatToolProgressChatMessage(payload: AgentEventPayload): string | null {
+  const data = payload.data ?? {};
+  const phase = typeof data.phase === "string" ? data.phase : "";
+  const name = typeof data.name === "string" ? data.name : "";
+  if (name !== "write") {
+    return null;
+  }
+  if (phase === "start") {
+    return "Saving…";
+  }
+  if (phase === "result") {
+    const isError = data.isError === true;
+    return isError ? "Save failed." : "Saved.";
+  }
+  return null;
+}
+
+function appendAgentTestingProgressMessage(host: ToolStreamHost, text: string, ts: number) {
+  if (!host.agentTestHistory || !text.trim()) {
+    return;
+  }
+  const last = host.agentTestHistory[host.agentTestHistory.length - 1];
+  if (last?.role === "assistant" && last.text === text) {
+    return;
+  }
+  host.agentTestHistory = [
+    ...host.agentTestHistory,
+    {
+      role: "assistant",
+      text,
+      timestamp: ts,
+    },
+  ];
+}
+
+function applyAgentTestingRunProgressChat(host: ToolStreamHost, payload: AgentEventPayload) {
+  if (!host.agentTestBusy || !host.agentTestRunId || payload.runId !== host.agentTestRunId) {
+    return;
+  }
+  const text = formatToolProgressChatMessage(payload);
+  if (!text) {
+    return;
+  }
+  appendAgentTestingProgressMessage(host, text, Date.now());
+}
+
 export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPayload) {
   if (!payload) {
     return;
   }
+  applyAgentTestingRunProgress(host, payload);
+  applyAgentTestingRunProgressChat(host, payload);
 
   // Handle compaction events
   if (payload.stream === "compaction") {

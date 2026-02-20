@@ -44,6 +44,22 @@ export const AgentsListResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const AgentsOnboardingResetParamsSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const AgentsOnboardingResetResultSchema = Type.Object(
+  {
+    ok: Type.Literal(true),
+    agentId: NonEmptyString,
+    workspace: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
 export const AgentsCreateParamsSchema = Type.Object(
   {
     name: NonEmptyString,
@@ -202,6 +218,25 @@ const ResolvedPiConfigDisplaySchema = Type.Object(
     toolsDeny: Type.Optional(Type.Array(Type.String())),
     skills: Type.Boolean(),
     bootstrapMaxChars: Type.Optional(Type.Integer({ minimum: 1 })),
+    promptSections: Type.Optional(
+      Type.Object(
+        {
+          safety: Type.Optional(Type.Boolean()),
+          cliQuickRef: Type.Optional(Type.Boolean()),
+          reasoningFormat: Type.Optional(Type.Boolean()),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    stream: Type.Optional(
+      Type.Object(
+        {
+          maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
+          temperature: Type.Optional(Type.Number()),
+        },
+        { additionalProperties: false },
+      ),
+    ),
   },
   { additionalProperties: false },
 );

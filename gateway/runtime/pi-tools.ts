@@ -38,6 +38,8 @@ import {
   createSandboxedEditTool,
   createSandboxedReadTool,
   createSandboxedWriteTool,
+  extendOpenClawReadTool,
+  extendOpenClawWriteTool,
   normalizeToolParams,
   patchToolSchemaForClaudeCompatibility,
   wrapAllowedPathsGuard,
@@ -254,7 +256,10 @@ export function createOpenClawCodingTools(options?: {
       if (sandboxRoot) {
         return [createSandboxedReadTool(sandboxRoot, allowedPaths)];
       }
-      let readToolInstance = createOpenClawReadTool(createReadTool(workspaceRoot));
+      let readToolInstance = extendOpenClawReadTool(
+        createOpenClawReadTool(createReadTool(workspaceRoot)),
+        workspaceRoot,
+      );
       if (allowedPaths?.length) {
         readToolInstance = wrapAllowedPathsGuard(readToolInstance, workspaceRoot, allowedPaths);
       }
@@ -271,6 +276,7 @@ export function createOpenClawCodingTools(options?: {
         createWriteTool(workspaceRoot),
         CLAUDE_PARAM_GROUPS.write,
       );
+      writeToolInstance = extendOpenClawWriteTool(writeToolInstance, workspaceRoot);
       if (allowedPaths?.length) {
         writeToolInstance = wrapAllowedPathsGuard(writeToolInstance, workspaceRoot, allowedPaths);
       }

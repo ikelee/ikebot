@@ -26,6 +26,8 @@ import type {
   AgentsPiConfigResultSchema,
   AgentsListParamsSchema,
   AgentsListResultSchema,
+  AgentsOnboardingResetParamsSchema,
+  AgentsOnboardingResetResultSchema,
   AgentsUpdateParamsSchema,
   AgentsUpdateResultSchema,
   ModelChoiceSchema,
@@ -209,6 +211,8 @@ export type AgentsPiConfigParams = Static<typeof AgentsPiConfigParamsSchema>;
 export type AgentsPiConfigResult = Static<typeof AgentsPiConfigResultSchema>;
 export type AgentsListParams = Static<typeof AgentsListParamsSchema>;
 export type AgentsListResult = Static<typeof AgentsListResultSchema>;
+export type AgentsOnboardingResetParams = Static<typeof AgentsOnboardingResetParamsSchema>;
+export type AgentsOnboardingResetResult = Static<typeof AgentsOnboardingResetResultSchema>;
 export type ModelChoice = Static<typeof ModelChoiceSchema>;
 export type ModelsListParams = Static<typeof ModelsListParamsSchema>;
 export type ModelsListResult = Static<typeof ModelsListResultSchema>;

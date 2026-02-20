@@ -1162,6 +1162,14 @@
   flex: 1;
 }
 
+.chat-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
 .chat-header {
   display: flex;
   justify-content: space-between;
@@ -2001,6 +2009,90 @@
   word-wrap: break-word;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+.agent-test-history {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-test-chat-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-test-active-agent {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--bg-elevated) 84%, var(--accent) 16%);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.agent-loop-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ok-border);
+  background: color-mix(in oklab, var(--ok-bg) 78%, transparent);
+  color: var(--ok-text);
+  font-size: 12px;
+}
+
+.agent-test-history-scroll {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  padding: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.agent-test-chat-line {
+  display: flex;
+}
+
+.agent-test-chat-line--user {
+  justify-content: flex-end;
+}
+
+.agent-test-chat-line--assistant {
+  justify-content: flex-start;
+}
+
+.agent-test-chat-line .chat-msg {
+  max-width: min(700px, 88%);
+}
+
+.agent-test-chat-meta {
+  display: inline-flex;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.agent-test-chat-line--user .agent-test-chat-meta {
+  justify-content: flex-end;
+}
+
+.agent-test-chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .agent-file-header {

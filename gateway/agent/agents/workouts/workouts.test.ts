@@ -3,11 +3,14 @@
  */
 
 import { completeSimple } from "@mariozechner/pi-ai";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import { resolvePiConfig } from "../../../runtime/agent-scope.js";
-import { runAgentFlow } from "../../run.js";
+import { maybeRunAgentOnboarding } from "../../onboarding/service.js";
+import { __resetOnboardingStateForTests, runAgentFlow } from "../../run.js";
 import { runWorkoutsReply } from "./run.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
@@ -25,6 +28,9 @@ vi.mock("../../../runtime/agent-paths.js", () => ({
 }));
 vi.mock("../../pipeline/reply/reply-building/get-reply-run.js", () => ({
   runPreparedReply: (...args: unknown[]) => runPreparedReplyMock(...args),
+}));
+vi.mock("../../onboarding/service.js", () => ({
+  maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
@@ -59,18 +65,18 @@ const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =
   }) as OpenClawConfig;
 
 const createMinimalRunPreparedReplyParams = () => ({
-  ctx: {} as any,
-  sessionCtx: {} as any,
+  ctx: {} as Record<string, unknown>,
+  sessionCtx: {} as Record<string, unknown>,
   cfg: createMockConfig(),
   agentId: "main",
   agentDir: path.join("/tmp", "agents", "main", "agent"),
-  agentCfg: {} as any,
-  sessionCfg: {} as any,
+  agentCfg: {} as Record<string, unknown>,
+  sessionCfg: {} as Record<string, unknown>,
   commandAuthorized: true,
-  command: {} as any,
+  command: {} as Record<string, unknown>,
   commandSource: "chat" as const,
   allowTextCommands: true,
-  directives: {} as any,
+  directives: {} as Record<string, unknown>,
   defaultActivation: "mention" as const,
   resolvedThinkLevel: "off" as const,
   resolvedVerboseLevel: "off" as const,
@@ -80,11 +86,11 @@ const createMinimalRunPreparedReplyParams = () => ({
   elevatedAllowed: false,
   blockStreamingEnabled: true,
   resolvedBlockStreamingBreak: "text_end" as const,
-  modelState: {} as any,
+  modelState: {} as Record<string, unknown>,
   provider: "ollama",
   model: "qwen2.5:3b",
   replyTier: "complex" as const,
-  typing: {} as any,
+  typing: {} as Record<string, unknown>,
   defaultProvider: "ollama",
   defaultModel: "llama-3.2-3b",
   timeoutMs: 60_000,
@@ -92,13 +98,37 @@ const createMinimalRunPreparedReplyParams = () => ({
   resetTriggered: false,
   systemSent: false,
   sessionKey: "main",
-  workspaceDir: "/tmp/workspace",
+  workspaceDir: path.join(
+    os.tmpdir(),
+    `openclaw-workouts-test-${Math.random().toString(36).slice(2)}`,
+  ),
   abortedLastRun: false,
 });
 
+async function seedOnboardedWorkoutState(workspaceDir: string): Promise<void> {
+  const seeded = {
+    schemaVersion: 2,
+    profile: {
+      goals: ["strength"],
+      program: "PPL",
+      bodyWeightLb: 180,
+      coachingStyle: "supportive",
+      equipment: ["barbell"],
+      daysPerWeek: 4,
+    },
+    program: { name: "PPL", days: [] },
+    events: [],
+    views: { personalBests: { strength: {} } },
+  };
+  await fs.mkdir(workspaceDir, { recursive: true });
+  await fs.writeFile(path.join(workspaceDir, "workouts.json"), JSON.stringify(seeded), "utf8");
+}
+
 describe("workouts agent", () => {
   beforeEach(() => {
+    __resetOnboardingStateForTests();
     vi.clearAllMocks();
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue(undefined);
     runPreparedReplyMock.mockResolvedValue({ text: "ok" });
   });
 
@@ -112,6 +142,7 @@ describe("workouts agent", () => {
       const cfg = createMockConfig();
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
+      await seedOnboardedWorkoutState(params.workspaceDir);
 
       await runAgentFlow({
         cleanedBody: "log a workout",
@@ -140,6 +171,7 @@ describe("workouts agent", () => {
       const cfg = createMockConfig();
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
+      await seedOnboardedWorkoutState(params.workspaceDir);
 
       await runAgentFlow({
         cleanedBody: "what did I do this week for workouts",
@@ -172,7 +204,16 @@ describe("workouts agent", () => {
     });
 
     it("runWorkoutsReply passes agentId=workouts to runPreparedReply", async () => {
-      const cfg = createMockConfig();
+      const workoutsWorkspace = path.join(os.tmpdir(), "workouts-agent-workspace");
+      const cfg = createMockConfig({
+        agents: {
+          defaults: { routing: { enabled: true, classifierModel: "ollama/qwen2.5:3b" } },
+          list: [
+            { id: "main", default: true },
+            { id: "workouts", skills: [], tools: {}, workspace: workoutsWorkspace },
+          ],
+        },
+      });
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
 
@@ -181,7 +222,18 @@ describe("workouts agent", () => {
       expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("workouts");
+      expect(call.workspaceDir).toBe(workoutsWorkspace);
       expect(call.replyTier).toBe("complex");
+    });
+
+    it("runWorkoutsReply no longer handles onboarding directly", async () => {
+      const cfg = createMockConfig();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      await runWorkoutsReply(params);
+
+      expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -201,6 +253,40 @@ describe("workouts agent", () => {
       expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("main");
+    });
+  });
+
+  describe("classifier-level onboarding", () => {
+    it("intercepts workouts route when onboarding service returns a prompt", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"workouts"}' }],
+        usage: { input: 10, output: 8 },
+      });
+      vi.mocked(maybeRunAgentOnboarding).mockResolvedValueOnce({
+        text: "Before we continue, quick workouts onboarding.",
+      });
+
+      const cfg = createMockConfig();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+      (params.ctx as { Body?: string }).Body = "log a workout";
+
+      const result = await runAgentFlow({
+        cleanedBody: "log a workout",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "qwen2.5:3b",
+        defaultProvider: "ollama",
+        defaultModel: "qwen2.5:3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(runPreparedReplyMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        text: expect.stringContaining("quick workouts onboarding"),
+      });
     });
   });
 });

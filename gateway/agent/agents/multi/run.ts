@@ -5,7 +5,11 @@
  * orchestrateAgents: list of agent ids to spawn (from classifier). When omitted, multi infers from prompt.
  */
 
-import { resolveAgentConfig, resolveAgentDir } from "../../../runtime/agent-scope.js";
+import {
+  resolveAgentConfig,
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+} from "../../../runtime/agent-scope.js";
 import { runPreparedReply } from "../../pipeline/reply/reply-building/get-reply-run.js";
 import { runComplexReply } from "../complex/index.js";
 
@@ -30,11 +34,13 @@ export async function runMultiReply(
   }
 
   const agentDir = resolveAgentDir(cfg, MULTI_AGENT_ID);
+  const workspaceDir = resolveAgentWorkspaceDir(cfg, MULTI_AGENT_ID);
   const { orchestrateAgents: _omit, ...rest } = params;
   return runPreparedReply({
     ...rest,
     agentId: MULTI_AGENT_ID,
     agentDir,
+    workspaceDir,
     replyTier: "complex",
     orchestrateAgents,
   });

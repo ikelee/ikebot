@@ -13,7 +13,7 @@ import { createMockTypingController } from "../../utilities/test-helpers.js";
 
 const runEmbeddedPiAgentMock = vi.fn();
 
-vi.mock("../../../../runtime/model-fallback.js", () => ({
+vi.mock("../../../../../runtime/model-fallback.js", () => ({
   runWithModelFallback: async ({
     provider,
     model,
@@ -29,13 +29,13 @@ vi.mock("../../../../runtime/model-fallback.js", () => ({
   }),
 }));
 
-vi.mock("../../../../runtime/pi-embedded.js", () => ({
+vi.mock("../../../../../runtime/pi-embedded.js", () => ({
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
 
-vi.mock("./queue.js", async () => {
-  const actual = await vi.importActual<typeof import("./queue.js")>("./queue.js");
+vi.mock("../queue.js", async () => {
+  const actual = await vi.importActual<typeof import("../queue.js")>("../queue.js");
   return {
     ...actual,
     enqueueFollowupRun: vi.fn(),
@@ -47,7 +47,7 @@ import { runReplyAgent } from "./agent-runner.js";
 
 function createRun(
   messageProvider = "slack",
-  opts: { storePath?: string; sessionKey?: string } = {},
+  opts: { storePath?: string; sessionKey?: string; agentId?: string } = {},
 ) {
   const typing = createMockTypingController();
   const sessionKey = opts.sessionKey ?? "main";
@@ -82,6 +82,7 @@ function createRun(
       },
       timeoutMs: 1_000,
       blockReplyBreak: "message_end",
+      agentId: opts.agentId,
     },
   } as unknown as FollowupRun;
 
@@ -109,6 +110,35 @@ function createRun(
 }
 
 describe("runReplyAgent messaging tool suppression", () => {
+  it("blocks calendar success claims when no successful exec tool call occurred", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "I'm adding your singing lesson for next Thursday at 4:45 PM." }],
+      meta: {
+        toolExecutions: [{ toolName: "exec", isError: true }],
+      },
+    });
+
+    const result = await createRun("webchat", { agentId: "calendar" });
+
+    expect(result).toMatchObject({
+      isError: true,
+    });
+    expect((result as { text?: string }).text).toContain("no event was changed");
+  });
+
+  it("keeps calendar success claims when exec tool call succeeded", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Your event was created." }],
+      meta: {
+        toolExecutions: [{ toolName: "exec", isError: false }],
+      },
+    });
+
+    const result = await createRun("webchat", { agentId: "calendar" });
+
+    expect(result).toMatchObject({ text: "Your event was created." });
+  });
+
   it("drops replies when a messaging tool sent via the same provider + target", async () => {
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "hello world!" }],

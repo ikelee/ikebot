@@ -13,6 +13,7 @@ type ScrollHost = {
   logsScrollFrame: number | null;
   logsAtBottom: boolean;
   topbarObserver: ResizeObserver | null;
+  agentTestScrollFrame?: number | null;
 };
 
 export function scheduleChatScroll(host: ScrollHost, force = false, smooth = false) {
@@ -112,6 +113,22 @@ export function scheduleLogsScroll(host: ScrollHost, force = false) {
         container.scrollHeight - container.scrollTop - container.clientHeight;
       const shouldStick = force || distanceFromBottom < 80;
       if (!shouldStick) {
+        return;
+      }
+      container.scrollTop = container.scrollHeight;
+    });
+  });
+}
+
+export function scheduleAgentTestScroll(host: ScrollHost) {
+  if (host.agentTestScrollFrame) {
+    cancelAnimationFrame(host.agentTestScrollFrame);
+  }
+  void host.updateComplete.then(() => {
+    host.agentTestScrollFrame = requestAnimationFrame(() => {
+      host.agentTestScrollFrame = null;
+      const container = host.querySelector(".agent-test-history-scroll") as HTMLElement | null;
+      if (!container) {
         return;
       }
       container.scrollTop = container.scrollHeight;

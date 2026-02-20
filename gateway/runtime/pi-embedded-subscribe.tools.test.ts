@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setActivePluginRegistry } from "../extensibility/plugins/runtime.js";
 import { telegramPlugin } from "../extensions/telegram/src/channel.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
-import { extractMessagingToolSend } from "./pi-embedded-subscribe.tools.js";
+import { extractMessagingToolSend, isToolResultError } from "./pi-embedded-subscribe.tools.js";
 
 describe("extractMessagingToolSend", () => {
   beforeEach(() => {
@@ -34,5 +34,31 @@ describe("extractMessagingToolSend", () => {
     expect(result?.tool).toBe("message");
     expect(result?.provider).toBe("slack");
     expect(result?.to).toBe("channel:C1");
+  });
+});
+
+describe("isToolResultError", () => {
+  it("detects root status error", () => {
+    expect(isToolResultError({ status: "error" })).toBe(true);
+  });
+
+  it("detects details status timeout", () => {
+    expect(isToolResultError({ details: { status: "timeout" } })).toBe(true);
+  });
+
+  it("detects embedded JSON error payload in text content", () => {
+    expect(
+      isToolResultError({
+        content: [{ type: "text", text: '{ "status": "error", "error": "not found" }' }],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not flag normal success payload", () => {
+    expect(
+      isToolResultError({
+        content: [{ type: "text", text: '{ "status": "ok", "result": "done" }' }],
+      }),
+    ).toBe(false);
   });
 });

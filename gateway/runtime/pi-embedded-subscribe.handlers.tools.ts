@@ -193,6 +193,7 @@ export async function handleToolExecutionEnd(
   const sanitizedResult = sanitizeToolResult(result);
   const meta = ctx.state.toolMetaById.get(toolCallId);
   ctx.state.toolMetas.push({ toolName, meta });
+  ctx.state.toolExecutions.push({ toolName, isError: isToolError });
   ctx.state.toolMetaById.delete(toolCallId);
   ctx.state.toolSummaryById.delete(toolCallId);
   if (isToolError) {

@@ -8,6 +8,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatMessage: "",
     chatMessages: [],
     chatRunId: null,
+    chatLastCompletedRunId: null,
+    chatLastCompletedAt: null,
     chatSending: false,
     chatStream: null,
     chatStreamStartedAt: null,

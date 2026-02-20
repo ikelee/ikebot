@@ -483,6 +483,7 @@ export async function runEmbeddedAttempt(
       workspaceNotes,
       reactionGuidance,
       promptMode,
+      promptSections: piConfig?.promptSections,
       runtimeInfo,
       messageToolHints,
       sandboxInfo,
@@ -656,13 +657,10 @@ export async function runEmbeddedAttempt(
       // Ollama streaming drops tool_calls; use non-streaming when tools present.
       activeSession.agent.streamFn = createOllamaNonStreamingStreamFn(streamSimple);
 
-      applyExtraParamsToAgent(
-        activeSession.agent,
-        params.config,
-        params.provider,
-        params.modelId,
-        params.streamParams,
-      );
+      applyExtraParamsToAgent(activeSession.agent, params.config, params.provider, params.modelId, {
+        ...params.streamParams,
+        ...piConfig?.stream,
+      });
 
       if (cacheTrace) {
         cacheTrace.recordStage("session:loaded", {
@@ -799,6 +797,7 @@ export async function runEmbeddedAttempt(
       const {
         assistantTexts,
         toolMetas,
+        getToolExecutions,
         unsubscribe,
         waitForCompactionRetry,
         getMessagingToolSentTexts,
@@ -1108,6 +1107,7 @@ export async function runEmbeddedAttempt(
         messagesSnapshot,
         assistantTexts,
         toolMetas: toolMetasNormalized,
+        toolExecutions: getToolExecutions(),
         lastAssistant,
         lastToolError: getLastToolError?.(),
         didSendViaMessagingTool: didSendViaMessagingTool(),

@@ -45,6 +45,12 @@ export function buildEmbeddedSystemPrompt(params: {
   workspaceNotes?: string[];
   /** Controls which hardcoded sections to include. Defaults to "full". */
   promptMode?: PromptMode;
+  /** Optional fine-grained section toggles for lean prompts. */
+  promptSections?: {
+    safety?: boolean;
+    cliQuickRef?: boolean;
+    reasoningFormat?: boolean;
+  };
   runtimeInfo: {
     agentId?: string;
     host: string;
@@ -82,6 +88,7 @@ export function buildEmbeddedSystemPrompt(params: {
     workspaceNotes: params.workspaceNotes,
     reactionGuidance: params.reactionGuidance,
     promptMode: params.promptMode,
+    promptSections: params.promptSections,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,

@@ -26,7 +26,16 @@ export const WORKOUTS_PI_CONFIG: AgentPiConfig = {
   session: false,
   tools: { allow: ["read", "write"] },
   skills: false,
-  bootstrapMaxChars: 1_500,
+  bootstrapMaxChars: 2_500,
+  promptSections: {
+    safety: false,
+    cliQuickRef: false,
+    reasoningFormat: false,
+  },
+  stream: {
+    maxTokens: 2048,
+    temperature: 0,
+  },
 };
 
 export class WorkoutsAgent extends Agent {
@@ -48,8 +57,8 @@ export class WorkoutsAgent extends Agent {
         tier: "medium",
         provider: "ollama",
         modelId: "qwen2.5:14b",
-        maxTokens: 4096,
-        temperature: 0.3,
+        maxTokens: 2048,
+        temperature: 0,
       },
     };
     super(config);

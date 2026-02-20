@@ -55,6 +55,55 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.j
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 
+function hasCalendarMutationClaim(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    /\b(i('| a)?m|i have|done|completed)\s+(adding|creating|scheduling|updating|rescheduling|cancelling|canceling|deleting)\b/.test(
+      normalized,
+    ) ||
+    /\b(event|meeting|appointment)\b.{0,80}\b(created|scheduled|updated|rescheduled|cancelled|canceled|deleted|added)\b/.test(
+      normalized,
+    )
+  );
+}
+
+function enforceCalendarMutationSafety(params: {
+  agentId?: string;
+  payloads: ReplyPayload[];
+  toolExecutions?: Array<{ toolName: string; isError: boolean }>;
+}): ReplyPayload[] {
+  if (params.agentId !== "calendar") {
+    return params.payloads;
+  }
+  const hasSuccessfulExec = (params.toolExecutions ?? []).some(
+    (entry) => entry.toolName === "exec" && !entry.isError,
+  );
+  if (hasSuccessfulExec) {
+    return params.payloads;
+  }
+  let patched = false;
+  const nextPayloads = params.payloads.map((payload) => {
+    if (!payload.text || payload.isError || !hasCalendarMutationClaim(payload.text)) {
+      return payload;
+    }
+    patched = true;
+    return {
+      ...payload,
+      text: "I have not executed the calendar command yet, so no event was changed. Please confirm and I will run it now.",
+      isError: true,
+    };
+  });
+  if (patched) {
+    console.warn(
+      "[calendar-safety] blocked success claim because no successful exec tool call was recorded",
+    );
+  }
+  return patched ? nextPayloads : params.payloads;
+}
+
 export async function runReplyAgent(params: {
   commandBody: string;
   followupRun: FollowupRun;
@@ -376,7 +425,11 @@ export async function runReplyAgent(params: {
       }
     }
 
-    const payloadArray = runResult.payloads ?? [];
+    const payloadArray = enforceCalendarMutationSafety({
+      agentId: followupRun.run.agentId,
+      payloads: runResult.payloads ?? [],
+      toolExecutions: runResult.meta.toolExecutions,
+    });
 
     if (blockReplyPipeline) {
       await blockReplyPipeline.flush({ force: true });

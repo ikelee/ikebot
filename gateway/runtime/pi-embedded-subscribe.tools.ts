@@ -122,17 +122,58 @@ export function isToolResultError(result: unknown): boolean {
   if (!result || typeof result !== "object") {
     return false;
   }
-  const record = result as { details?: unknown };
+  const record = result as {
+    details?: unknown;
+    status?: unknown;
+    error?: unknown;
+    message?: unknown;
+  };
+  const rootStatus =
+    typeof record.status === "string" ? record.status.trim().toLowerCase() : undefined;
+  if (rootStatus === "error" || rootStatus === "timeout" || rootStatus === "failed") {
+    return true;
+  }
+  if (typeof record.error === "string" && record.error.trim().length > 0) {
+    return true;
+  }
+  if (
+    typeof record.message === "string" &&
+    /(error|failed|timeout|not found|denied|invalid)/i.test(record.message)
+  ) {
+    return true;
+  }
   const details = record.details;
-  if (!details || typeof details !== "object") {
+  if (details && typeof details === "object") {
+    const status = (details as { status?: unknown }).status;
+    if (typeof status === "string") {
+      const normalized = status.trim().toLowerCase();
+      if (normalized === "error" || normalized === "timeout" || normalized === "failed") {
+        return true;
+      }
+    }
+  }
+  const text = extractToolResultText(result);
+  if (!text) {
     return false;
   }
-  const status = (details as { status?: unknown }).status;
-  if (typeof status !== "string") {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return false;
+    }
+    const parsedRecord = parsed as Record<string, unknown>;
+    const parsedStatus =
+      typeof parsedRecord.status === "string" ? parsedRecord.status.trim().toLowerCase() : "";
+    if (parsedStatus === "error" || parsedStatus === "timeout" || parsedStatus === "failed") {
+      return true;
+    }
+    if (typeof parsedRecord.error === "string" && parsedRecord.error.trim().length > 0) {
+      return true;
+    }
     return false;
+  } catch {
+    return /\b(error|failed|timeout|not found|denied|invalid)\b/i.test(text);
   }
-  const normalized = status.trim().toLowerCase();
-  return normalized === "error" || normalized === "timeout";
 }
 
 export function extractToolErrorMessage(result: unknown): string | undefined {

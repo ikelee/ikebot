@@ -8,7 +8,12 @@ import {
   startDebugPolling,
   stopDebugPolling,
 } from "./app-polling.ts";
-import { observeTopbar, scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
+import {
+  observeTopbar,
+  scheduleAgentTestScroll,
+  scheduleChatScroll,
+  scheduleLogsScroll,
+} from "./app-scroll.ts";
 import {
   applySettingsFromUrl,
   attachThemeListener,
@@ -21,6 +26,9 @@ import {
 type LifecycleHost = {
   basePath: string;
   tab: Tab;
+  agentsPanel?: string;
+  agentTestHistory?: unknown[];
+  agentTestBusy?: boolean;
   chatHasAutoScrolled: boolean;
   chatManualRefreshInFlight: boolean;
   chatLoading: boolean;
@@ -95,5 +103,12 @@ export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unk
         changed.has("tab") || changed.has("logsAutoFollow"),
       );
     }
+  }
+  if (
+    host.tab === "agents" &&
+    host.agentsPanel === "testing" &&
+    (changed.has("agentTestHistory") || changed.has("agentTestBusy") || changed.has("tab"))
+  ) {
+    scheduleAgentTestScroll(host as unknown as Parameters<typeof scheduleAgentTestScroll>[0]);
   }
 }

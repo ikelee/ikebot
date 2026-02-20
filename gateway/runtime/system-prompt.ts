@@ -191,6 +191,12 @@ export function buildAgentSystemPrompt(params: {
   ttsHint?: string;
   /** Controls which hardcoded sections to include. Defaults to "full". */
   promptMode?: PromptMode;
+  /** Optional fine-grained section toggles for lean prompts. */
+  promptSections?: {
+    safety?: boolean;
+    cliQuickRef?: boolean;
+    reasoningFormat?: boolean;
+  };
   runtimeInfo?: {
     agentId?: string;
     host?: string;
@@ -357,6 +363,9 @@ export function buildAgentSystemPrompt(params: {
   const messageChannelOptions = listDeliverableMessageChannels().join("|");
   const promptMode = params.promptMode ?? "full";
   const isMinimal = promptMode === "minimal" || promptMode === "none";
+  const includeSafety = params.promptSections?.safety !== false;
+  const includeCliQuickRef = params.promptSections?.cliQuickRef !== false;
+  const includeReasoningFormat = params.promptSections?.reasoningFormat !== false;
   const safetySection = [
     "## Safety",
     "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
@@ -435,8 +444,8 @@ export function buildAgentSystemPrompt(params: {
           "Use plain human language for narration unless in a technical context.",
           "",
         ]),
-    ...safetySection,
-    ...(isMinimal
+    ...(includeSafety ? safetySection : []),
+    ...(isMinimal || !includeCliQuickRef
       ? []
       : [
           "## OpenClaw CLI Quick Reference",
@@ -573,7 +582,7 @@ export function buildAgentSystemPrompt(params: {
           ].join("\n");
     lines.push("## Reactions", guidanceText, "");
   }
-  if (reasoningHint) {
+  if (reasoningHint && includeReasoningFormat) {
     lines.push("## Reasoning Format", reasoningHint, "");
   }
 

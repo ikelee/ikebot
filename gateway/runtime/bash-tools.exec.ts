@@ -2,6 +2,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { Type } from "@sinclair/typebox";
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import {
@@ -374,6 +375,35 @@ function applyShellPath(env: Record<string, string>, shellPath?: string | null) 
   if (merged) {
     env.PATH = merged;
   }
+}
+
+async function resolveCalendarIdForExec(workdir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(workdir, "calendar-settings.json"), "utf8");
+    const parsed = JSON.parse(raw) as { profile?: { calendarId?: unknown } };
+    const calendarId = parsed?.profile?.calendarId;
+    return typeof calendarId === "string" && calendarId.trim() ? calendarId.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function normalizeCalendarExecCommand(command: string, agentId?: string, workdir?: string) {
+  const normalizedAgentId = agentId?.trim().toLowerCase();
+  if (normalizedAgentId !== "calendar" || !/\bgog\s+calendar\b/i.test(command)) {
+    return command;
+  }
+  const hasPlaceholder = /\b(?:user|you)@gmail\.com\b/i.test(command);
+  if (!hasPlaceholder) {
+    return command;
+  }
+  const calendarId = workdir ? await resolveCalendarIdForExec(workdir) : null;
+  if (!calendarId) {
+    throw new Error(
+      "calendar exec denied: placeholder calendarId found but profile.calendarId is missing in calendar-settings.json",
+    );
+  }
+  return command.replace(/\b(?:user|you)@gmail\.com\b/gi, calendarId);
 }
 
 function maybeNotifyOnExit(session: ProcessSession, status: "completed" | "failed") {
@@ -851,6 +881,7 @@ export function createExecTool(
       if (!params.command) {
         throw new Error("Provide a command to start.");
       }
+      const command = await normalizeCalendarExecCommand(params.command, agentId, defaults?.cwd);
 
       const maxOutput = DEFAULT_MAX_OUTPUT;
       const pendingMaxOutput = DEFAULT_PENDING_MAX_OUTPUT;
@@ -927,7 +958,7 @@ export function createExecTool(
         }
       }
       if (elevatedRequested) {
-        logInfo(`exec: elevated command ${truncateMiddle(params.command, 120)}`);
+        logInfo(`exec: elevated command ${truncateMiddle(command, 120)}`);
       }
       const configuredHost = defaults?.host ?? "sandbox";
       const requestedHost = normalizeExecHost(params.host) ?? null;
@@ -1041,7 +1072,7 @@ export function createExecTool(
             "exec host=node requires a node that supports system.run (companion app or node host).",
           );
         }
-        const argv = buildNodeShellCommand(params.command, nodeInfo?.platform);
+        const argv = buildNodeShellCommand(command, nodeInfo?.platform);
 
         const nodeEnv = params.env ? { ...params.env } : undefined;
 
@@ -1049,7 +1080,7 @@ export function createExecTool(
           applyPathPrepend(nodeEnv, defaultPathPrepend, { requireExisting: true });
         }
         const baseAllowlistEval = evaluateShellAllowlist({
-          command: params.command,
+          command,
           allowlist: [],
           safeBins: new Set(),
           cwd: workdir,
@@ -1077,7 +1108,7 @@ export function createExecTool(
               });
               // Allowlist-only precheck; safe bins are node-local and may diverge.
               const allowlistEval = evaluateShellAllowlist({
-                command: params.command,
+                command,
                 allowlist: resolved.allowlist,
                 safeBins: new Set(),
                 cwd: workdir,
@@ -1097,7 +1128,7 @@ export function createExecTool(
           analysisOk,
           allowlistSatisfied,
         });
-        const commandText = params.command;
+        const commandText = command;
         const invokeTimeoutMs = Math.max(
           10_000,
           (typeof params.timeout === "number" ? params.timeout : defaultTimeoutSec) * 1000 + 5_000,
@@ -1112,7 +1143,7 @@ export function createExecTool(
             command: "system.run",
             params: {
               command: argv,
-              rawCommand: params.command,
+              rawCommand: command,
               cwd: workdir,
               env: nodeEnv,
               timeoutMs: typeof params.timeout === "number" ? params.timeout * 1000 : undefined,
@@ -1287,7 +1318,7 @@ export function createExecTool(
           throw new Error("exec denied: host=gateway security=deny");
         }
         const allowlistEval = evaluateShellAllowlist({
-          command: params.command,
+          command,
           allowlist: approvals.allowlist,
           safeBins,
           cwd: workdir,
@@ -1312,7 +1343,7 @@ export function createExecTool(
           const contextKey = `exec:${approvalId}`;
           const resolvedPath = allowlistEval.segments[0]?.resolution?.resolvedPath;
           const noticeSeconds = Math.max(1, Math.round(approvalRunningNoticeMs / 1000));
-          const commandText = params.command;
+          const commandText = command;
           const effectiveTimeout =
             typeof params.timeout === "number" ? params.timeout : defaultTimeoutSec;
           const warningText = warnings.length ? `${warnings.join("\n")}\n\n` : "";
@@ -1479,7 +1510,7 @@ export function createExecTool(
               approvalSlug,
               expiresAtMs,
               host: "gateway",
-              command: params.command,
+              command,
               cwd: workdir,
             },
           };
@@ -1500,7 +1531,7 @@ export function createExecTool(
               approvals.file,
               agentId,
               match,
-              params.command,
+              command,
               allowlistEval.segments[0]?.resolution?.resolvedPath,
             );
           }
@@ -1512,7 +1543,7 @@ export function createExecTool(
       const getWarningText = () => (warnings.length ? `${warnings.join("\n")}\n\n` : "");
       const usePty = params.pty === true && !sandbox;
       const run = await runExecProcess({
-        command: params.command,
+        command,
         workdir,
         env,
         sandbox,

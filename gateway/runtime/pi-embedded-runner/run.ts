@@ -878,6 +878,7 @@ export async function runEmbeddedPiAgent(
             meta: {
               durationMs: Date.now() - started,
               agentMeta,
+              toolExecutions: attempt.toolExecutions,
               aborted,
               systemPromptReport: attempt.systemPromptReport,
               // Handle client tool calls (OpenResponses hosted tools)

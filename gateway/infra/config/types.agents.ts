@@ -85,6 +85,17 @@ export type AgentPiConfig = {
   tools?: { profile?: string; allow?: string[]; deny?: string[] };
   skills?: boolean;
   bootstrapMaxChars?: number;
+  /** Toggle system prompt sections for leaner local agent prompts. */
+  promptSections?: {
+    safety?: boolean;
+    cliQuickRef?: boolean;
+    reasoningFormat?: boolean;
+  };
+  /** Optional per-agent stream overrides for embedded runs. */
+  stream?: {
+    maxTokens?: number;
+    temperature?: number;
+  };
 };
 
 export type ResolvedPiConfig = {
@@ -95,6 +106,15 @@ export type ResolvedPiConfig = {
   toolsDeny?: string[];
   skills: boolean;
   bootstrapMaxChars?: number;
+  promptSections?: {
+    safety?: boolean;
+    cliQuickRef?: boolean;
+    reasoningFormat?: boolean;
+  };
+  stream?: {
+    maxTokens?: number;
+    temperature?: number;
+  };
 };
 
 export type AgentsConfig = {

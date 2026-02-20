@@ -7,7 +7,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../infra/config/config.js";
 import { resolvePiConfig } from "../../../runtime/agent-scope.js";
-import { runAgentFlow } from "../../run.js";
+import { maybeRunAgentOnboarding } from "../../onboarding/service.js";
+import { __resetOnboardingStateForTests, runAgentFlow } from "../../run.js";
 import { runMailReply } from "./run.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
@@ -25,6 +26,9 @@ vi.mock("../../../runtime/agent-paths.js", () => ({
 }));
 vi.mock("../../pipeline/reply/reply-building/get-reply-run.js", () => ({
   runPreparedReply: (...args: unknown[]) => runPreparedReplyMock(...args),
+}));
+vi.mock("../../onboarding/service.js", () => ({
+  maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
@@ -102,7 +106,9 @@ const createMinimalRunPreparedReplyParams = () => ({
 
 describe("mail agent", () => {
   beforeEach(() => {
+    __resetOnboardingStateForTests();
     vi.clearAllMocks();
+    vi.mocked(maybeRunAgentOnboarding).mockResolvedValue(undefined);
     runPreparedReplyMock.mockResolvedValue({ text: "ok" });
   });
 
@@ -176,7 +182,21 @@ describe("mail agent", () => {
     });
 
     it("runMailReply passes agentId=mail to runPreparedReply", async () => {
-      const cfg = createMockConfig();
+      const mailWorkspace = path.join("/tmp", "mail-agent-workspace");
+      const cfg = createMockConfig({
+        agents: {
+          defaults: { routing: { enabled: true, classifierModel: "ollama/qwen2.5:3b" } },
+          list: [
+            { id: "main", default: true },
+            {
+              id: "mail",
+              skills: ["gog"] as string[],
+              tools: { exec: { security: "allowlist" as const, safeBins: ["gog"] } },
+              workspace: mailWorkspace,
+            },
+          ],
+        },
+      });
       const params = createMinimalRunPreparedReplyParams();
       params.cfg = cfg;
 
@@ -185,6 +205,7 @@ describe("mail agent", () => {
       expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("mail");
+      expect(call.workspaceDir).toBe(mailWorkspace);
       expect(call.replyTier).toBe("complex");
     });
   });

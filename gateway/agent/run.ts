@@ -18,7 +18,7 @@ import { emitAgentEvent } from "../infra/agent-events.js";
 import { logModelIo } from "../logging/model-io.js";
 import { resolveModelRefFromString, parseModelRef } from "../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
-import { resolveAgentConfig } from "../runtime/agent-scope.js";
+import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../runtime/agent-scope.js";
 import { log } from "../runtime/pi-embedded-runner/logger.js";
 import { resolveModel } from "../runtime/pi-embedded-runner/model.js";
 import { runCalendarReply } from "./agents/calendar/index.js";
@@ -31,6 +31,7 @@ import { runRemindersReply } from "./agents/reminders/index.js";
 import { SimpleResponderAgent } from "./agents/simple-responder/agent.js";
 import { runWorkoutsReply } from "./agents/workouts/index.js";
 import { executeAgent } from "./core/agent-executor.js";
+import { maybeRunAgentOnboarding } from "./onboarding/service.js";
 
 export type RunAgentFlowParams = {
   /** Normalized user message body - used for Router and SimpleResponder */
@@ -50,6 +51,283 @@ export type RunAgentFlowParams = {
   userIdentifier?: string;
 };
 
+const TOP_LEVEL_ONBOARDING_PATTERNS: Array<{ agentId: string; re: RegExp }> = [
+  {
+    agentId: "workouts",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?(?:workouts?|fitness|gym)(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "calendar",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?calendar(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "mail",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?(?:mail|email)(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "finance",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?(?:finance|money|budget)(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "reminders",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?reminders?(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "multi",
+    re: /\b(?:onboard|setup|set up|configure|initialize|init)\s+(?:the\s+)?multi(?:\s+agent)?\b/i,
+  },
+  {
+    agentId: "workouts",
+    re: /\b(?:program|goals?|bodyweight|body weight|style|coachingstyle|coaching style|equipment|daysperweek|days\/week)\s*:/i,
+  },
+  {
+    agentId: "workouts",
+    re: /^\s*(?:5\s*\/?\s*3\s*\/?\s*1|531|ppl|upper\s*\/?\s*lower|full\s*body)\s*$/i,
+  },
+  {
+    agentId: "workouts",
+    re: /^\s*(?:supportive|assertive|aggressive)\s*$/i,
+  },
+  {
+    agentId: "workouts",
+    re: /^\s*\d+(?:\.\d+)?\s*(?:lb|lbs|kg)\s*$/i,
+  },
+];
+
+const ACTIVE_ONBOARDING_BY_SESSION = new Map<string, string>();
+const ACTIVE_ONBOARDING_BY_USER = new Map<string, string>();
+const ACTIVE_SPECIALIZED_AGENT_BY_SESSION = new Map<string, { agentId: string; at: number }>();
+const ACTIVE_SPECIALIZED_AGENT_BY_USER = new Map<string, { agentId: string; at: number }>();
+type RouterHold = {
+  agentId: string;
+  acquiredAt: number;
+  updatedAt: number;
+  reason?: string;
+};
+const ROUTER_HOLDS_BY_SESSION = new Map<string, RouterHold[]>();
+const ROUTER_HOLDS_BY_USER = new Map<string, RouterHold[]>();
+const ROUTER_PENDING_HOLDS_BY_SESSION = new Map<string, string[]>();
+const ROUTER_PENDING_HOLDS_BY_USER = new Map<string, string[]>();
+const ROUTER_HOLD_TTL_MS = 30 * 60 * 1000;
+const SPECIALIZED_FOLLOW_UP_WINDOW_MS = 10 * 60 * 1000;
+const CONFIRMATION_FOLLOW_UP_RE =
+  /^(?:yes|yeah|yep|yup|ok|okay|sure|confirm|confirmed|do it|go ahead|please do|proceed|sounds good|that works)\b/i;
+const ROUTING_CONTEXT_WRAPPER_RE =
+  /\n+Conversation info \(context only;[^\n]*\)\s*\n```json[\s\S]*?```/gi;
+const ROUTING_CONTEXT_MARKER_RE = /Conversation info \(context only;/i;
+const BRACKETED_TIMESTAMP_PREFIX_RE = /^\[[^\]]+\]\s*/;
+const ROUTER_HOLD_DIRECTIVE_RE =
+  /\[\[router_hold:(acquire|release)(?:\s+reason=(["']?)([^"'\]]+)\2)?\s*\]\]/gi;
+const ROUTER_HANDOFF_DIRECTIVE_RE =
+  /\[\[router_handoff:([a-z0-9_-]+)(?:\s+reason=(["']?)([^"'\]]+)\2)?\s*\]\]/gi;
+const FOLLOWUP_PROMPT_RE =
+  /\b(?:please\s+confirm|confirm(?:ation)?|should\s+i|do\s+you\s+want\s+me\s+to|is\s+that\s+right|is\s+that\s+correct|would\s+you\s+like\s+me\s+to|can\s+you\s+confirm)\b/i;
+
+export function __resetOnboardingStateForTests(): void {
+  ACTIVE_ONBOARDING_BY_SESSION.clear();
+  ACTIVE_ONBOARDING_BY_USER.clear();
+  ACTIVE_SPECIALIZED_AGENT_BY_SESSION.clear();
+  ACTIVE_SPECIALIZED_AGENT_BY_USER.clear();
+  ROUTER_HOLDS_BY_SESSION.clear();
+  ROUTER_HOLDS_BY_USER.clear();
+  ROUTER_PENDING_HOLDS_BY_SESSION.clear();
+  ROUTER_PENDING_HOLDS_BY_USER.clear();
+}
+
+function resolveOnboardingSessionKey(userIdentifier: string, sessionKey: string): string {
+  return `${userIdentifier}::${sessionKey}`;
+}
+
+function resolveTopLevelOnboardingAgentId(cleanedBody: string): string | null {
+  const body = cleanedBody.trim();
+  if (!body) {
+    return null;
+  }
+  for (const entry of TOP_LEVEL_ONBOARDING_PATTERNS) {
+    if (entry.re.test(body)) {
+      return entry.agentId;
+    }
+  }
+  return null;
+}
+
+function normalizeRoutingBody(cleanedBody: string): string {
+  const withoutContextWrapper = cleanedBody.replace(ROUTING_CONTEXT_WRAPPER_RE, "");
+  const markerIndex = withoutContextWrapper.search(ROUTING_CONTEXT_MARKER_RE);
+  const withoutMarkerTail =
+    markerIndex >= 0 ? withoutContextWrapper.slice(0, markerIndex) : withoutContextWrapper;
+  return withoutMarkerTail.replace(BRACKETED_TIMESTAMP_PREFIX_RE, "").trim();
+}
+
+function getHolds(store: Map<string, RouterHold[]>, key: string): RouterHold[] {
+  const now = Date.now();
+  const holds = (store.get(key) ?? []).filter((hold) => now - hold.updatedAt <= ROUTER_HOLD_TTL_MS);
+  if (holds.length > 0) {
+    store.set(key, holds);
+  } else {
+    store.delete(key);
+  }
+  return holds;
+}
+
+function currentRouterHold(sessionKey: string, userKey: string): RouterHold | undefined {
+  const sessionHolds = getHolds(ROUTER_HOLDS_BY_SESSION, sessionKey);
+  if (sessionHolds.length > 0) {
+    return sessionHolds[0];
+  }
+  const userHolds = getHolds(ROUTER_HOLDS_BY_USER, userKey);
+  return userHolds[0];
+}
+
+function upsertRouterHold(
+  store: Map<string, RouterHold[]>,
+  key: string,
+  agentId: string,
+  reason?: string,
+): void {
+  const now = Date.now();
+  const existing = getHolds(store, key)[0];
+  if (existing && existing.agentId === agentId) {
+    existing.updatedAt = now;
+    if (reason) {
+      existing.reason = reason;
+    }
+    store.set(key, [existing]);
+    return;
+  }
+
+  // Mutex semantics: new holder replaces any previous holder.
+  store.set(key, [{ agentId, acquiredAt: now, updatedAt: now, reason }]);
+}
+
+function releaseRouterHold(store: Map<string, RouterHold[]>, key: string, agentId: string): void {
+  const holds = getHolds(store, key).filter((hold) => hold.agentId !== agentId);
+  if (holds.length === 0) {
+    store.delete(key);
+    return;
+  }
+  store.set(key, holds);
+}
+
+function getPendingHolds(store: Map<string, string[]>, key: string): string[] {
+  const queue = (store.get(key) ?? []).filter(Boolean);
+  if (queue.length > 0) {
+    store.set(key, queue);
+  } else {
+    store.delete(key);
+  }
+  return queue;
+}
+
+function enqueuePendingHold(store: Map<string, string[]>, key: string, agentId: string): void {
+  const queue = getPendingHolds(store, key);
+  const normalized = agentId.trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  if (!queue.includes(normalized)) {
+    queue.push(normalized);
+  }
+  store.set(key, queue);
+}
+
+function shiftPendingHold(store: Map<string, string[]>, key: string): string | undefined {
+  const queue = getPendingHolds(store, key);
+  const next = queue.shift();
+  if (queue.length > 0) {
+    store.set(key, queue);
+  } else {
+    store.delete(key);
+  }
+  return next;
+}
+
+function removePendingAgentOnce(store: Map<string, string[]>, key: string, agentId: string): void {
+  const queue = getPendingHolds(store, key);
+  const idx = queue.indexOf(agentId);
+  if (idx < 0) {
+    return;
+  }
+  queue.splice(idx, 1);
+  if (queue.length > 0) {
+    store.set(key, queue);
+  } else {
+    store.delete(key);
+  }
+}
+
+function activateNextPendingHold(sessionKey: string, userKey: string): RouterHold | undefined {
+  const nextSession = shiftPendingHold(ROUTER_PENDING_HOLDS_BY_SESSION, sessionKey);
+  if (nextSession) {
+    removePendingAgentOnce(ROUTER_PENDING_HOLDS_BY_USER, userKey, nextSession);
+    upsertRouterHold(ROUTER_HOLDS_BY_SESSION, sessionKey, nextSession, "handoff");
+    upsertRouterHold(ROUTER_HOLDS_BY_USER, userKey, nextSession, "handoff");
+    return currentRouterHold(sessionKey, userKey);
+  }
+  const nextUser = shiftPendingHold(ROUTER_PENDING_HOLDS_BY_USER, userKey);
+  if (nextUser) {
+    removePendingAgentOnce(ROUTER_PENDING_HOLDS_BY_SESSION, sessionKey, nextUser);
+    upsertRouterHold(ROUTER_HOLDS_BY_SESSION, sessionKey, nextUser, "handoff");
+    upsertRouterHold(ROUTER_HOLDS_BY_USER, userKey, nextUser, "handoff");
+    return currentRouterHold(sessionKey, userKey);
+  }
+  return undefined;
+}
+
+function isFollowUpPromptText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (FOLLOWUP_PROMPT_RE.test(trimmed)) {
+    return true;
+  }
+  return trimmed.endsWith("?") && trimmed.length <= 320;
+}
+
+function applyRouterHoldDirectivesToText(text: string): {
+  text: string;
+  acquireReason?: string;
+  release: boolean;
+  acquire: boolean;
+  handoffAgents: string[];
+} {
+  let acquireReason: string | undefined;
+  let release = false;
+  let acquire = false;
+  const handoffAgents: string[] = [];
+  const withoutHold = text.replace(
+    ROUTER_HOLD_DIRECTIVE_RE,
+    (_, action: string, _q: string, reason: string) => {
+      if (action === "acquire") {
+        acquire = true;
+        acquireReason = reason?.trim() || acquireReason;
+      } else if (action === "release") {
+        release = true;
+      }
+      return "";
+    },
+  );
+  const stripped = withoutHold.replace(
+    ROUTER_HANDOFF_DIRECTIVE_RE,
+    (_full: string, agentId: string) => {
+      const normalized = agentId?.trim().toLowerCase();
+      if (normalized) {
+        handoffAgents.push(normalized);
+      }
+      return "";
+    },
+  );
+  return { text: stripped.trim(), acquireReason, release, acquire, handoffAgents };
+}
+
+function extractPayloads(reply: ReplyPayload | ReplyPayload[] | undefined): ReplyPayload[] {
+  if (!reply) {
+    return [];
+  }
+  return Array.isArray(reply) ? reply : [reply];
+}
+
 /**
  * Run the full agent flow: Router → SimpleResponder (if simple) or Complex path (if complex).
  */
@@ -57,6 +335,7 @@ export async function runAgentFlow(
   params: RunAgentFlowParams,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
   const { cleanedBody, sessionKey, provider, model, cfg, defaultProvider, aliasIndex } = params;
+  const routingBody = normalizeRoutingBody(cleanedBody);
   const routingCfg = cfg?.agents?.defaults?.routing;
   const enabled = Boolean(routingCfg?.enabled);
   const classifierModelRaw = (routingCfg?.classifierModel ?? "").trim();
@@ -65,11 +344,82 @@ export async function runAgentFlow(
   logModelIo(log.info.bind(log), "user input", cleanedBody, true);
 
   const directAgentId = (params.runPreparedReplyParams.agentId ?? "").trim().toLowerCase();
+
+  const maybeHandleOnboarding = async (
+    agentId: string,
+    body: string = routingBody,
+  ): Promise<ReplyPayload | ReplyPayload[] | undefined> =>
+    maybeRunAgentOnboarding({
+      agentId,
+      cleanedBody: body,
+      workspaceDir: resolveAgentWorkspaceDir(cfg, agentId),
+      cfg,
+      userIdentifier: params.userIdentifier ?? sessionKey,
+      sessionKey,
+    });
+
+  const userScopeKey = params.userIdentifier ?? sessionKey;
+  const onboardingSessionKey = resolveOnboardingSessionKey(userScopeKey, sessionKey);
+  const holdSessionKey = onboardingSessionKey;
+  const holdUserKey = userScopeKey;
+  const activeOnboardingAgentId =
+    ACTIVE_ONBOARDING_BY_SESSION.get(onboardingSessionKey) ??
+    ACTIVE_ONBOARDING_BY_USER.get(userScopeKey);
+
+  const runOnboardingStep = async (
+    agentId: string,
+  ): Promise<{ reply: ReplyPayload | ReplyPayload[] | undefined; complete: boolean }> => {
+    const reply = await maybeHandleOnboarding(agentId, cleanedBody);
+    if (!reply) {
+      return { reply: undefined, complete: true };
+    }
+    const completionProbe = await maybeHandleOnboarding(agentId, "");
+    return { reply, complete: completionProbe === undefined };
+  };
+
+  const trackOnboardingProgress = (agentId: string, complete: boolean): void => {
+    if (complete) {
+      ACTIVE_ONBOARDING_BY_SESSION.delete(onboardingSessionKey);
+      ACTIVE_ONBOARDING_BY_USER.delete(userScopeKey);
+      return;
+    }
+    ACTIVE_ONBOARDING_BY_SESSION.set(onboardingSessionKey, agentId);
+    ACTIVE_ONBOARDING_BY_USER.set(userScopeKey, agentId);
+  };
+
+  if (activeOnboardingAgentId) {
+    const { reply, complete } = await runOnboardingStep(activeOnboardingAgentId);
+    trackOnboardingProgress(activeOnboardingAgentId, complete);
+    if (reply) {
+      console.log(
+        `[runAgentFlow] active onboarding intercepted for agent=${activeOnboardingAgentId}`,
+      );
+      return reply;
+    }
+  }
+
+  const topLevelOnboardingAgentId = resolveTopLevelOnboardingAgentId(routingBody);
+  if (topLevelOnboardingAgentId) {
+    const { reply: onboardingReply, complete } = await runOnboardingStep(topLevelOnboardingAgentId);
+    if (onboardingReply) {
+      trackOnboardingProgress(topLevelOnboardingAgentId, complete);
+      console.log(
+        `[runAgentFlow] top-level onboarding intercepted for agent=${topLevelOnboardingAgentId}`,
+      );
+      return onboardingReply;
+    }
+  }
+
   if (!enabled && directAgentId && directAgentId !== "main") {
     console.log(
       `[runAgentFlow] routing disabled; bypassing classifier and using direct agent=${directAgentId}`,
     );
     if (directAgentId === "calendar") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("calendar");
+      if (onboardingReply) {
+        trackOnboardingProgress("calendar", complete);
+        return onboardingReply;
+      }
       return runCalendarReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -77,6 +427,11 @@ export async function runAgentFlow(
       });
     }
     if (directAgentId === "reminders") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("reminders");
+      if (onboardingReply) {
+        trackOnboardingProgress("reminders", complete);
+        return onboardingReply;
+      }
       return runRemindersReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -84,6 +439,11 @@ export async function runAgentFlow(
       });
     }
     if (directAgentId === "mail") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("mail");
+      if (onboardingReply) {
+        trackOnboardingProgress("mail", complete);
+        return onboardingReply;
+      }
       return runMailReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -91,6 +451,11 @@ export async function runAgentFlow(
       });
     }
     if (directAgentId === "workouts") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("workouts");
+      if (onboardingReply) {
+        trackOnboardingProgress("workouts", complete);
+        return onboardingReply;
+      }
       return runWorkoutsReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -98,6 +463,11 @@ export async function runAgentFlow(
       });
     }
     if (directAgentId === "finance") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("finance");
+      if (onboardingReply) {
+        trackOnboardingProgress("finance", complete);
+        return onboardingReply;
+      }
       return runFinanceReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -105,6 +475,11 @@ export async function runAgentFlow(
       });
     }
     if (directAgentId === "multi") {
+      const { reply: onboardingReply, complete } = await runOnboardingStep("multi");
+      if (onboardingReply) {
+        trackOnboardingProgress("multi", complete);
+        return onboardingReply;
+      }
       return runMultiReply({
         ...params.runPreparedReplyParams,
         provider,
@@ -112,6 +487,78 @@ export async function runAgentFlow(
       });
     }
   }
+
+  const applyRouterHoldState = (
+    agentId: string,
+    reply: ReplyPayload | ReplyPayload[] | undefined,
+  ): ReplyPayload | ReplyPayload[] | undefined => {
+    const payloads = extractPayloads(reply);
+    if (payloads.length === 0) {
+      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+      return reply;
+    }
+
+    let sawAcquire = false;
+    let sawRelease = false;
+    let acquireReason: string | undefined;
+    let sawFollowupPrompt = false;
+    const handoffAgents = new Set<string>();
+
+    for (const payload of payloads) {
+      if (!payload?.text) {
+        continue;
+      }
+      const directive = applyRouterHoldDirectivesToText(payload.text);
+      payload.text = directive.text;
+      sawAcquire = sawAcquire || directive.acquire;
+      sawRelease = sawRelease || directive.release;
+      for (const handoff of directive.handoffAgents) {
+        handoffAgents.add(handoff);
+      }
+      if (directive.acquireReason) {
+        acquireReason = directive.acquireReason;
+      }
+      sawFollowupPrompt = sawFollowupPrompt || isFollowUpPromptText(directive.text);
+    }
+
+    if (handoffAgents.size > 0) {
+      for (const handoff of handoffAgents) {
+        enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_SESSION, holdSessionKey, handoff);
+        enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_USER, holdUserKey, handoff);
+      }
+      console.log(
+        `[runAgentFlow] router handoff queued by agent=${agentId} -> ${Array.from(handoffAgents).join(",")}`,
+      );
+    }
+
+    if (sawRelease) {
+      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+      console.log(`[runAgentFlow] router hold released by agent=${agentId}`);
+      const next = activateNextPendingHold(holdSessionKey, holdUserKey);
+      if (next) {
+        console.log(
+          `[runAgentFlow] router handoff activated next holder=${next.agentId} reason=${next.reason ?? "handoff"}`,
+        );
+      }
+      return reply;
+    }
+
+    if (sawAcquire || sawFollowupPrompt) {
+      const reason = acquireReason ?? (sawFollowupPrompt ? "followup_prompt" : undefined);
+      upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, reason);
+      upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, reason);
+      console.log(
+        `[runAgentFlow] router hold acquired by agent=${agentId}${reason ? ` reason=${reason}` : ""}`,
+      );
+      return reply;
+    }
+
+    releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+    releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+    return reply;
+  };
 
   // ─── STEP 1: Invoke Router Agent ─────────────────────────────────────────
   const modelResolver: RouterAgentModelResolver = async () => {
@@ -130,17 +577,6 @@ export async function runAgentFlow(
     return resolved.model;
   };
 
-  const routerAgent = new RouterAgent(modelResolver);
-  const routerOutput = await executeAgent(
-    routerAgent,
-    {
-      userIdentifier: params.userIdentifier ?? sessionKey,
-      message: cleanedBody,
-      context: { sessionKey },
-    },
-    { recordTrace: true },
-  );
-
   const specializedTiers = [
     "calendar",
     "reminders",
@@ -149,15 +585,79 @@ export async function runAgentFlow(
     "finance",
     "multi",
   ] as const;
-  const tier =
-    routerOutput.decision === "stay"
-      ? "simple"
-      : specializedTiers.includes(routerOutput.decision as (typeof specializedTiers)[number])
-        ? (routerOutput.decision as (typeof specializedTiers)[number])
-        : "complex";
+  let hold = currentRouterHold(holdSessionKey, holdUserKey);
+  if (!hold) {
+    hold = activateNextPendingHold(holdSessionKey, holdUserKey);
+    if (hold) {
+      console.log(
+        `[runAgentFlow] router pending handoff activated holder=${hold.agentId} reason=${hold.reason ?? "handoff"}`,
+      );
+    }
+  }
+  let routerDecision: string = "stay";
+  let tier:
+    | "simple"
+    | "calendar"
+    | "reminders"
+    | "mail"
+    | "workouts"
+    | "finance"
+    | "multi"
+    | "complex";
+  let requestedAgents: string[] = [];
+  let classifierInvoked = false;
+
+  if (hold) {
+    tier = hold.agentId as typeof tier;
+    console.log(
+      `[runAgentFlow] router hold override: tier=${tier} reason=${hold.reason ?? "unspecified"} (classifier bypassed)`,
+    );
+  } else {
+    classifierInvoked = true;
+    const routerAgent = new RouterAgent(modelResolver);
+    const routerOutput = await executeAgent(
+      routerAgent,
+      {
+        userIdentifier: params.userIdentifier ?? sessionKey,
+        message: routingBody,
+        context: { sessionKey },
+      },
+      { recordTrace: true },
+    );
+    const routedDecision = routerOutput.decision ?? "stay";
+    routerDecision = routedDecision;
+    requestedAgents = (routerOutput.agents ?? []).map((a) => a.trim().toLowerCase());
+
+    tier =
+      routedDecision === "stay"
+        ? "simple"
+        : specializedTiers.includes(routedDecision as (typeof specializedTiers)[number])
+          ? (routedDecision as (typeof specializedTiers)[number])
+          : "complex";
+    const activeSpecialized =
+      ACTIVE_SPECIALIZED_AGENT_BY_SESSION.get(onboardingSessionKey) ??
+      ACTIVE_SPECIALIZED_AGENT_BY_USER.get(userScopeKey);
+    const confirmationLike =
+      routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
+    if (
+      tier === "simple" &&
+      confirmationLike &&
+      activeSpecialized &&
+      Date.now() - activeSpecialized.at <= SPECIALIZED_FOLLOW_UP_WINDOW_MS
+    ) {
+      tier = activeSpecialized.agentId as typeof tier;
+      console.log(
+        `[runAgentFlow] follow-up continuity override: decision=stay -> ${activeSpecialized.agentId}`,
+      );
+    }
+  }
   const runId = crypto.randomUUID();
 
-  console.log(`[runAgentFlow] Router model call 1: decision=${routerOutput.decision} tier=${tier}`);
+  if (classifierInvoked) {
+    console.log(`[runAgentFlow] Router model call 1: decision=${routerDecision} tier=${tier}`);
+  } else {
+    console.log(`[runAgentFlow] Router classifier skipped (hold active): tier=${tier}`);
+  }
 
   // Resolve provider/model for simple tier (classifier model override)
   let effectiveProvider = provider;
@@ -178,7 +678,7 @@ export async function runAgentFlow(
     runId,
     stream: "routing",
     data: {
-      decision: routerOutput.decision,
+      decision: tier === "simple" ? routerDecision : tier,
       tier,
       sessionKey,
       provider: effectiveProvider,
@@ -204,7 +704,7 @@ export async function runAgentFlow(
       simpleAgent,
       {
         userIdentifier: params.userIdentifier ?? sessionKey,
-        message: cleanedBody,
+        message: routingBody,
         context: {
           userTimezone: "UTC",
           sessionKey,
@@ -235,53 +735,99 @@ export async function runAgentFlow(
     };
   }
 
+  if (
+    tier === "calendar" ||
+    tier === "reminders" ||
+    tier === "mail" ||
+    tier === "workouts" ||
+    tier === "finance"
+  ) {
+    const active = { agentId: tier, at: Date.now() };
+    ACTIVE_SPECIALIZED_AGENT_BY_SESSION.set(onboardingSessionKey, active);
+    ACTIVE_SPECIALIZED_AGENT_BY_USER.set(userScopeKey, active);
+  }
+
   // ─── STEP 2b: Specialized agent paths ────────────────────────────────────
   if (tier === "calendar") {
     console.log("[runAgentFlow] calendar path: invoking runCalendarReply");
-    return runCalendarReply({
+    const { reply: onboardingReply, complete } = await runOnboardingStep("calendar");
+    if (onboardingReply) {
+      trackOnboardingProgress("calendar", complete);
+      return onboardingReply;
+    }
+    const reply = await runCalendarReply({
       ...params.runPreparedReplyParams,
       provider: effectiveProvider,
       model: effectiveModel,
     });
+    return applyRouterHoldState("calendar", reply);
   }
   if (tier === "reminders") {
     console.log("[runAgentFlow] reminders path: invoking runRemindersReply");
-    return runRemindersReply({
+    const { reply: onboardingReply, complete } = await runOnboardingStep("reminders");
+    if (onboardingReply) {
+      trackOnboardingProgress("reminders", complete);
+      return onboardingReply;
+    }
+    const reply = await runRemindersReply({
       ...params.runPreparedReplyParams,
       provider: effectiveProvider,
       model: effectiveModel,
     });
+    return applyRouterHoldState("reminders", reply);
   }
   if (tier === "mail") {
     console.log("[runAgentFlow] mail path: invoking runMailReply");
-    return runMailReply({
+    const { reply: onboardingReply, complete } = await runOnboardingStep("mail");
+    if (onboardingReply) {
+      trackOnboardingProgress("mail", complete);
+      return onboardingReply;
+    }
+    const reply = await runMailReply({
       ...params.runPreparedReplyParams,
       provider: effectiveProvider,
       model: effectiveModel,
     });
+    return applyRouterHoldState("mail", reply);
   }
   if (tier === "workouts") {
     console.log("[runAgentFlow] workouts path: invoking runWorkoutsReply");
-    return runWorkoutsReply({
+    const { reply: onboardingReply, complete } = await runOnboardingStep("workouts");
+    if (onboardingReply) {
+      trackOnboardingProgress("workouts", complete);
+      return onboardingReply;
+    }
+    const reply = await runWorkoutsReply({
       ...params.runPreparedReplyParams,
       provider: effectiveProvider,
       model: effectiveModel,
     });
+    return applyRouterHoldState("workouts", reply);
   }
   if (tier === "finance") {
     console.log("[runAgentFlow] finance path: invoking runFinanceReply");
-    return runFinanceReply({
+    const { reply: onboardingReply, complete } = await runOnboardingStep("finance");
+    if (onboardingReply) {
+      trackOnboardingProgress("finance", complete);
+      return onboardingReply;
+    }
+    const reply = await runFinanceReply({
       ...params.runPreparedReplyParams,
       provider: effectiveProvider,
       model: effectiveModel,
     });
+    return applyRouterHoldState("finance", reply);
   }
   if (tier === "multi") {
+    const { reply: onboardingReply, complete } = await runOnboardingStep("multi");
+    if (onboardingReply) {
+      trackOnboardingProgress("multi", complete);
+      return onboardingReply;
+    }
     const multiConfig = resolveAgentConfig(cfg ?? {}, "multi");
     const allowAgents = multiConfig?.subagents?.allowAgents ?? [];
     const allowSet = new Set(allowAgents.map((a) => a.trim().toLowerCase()).filter(Boolean));
     const allowAny = allowSet.has("*");
-    const requestedAgents = (routerOutput.agents ?? []).map((a) => a.trim().toLowerCase());
     const allAllowed =
       allowAny || (requestedAgents.length > 0 && requestedAgents.every((a) => allowSet.has(a)));
     const orchestrateAgents = allAllowed

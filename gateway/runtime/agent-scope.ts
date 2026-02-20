@@ -275,6 +275,25 @@ export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedP
   }
 
   const bootstrapMaxChars = pi?.bootstrapMaxChars ?? cfg.agents?.defaults?.bootstrapMaxChars;
+  const promptSections =
+    pi?.promptSections &&
+    (typeof pi.promptSections.safety === "boolean" ||
+      typeof pi.promptSections.cliQuickRef === "boolean" ||
+      typeof pi.promptSections.reasoningFormat === "boolean")
+      ? {
+          safety: pi.promptSections.safety,
+          cliQuickRef: pi.promptSections.cliQuickRef,
+          reasoningFormat: pi.promptSections.reasoningFormat,
+        }
+      : undefined;
+  const stream =
+    pi?.stream &&
+    (typeof pi.stream.maxTokens === "number" || typeof pi.stream.temperature === "number")
+      ? {
+          maxTokens: pi.stream.maxTokens,
+          temperature: pi.stream.temperature,
+        }
+      : undefined;
 
   return {
     bootstrapFiles,
@@ -284,6 +303,8 @@ export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedP
     toolsDeny,
     skills,
     bootstrapMaxChars,
+    promptSections,
+    stream,
   };
 }
 
@@ -299,6 +320,15 @@ export function getResolvedPiConfigForDisplay(
   toolsDeny?: string[];
   skills: boolean;
   bootstrapMaxChars?: number;
+  promptSections?: {
+    safety?: boolean;
+    cliQuickRef?: boolean;
+    reasoningFormat?: boolean;
+  };
+  stream?: {
+    maxTokens?: number;
+    temperature?: number;
+  };
 } {
   const resolved = resolvePiConfig(cfg, agentId);
   const bootstrapFiles =
@@ -315,5 +345,7 @@ export function getResolvedPiConfigForDisplay(
     toolsDeny: resolved.toolsDeny,
     skills: resolved.skills,
     bootstrapMaxChars: resolved.bootstrapMaxChars,
+    promptSections: resolved.promptSections,
+    stream: resolved.stream,
   };
 }

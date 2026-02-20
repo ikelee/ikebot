@@ -14,6 +14,8 @@ export type ChatState = {
   chatMessage: string;
   chatAttachments: ChatAttachment[];
   chatRunId: string | null;
+  chatLastCompletedRunId: string | null;
+  chatLastCompletedAt: number | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
   lastError: string | null;
@@ -102,6 +104,8 @@ export async function sendChatMessage(
   state.lastError = null;
   const runId = generateUUID();
   state.chatRunId = runId;
+  state.chatLastCompletedRunId = null;
+  state.chatLastCompletedAt = null;
   state.chatStream = "";
   state.chatStreamStartedAt = now;
 
@@ -134,6 +138,8 @@ export async function sendChatMessage(
   } catch (err) {
     const error = String(err);
     state.chatRunId = null;
+    state.chatLastCompletedRunId = null;
+    state.chatLastCompletedAt = null;
     state.chatStream = null;
     state.chatStreamStartedAt = null;
     state.lastError = error;
@@ -194,14 +200,20 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
       }
     }
   } else if (payload.state === "final") {
+    state.chatLastCompletedRunId = payload.runId || state.chatRunId;
+    state.chatLastCompletedAt = Date.now();
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
   } else if (payload.state === "aborted") {
+    state.chatLastCompletedRunId = payload.runId || state.chatRunId;
+    state.chatLastCompletedAt = Date.now();
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
   } else if (payload.state === "error") {
+    state.chatLastCompletedRunId = payload.runId || state.chatRunId;
+    state.chatLastCompletedAt = Date.now();
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;

@@ -30,6 +30,12 @@ Example: `gog calendar events user@gmail.com --from 2025-02-12T00:00:00Z --to 20
 gog calendar create <calendarId> --summary "Title" --from <iso> --to <iso>
 ```
 
+For recurring events, use:
+
+```
+gog calendar create <calendarId> --summary "Title" --from <iso> --to <iso> --rrule 'RRULE:FREQ=WEEKLY'
+```
+
 **Update event:**
 
 ```
@@ -51,3 +57,11 @@ gog calendar colors
 ### exec
 
 You run gog via the exec tool. Ensure `gog` is in the agent's exec allowlist (tools.exec.allow or safeBins).
+
+### Reliability rules
+
+- Never report success unless the command actually succeeded.
+- If a command returns an error, state that it failed and ask to retry or adjust inputs.
+- Do not use unsupported flags (for example, use `--rrule`, not `--recurrence`).
+- After the user confirms a pending create/update/delete (for example replying "yes"), run the `gog` command in the same turn before finalizing your reply.
+- If you did not execute a `gog` command, never claim that an event was created, updated, or deleted.

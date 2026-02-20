@@ -51,6 +51,10 @@ export type ChatProps = {
   splitRatio?: number;
   assistantName: string;
   assistantAvatar: string | null;
+  agentId?: string | null;
+  agentEmoji?: string | null;
+  loopCompletedAt?: number | null;
+  loopCompletedRunId?: string | null;
   // Image attachments
   attachments?: ChatAttachment[];
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
@@ -70,6 +74,23 @@ export type ChatProps = {
   onSplitRatioChange?: (ratio: number) => void;
   onChatScroll?: (event: Event) => void;
 };
+
+function resolveAgentEmoji(agentId?: string | null, configured?: string | null): string {
+  if (configured?.trim()) {
+    return configured.trim();
+  }
+  const id = agentId?.trim().toLowerCase() ?? "";
+  const fallback: Record<string, string> = {
+    main: "🧠",
+    workouts: "🏋️",
+    calendar: "📅",
+    reminders: "⏰",
+    finance: "💸",
+    mail: "📨",
+    multi: "🧩",
+  };
+  return fallback[id] ?? "🤖";
+}
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
 
@@ -197,6 +218,12 @@ export function renderChat(props: ChatProps) {
     name: props.assistantName,
     avatar: props.assistantAvatar ?? props.assistantAvatarUrl ?? null,
   };
+  const agentEmoji = resolveAgentEmoji(props.agentId, props.agentEmoji);
+  const showLoopComplete =
+    !isBusy &&
+    !!props.loopCompletedAt &&
+    Date.now() - props.loopCompletedAt < 20_000 &&
+    !!props.loopCompletedRunId;
 
   const hasAttachments = (props.attachments?.length ?? 0) > 0;
   const composePlaceholder = props.connected
@@ -268,6 +295,21 @@ export function renderChat(props: ChatProps) {
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
 
       ${props.error ? html`<div class="callout danger">${props.error}</div>` : nothing}
+      <div class="chat-agent-status">
+        <span class="agent-badge" title="Current chat agent">
+          <span>${agentEmoji}</span>
+          <span class="mono">${props.assistantName}</span>
+        </span>
+        ${
+          showLoopComplete
+            ? html`
+                <span class="agent-loop-state" title=${props.loopCompletedRunId ?? ""}>
+                  ✅ loop complete
+                </span>
+              `
+            : nothing
+        }
+      </div>
 
       ${
         props.focusMode

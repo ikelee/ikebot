@@ -25,6 +25,7 @@ export type ToolErrorSummary = {
 export type EmbeddedPiSubscribeState = {
   assistantTexts: string[];
   toolMetas: Array<{ toolName?: string; meta?: string }>;
+  toolExecutions: Array<{ toolName: string; isError: boolean }>;
   toolMetaById: Map<string, string | undefined>;
   toolSummaryById: Set<string>;
   lastToolError?: ToolErrorSummary;

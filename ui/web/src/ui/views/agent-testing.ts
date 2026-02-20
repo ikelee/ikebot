@@ -52,6 +52,7 @@ export type AgentTestingProps = {
   agentTestUndoBusy: boolean;
   onAgentTestMessageChange: (value: string) => void;
   onRunAgentTest: () => void;
+  onResetAgentOnboarding: () => void;
   onRefreshAgentFiles: () => void;
   onUndoAgentFileChange: (name: string) => void;
   onUndoAllAgentFileChanges: () => void;
@@ -190,6 +191,33 @@ function renderLineDiff(beforeText: string, afterText: string) {
   `;
 }
 
+function formatLatencyMs(value?: number | null): string | null {
+  if (value == null || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  if (value < 1000) {
+    return `${Math.round(value)}ms`;
+  }
+  return `${(value / 1000).toFixed(2)}s`;
+}
+
+function resolveAgentEmoji(agentId: string, configured?: string): string {
+  if (configured?.trim()) {
+    return configured.trim();
+  }
+  const id = agentId.trim().toLowerCase();
+  const fallback: Record<string, string> = {
+    main: "🧠",
+    workouts: "🏋️",
+    calendar: "📅",
+    reminders: "⏰",
+    finance: "💸",
+    mail: "📨",
+    multi: "🧩",
+  };
+  return fallback[id] ?? "🤖";
+}
+
 export function renderAgentTesting(props: AgentTestingProps) {
   const agents = props.agentsList?.agents ?? [];
   const defaultId = props.agentsList?.defaultId ?? null;
@@ -207,6 +235,15 @@ export function renderAgentTesting(props: AgentTestingProps) {
   const baseContent = active ? (props.agentFileContents[active] ?? "") : "";
   const draft = active ? (props.agentFileDrafts[active] ?? baseContent) : "";
   const isDirty = active ? draft !== baseContent : false;
+  const selectedAgentName = selectedAgent?.name?.trim() || selectedAgent?.id || "agent";
+  const selectedAgentEmoji = selectedAgent
+    ? resolveAgentEmoji(selectedAgent.id, selectedAgent.identity?.emoji)
+    : "🤖";
+  const loopFinished =
+    !props.agentTestBusy &&
+    !!props.agentTestRunId &&
+    !!props.agentTestStatus &&
+    /done|timed out|completed|loop complete/i.test(props.agentTestStatus);
 
   return html`
     <section class="card">
@@ -302,18 +339,22 @@ export function renderAgentTesting(props: AgentTestingProps) {
               <div class="card">
                 <div class="card-title">Agent Chat + File Diffs</div>
                 <div class="card-sub">Session: <span class="mono">agent:${selectedAgent.id}:testing</span></div>
-                <label class="field" style="margin-top: 12px;">
-                  <span>Prompt</span>
-                  <textarea
-                    .value=${props.agentTestMessage}
-                    rows="4"
-                    @input=${(e: Event) =>
-                      props.onAgentTestMessageChange((e.target as HTMLTextAreaElement).value)}
-                  ></textarea>
-                </label>
+                <div class="agent-test-active-agent" style="margin-top: 8px;">
+                  <span class="agent-badge" title="All assistant replies in this panel come from this selected agent">
+                    <span>${selectedAgentEmoji}</span>
+                    <span class="mono">${selectedAgentName}</span>
+                  </span>
+                  ${
+                    loopFinished
+                      ? html`
+                          <span class="agent-loop-state" title="Latest run has completed"> ✅ loop complete </span>
+                        `
+                      : nothing
+                  }
+                </div>
                 <div class="row" style="margin-top: 10px; gap: 8px; flex-wrap: wrap;">
-                  <button class="btn primary" ?disabled=${props.agentTestBusy || !props.agentTestMessage.trim()} @click=${props.onRunAgentTest}>
-                    ${props.agentTestBusy ? "Running…" : "Send"}
+                  <button class="btn" ?disabled=${props.agentTestBusy} @click=${props.onResetAgentOnboarding}>
+                    Reset Onboarding
                   </button>
                   <button class="btn" ?disabled=${props.agentTestBusy} @click=${props.onRefreshHistory}>
                     ${props.historyLoading ? "Refreshing…" : "Refresh Chat"}
@@ -339,29 +380,68 @@ export function renderAgentTesting(props: AgentTestingProps) {
                 ${props.agentTestError ? html`<div class="callout danger" style="margin-top: 8px;">${props.agentTestError}</div>` : nothing}
                 ${props.historyError ? html`<div class="callout danger" style="margin-top: 8px;">${props.historyError}</div>` : nothing}
                 <div class="muted" style="margin-top: 12px;">Chat History</div>
-                ${
-                  props.history.length === 0
-                    ? html`
-                        <div class="muted" style="margin-top: 8px">No chat messages yet.</div>
-                      `
-                    : html`
-                        <div class="list" style="margin-top: 8px;">
-                          ${props.history.map(
-                            (m) => html`
-                              <div class="list-item">
-                                <div class="list-main">
-                                  <div class="list-title">${m.role}</div>
-                                  <div class="list-sub">${m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : "n/a"}</div>
-                                </div>
-                                <div class="list-meta" style="max-width: 70%;">
-                                  <div class="code-block-wrap"><pre class="code-block">${m.text}</pre></div>
-                                </div>
-                              </div>
-                            `,
-                          )}
-                        </div>
-                      `
-                }
+                <div class="agent-test-chat-shell" style="margin-top: 8px;">
+                  ${
+                    props.history.length === 0
+                      ? html`
+                          <div class="muted">No chat messages yet.</div>
+                        `
+                      : html`
+                          <div class="agent-test-history-scroll">
+                            <div class="agent-test-history">
+                              ${props.history.map(
+                                (m) => html`
+                                  <div class="agent-test-chat-line agent-test-chat-line--${m.role}">
+                                    <div class="chat-msg">
+                                      <div class="agent-test-chat-meta">
+                                        <span>${
+                                          m.role === "assistant"
+                                            ? `${selectedAgentEmoji} ${selectedAgentName}`
+                                            : "you"
+                                        }</span>
+                                        <span>·</span>
+                                        <span>${m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : "n/a"}</span>
+                                        ${
+                                          formatLatencyMs(m.sincePrevMs)
+                                            ? html`<span>·</span><span class="mono">+${formatLatencyMs(m.sincePrevMs)}</span>`
+                                            : nothing
+                                        }
+                                        ${
+                                          m.role === "assistant" && formatLatencyMs(m.latencyMs)
+                                            ? html`<span>·</span><span class="mono">reply ${formatLatencyMs(m.latencyMs)}</span>`
+                                            : nothing
+                                        }
+                                      </div>
+                                      <div class="chat-bubble">
+                                        <div class="agent-test-chat-text">${m.text}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                `,
+                              )}
+                            </div>
+                          </div>
+                        `
+                  }
+                  <label class="field">
+                    <span>Message</span>
+                    <textarea
+                      .value=${props.agentTestMessage}
+                      rows="3"
+                      @input=${(e: Event) =>
+                        props.onAgentTestMessageChange((e.target as HTMLTextAreaElement).value)}
+                    ></textarea>
+                  </label>
+                  <div class="row" style="justify-content: flex-end;">
+                    <button
+                      class="btn primary"
+                      ?disabled=${props.agentTestBusy || !props.agentTestMessage.trim()}
+                      @click=${props.onRunAgentTest}
+                    >
+                      ${props.agentTestBusy ? "Running…" : "Send"}
+                    </button>
+                  </div>
+                </div>
                 <div class="muted" style="margin-top: 12px;">File Changes (${props.agentTestChanges.length})</div>
                 ${
                   props.agentTestChanges.length === 0

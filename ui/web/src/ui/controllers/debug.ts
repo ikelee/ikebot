@@ -35,6 +35,8 @@ export type DebugAgentChatMessage = {
   role: "user" | "assistant";
   text: string;
   timestamp: number | null;
+  latencyMs?: number | null;
+  sincePrevMs?: number | null;
 };
 
 export type DebugState = {
@@ -233,10 +235,11 @@ async function loadAgentFileSnapshots(
   if (!state.client || !state.connected) {
     return {};
   }
-  const list = await state.client.request<AgentsFilesListResult>("agents.files.list", { agentId });
+  const client = state.client;
+  const list = await client.request<AgentsFilesListResult>("agents.files.list", { agentId });
   const detailed = await Promise.all(
     list.files.map(async (entry) => {
-      const res = await state.client.request<AgentsFilesGetResult>("agents.files.get", {
+      const res = await client.request<AgentsFilesGetResult>("agents.files.get", {
         agentId,
         name: entry.name,
       });
@@ -283,8 +286,8 @@ export async function loadDebugAgentHistory(state: DebugState) {
       limit: 60,
     });
     const raw = Array.isArray(history.messages) ? history.messages : [];
-    const rows: DebugAgentChatMessage[] = [];
-    for (let i = raw.length - 1; i >= 0; i -= 1) {
+    const chronological: DebugAgentChatMessage[] = [];
+    for (let i = 0; i < raw.length; i += 1) {
       const msg = raw[i];
       const record = msg as { role?: unknown; timestamp?: unknown };
       const role = record.role === "user" || record.role === "assistant" ? record.role : null;
@@ -295,13 +298,37 @@ export async function loadDebugAgentHistory(state: DebugState) {
       if (!text) {
         continue;
       }
-      rows.push({
+      chronological.push({
         role,
         text,
         timestamp: typeof record.timestamp === "number" ? record.timestamp : null,
+        latencyMs: null,
+        sincePrevMs: null,
       });
     }
-    state.agentTestHistory = rows;
+    let prevTimestamp: number | null = null;
+    let pendingUserTimestamp: number | null = null;
+    for (const row of chronological) {
+      if (prevTimestamp != null && row.timestamp != null && row.timestamp >= prevTimestamp) {
+        row.sincePrevMs = row.timestamp - prevTimestamp;
+      }
+      if (row.timestamp != null) {
+        prevTimestamp = row.timestamp;
+      }
+      if (row.role === "user") {
+        pendingUserTimestamp = row.timestamp;
+        continue;
+      }
+      if (
+        row.role === "assistant" &&
+        pendingUserTimestamp != null &&
+        row.timestamp != null &&
+        row.timestamp >= pendingUserTimestamp
+      ) {
+        row.latencyMs = row.timestamp - pendingUserTimestamp;
+      }
+    }
+    state.agentTestHistory = chronological;
   } catch (err) {
     state.agentTestHistoryError = String(err);
   } finally {
@@ -365,6 +392,36 @@ export async function runDebugAgentTest(state: DebugState) {
       state.agentTestStatus = `Done. ${state.agentTestChanges.length} file(s) changed.`;
     }
     state.agentTestTotalDurationMs = Date.now() - startedAt;
+  } catch (err) {
+    state.agentTestError = String(err);
+    state.agentTestStatus = null;
+  } finally {
+    state.agentTestBusy = false;
+  }
+}
+
+export async function resetDebugAgentOnboarding(state: DebugState) {
+  if (!state.client || !state.connected || !state.agentTestAgentId || state.agentTestBusy) {
+    return;
+  }
+  const agentId = state.agentTestAgentId;
+  state.agentTestBusy = true;
+  state.agentTestError = null;
+  state.agentTestStatus = "Resetting onboarding files…";
+  state.agentTestRunId = null;
+  state.agentTestTotalDurationMs = null;
+  state.agentTestReply = null;
+  try {
+    await state.client.request<{ ok: true; agentId: string; workspace: string }>(
+      "agents.onboarding.reset",
+      { agentId },
+    );
+    const baseline = await loadAgentFileSnapshots(state, agentId);
+    state.agentTestBaselineFiles = baseline;
+    state.agentTestCurrentFiles = baseline;
+    state.agentTestChanges = [];
+    await loadDebugAgentHistory(state);
+    state.agentTestStatus = "Onboarding reset. Send a message to start from pre-onboarding.";
   } catch (err) {
     state.agentTestError = String(err);
     state.agentTestStatus = null;

@@ -108,6 +108,7 @@ export type EmbeddedRunAttemptResult = {
   messagesSnapshot: AgentMessage[];
   assistantTexts: string[];
   toolMetas: Array<{ toolName: string; meta?: string }>;
+  toolExecutions: Array<{ toolName: string; isError: boolean }>;
   lastAssistant: AssistantMessage | undefined;
   lastToolError?: { toolName: string; meta?: string; error?: string };
   didSendViaMessagingTool: boolean;

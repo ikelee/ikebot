@@ -508,6 +508,21 @@ export const AgentEntrySchema = z
           .optional(),
         skills: z.boolean().optional(),
         bootstrapMaxChars: z.number().int().positive().optional(),
+        promptSections: z
+          .object({
+            safety: z.boolean().optional(),
+            cliQuickRef: z.boolean().optional(),
+            reasoningFormat: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        stream: z
+          .object({
+            maxTokens: z.number().int().positive().optional(),
+            temperature: z.number().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
