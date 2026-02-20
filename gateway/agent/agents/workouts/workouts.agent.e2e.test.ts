@@ -297,7 +297,7 @@ describe("workouts agent-level e2e – real model", () => {
             body: "I just hit deadlift 305 lb for 5 reps. Please log it.",
             senderId,
           });
-          expect(run.loops).toBeLessThanOrEqual(10);
+          expect(run.loops).toBeLessThanOrEqual(3);
 
           const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
           const afterState = parseWorkoutState(afterRaw);
@@ -334,7 +334,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "I ran 3.2 miles in 28 minutes today. Add that to my workout history.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(10);
+        expect(run.loops).toBeLessThanOrEqual(3);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
@@ -370,7 +370,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "What should I work out today for my chest day? Keep it similar to my past exercises.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(10);
+        expect(run.loops).toBeLessThanOrEqual(3);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/chest|bench|press|dips|fly/);
         expect(text).toMatch(/bench|press/);
@@ -395,7 +395,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "For chest day, give me 4 options that are different from my usual bench-focused exercises.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(10);
+        expect(run.loops).toBeLessThanOrEqual(3);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/chest|press|fly|dip|push/);
         expect(text).toMatch(/incline|dumbbell|cable|machine|fly|pec|dip|push/);
@@ -461,7 +461,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "What workouts have I done in the last 7 days?",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(10);
+        expect(run.loops).toBeLessThanOrEqual(3);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/bench|row|run|running|workout/);
       },
@@ -492,7 +492,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "I hit a bench press PR: 195 lb for 5 reps. Add it to my records.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(10);
+        expect(run.loops).toBeLessThanOrEqual(3);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);

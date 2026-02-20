@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getReplyFromConfig } from "../../pipeline/reply.js";
 
 const execFileAsync = promisify(execFile);
@@ -236,6 +236,59 @@ function extractReplyText(reply: unknown): string {
   return typeof text === "string" ? text : "";
 }
 
+function stringifyLogArg(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function countReqStarts(lines: string[]): number {
+  let count = 0;
+  for (const line of lines) {
+    if (/\[ollama-stream-fn\] req#\d+ start\b/i.test(line)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+async function runCalendarAgentWithLoopCount(params: {
+  body: string;
+  from: string;
+  to: string;
+  sessionKey: string;
+  cfg: ReturnType<typeof calendarAgentConfig>;
+}): Promise<{ reply: unknown; loops: number }> {
+  const capturedLogs: string[] = [];
+  const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+    capturedLogs.push(args.map((entry) => stringifyLogArg(entry)).join(" "));
+  });
+  try {
+    const reply = await getReplyFromConfig(
+      {
+        Body: params.body,
+        From: params.from,
+        To: params.to,
+        Provider: "webchat",
+        SessionKey: params.sessionKey,
+      },
+      {},
+      params.cfg,
+    );
+    return { reply, loops: countReqStarts(capturedLogs) };
+  } finally {
+    logSpy.mockRestore();
+  }
+}
+
 function needsConfirmation(text: string): boolean {
   const lower = text.toLowerCase();
   return (
@@ -404,19 +457,16 @@ describe("calendar agent-level e2e – real model", () => {
       const from = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-      const reply = await getReplyFromConfig(
-        {
-          Body: `What’s on my calendar between ${from} and ${to}?`,
-          From: testUser,
-          To: testUser,
-          Provider: "webchat",
-          SessionKey: testSessionKey,
-        },
-        {},
-        calendarAgentConfig(workspaceDir, tempRoot),
-      );
+      const run = await runCalendarAgentWithLoopCount({
+        body: `What’s on my calendar between ${from} and ${to}?`,
+        from: testUser,
+        to: testUser,
+        sessionKey: testSessionKey,
+        cfg: calendarAgentConfig(workspaceDir, tempRoot),
+      });
+      expect(run.loops).toBeLessThanOrEqual(2);
 
-      const text = extractReplyText(reply).toLowerCase();
+      const text = extractReplyText(run.reply).toLowerCase();
       expect(text.length).toBeGreaterThan(0);
       expect(text).not.toContain("quick calendar onboarding");
     } finally {
@@ -449,34 +499,31 @@ describe("calendar agent-level e2e – real model", () => {
 
         const cfg = calendarAgentConfig(workspaceDir, tempRoot);
         const send = async (body: string) =>
-          getReplyFromConfig(
-            {
-              Body: body,
-              From: testUser,
-              To: testUser,
-              Provider: "webchat",
-              SessionKey: testSessionKey,
-            },
-            {},
+          runCalendarAgentWithLoopCount({
+            body,
+            from: testUser,
+            to: testUser,
+            sessionKey: testSessionKey,
             cfg,
-          );
+          });
 
         const recurringStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
         recurringStart.setUTCMinutes(45, 0, 0);
         const recurringEnd = new Date(recurringStart.getTime() + 60 * 60 * 1000);
-        const firstReply = extractReplyText(
-          await send(
-            `Please add a weekly recurring event called "Singing Lesson" starting ` +
-              `${recurringStart.toISOString()} and ending ${recurringEnd.toISOString()}.`,
-          ),
-        ).toLowerCase();
+        const firstRun = await send(
+          `Please add a weekly recurring event called "Singing Lesson" starting ` +
+            `${recurringStart.toISOString()} and ending ${recurringEnd.toISOString()}.`,
+        );
+        expect(firstRun.loops).toBeLessThanOrEqual(3);
+        const firstReply = extractReplyText(firstRun.reply).toLowerCase();
         if (
           firstReply.includes("confirm") ||
           firstReply.includes("is that") ||
           firstReply.includes("is this correct") ||
           firstReply.includes("should it recur")
         ) {
-          await send("yes");
+          const confirmRun = await send("yes");
+          expect(confirmRun.loops).toBeLessThanOrEqual(3);
         }
 
         const after = await listRawEventsByQuery(query);
@@ -568,26 +615,25 @@ describe("calendar agent-level e2e – real model", () => {
 
         const cfg = calendarAgentConfig(workspaceDir, tempRoot);
         const send = async (body: string) =>
-          getReplyFromConfig(
-            {
-              Body: body,
-              From: testUser,
-              To: testUser,
-              Provider: "webchat",
-              SessionKey: testSessionKey,
-            },
-            {},
+          runCalendarAgentWithLoopCount({
+            body,
+            from: testUser,
+            to: testUser,
+            sessionKey: testSessionKey,
             cfg,
-          );
+          });
 
         const createPrompt = `Please create a one-time calendar event called "${summary}" from ${startIso} to ${endIso}.`;
-        const firstCreate = extractReplyText(await send(createPrompt)).toLowerCase();
+        const firstCreateRun = await send(createPrompt);
+        expect(firstCreateRun.loops).toBeLessThanOrEqual(3);
+        const firstCreate = extractReplyText(firstCreateRun.reply).toLowerCase();
         if (
           firstCreate.includes("confirm") ||
           firstCreate.includes("correct?") ||
           firstCreate.includes("is that")
         ) {
-          await send("yes, please");
+          const confirmRun = await send("yes, please");
+          expect(confirmRun.loops).toBeLessThanOrEqual(3);
         }
 
         const created = await listEventsByQuery(marker);
@@ -596,13 +642,16 @@ describe("calendar agent-level e2e – real model", () => {
         const deletePrompt =
           `Please delete the calendar event whose title contains "${marker}". ` +
           `Please only remove the matching test event.`;
-        const firstDelete = extractReplyText(await send(deletePrompt)).toLowerCase();
+        const firstDeleteRun = await send(deletePrompt);
+        expect(firstDeleteRun.loops).toBeLessThanOrEqual(3);
+        const firstDelete = extractReplyText(firstDeleteRun.reply).toLowerCase();
         if (
           firstDelete.includes("confirm") ||
           firstDelete.includes("correct?") ||
           firstDelete.includes("is that")
         ) {
-          await send("yes, please");
+          const confirmRun = await send("yes, please");
+          expect(confirmRun.loops).toBeLessThanOrEqual(3);
         }
 
         let remaining = await listEventsByQuery(marker);
@@ -694,21 +743,21 @@ describe("calendar agent-level e2e – real model", () => {
 
         const cfg = calendarAgentConfig(workspaceDir, tempRoot);
         const send = async (body: string) =>
-          getReplyFromConfig(
-            {
-              Body: body,
-              From: testUser,
-              To: testUser,
-              Provider: "webchat",
-              SessionKey: testSessionKey,
-            },
-            {},
+          runCalendarAgentWithLoopCount({
+            body,
+            from: testUser,
+            to: testUser,
+            sessionKey: testSessionKey,
             cfg,
-          );
+          });
         const sendWithOptionalConfirm = async (prompt: string, confirmText: string) => {
-          const first = extractReplyText(await send(prompt));
+          const firstRun = await send(prompt);
+          expect(firstRun.loops).toBeLessThanOrEqual(3);
+          const first = extractReplyText(firstRun.reply);
           if (needsConfirmation(first)) {
-            const second = extractReplyText(await send(confirmText));
+            const secondRun = await send(confirmText);
+            expect(secondRun.loops).toBeLessThanOrEqual(3);
+            const second = extractReplyText(secondRun.reply);
             return `${first}\n${second}`;
           }
           return first;
