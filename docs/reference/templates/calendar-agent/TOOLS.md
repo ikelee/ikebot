@@ -54,6 +54,8 @@ gog calendar colors
 - Resolve "today", "tomorrow", "next Monday" using the user's timezone
 - Default timezone: UTC unless user specifies
 - Do not use shell date substitution (`$(date ...)`) in gog commands.
+- If the prompt includes `Calendar date hints (deterministic)` with an `execution UTC window`, copy those UTC `--from/--to` values exactly.
+- For compact ranges like `530-730`, treat as local PM unless the user explicitly says otherwise.
 
 ### exec
 
@@ -68,3 +70,12 @@ You run gog via the exec tool. Ensure `gog` is in the agent's exec allowlist (to
 - If you did not execute a `gog` command, never claim that an event was created, updated, or deleted.
 - Keep tool loops low: for create/update/delete, use one gog write command unless clarification is required.
 - Do not run a preflight `gog calendar events` query before create unless the user asked to check for conflicts.
+- For mutation intents, default to this sequence: `exec(gog calendar create|update|delete)` -> parse tool output -> final user text.
+- If a mutation is requested and you have not called `exec`, respond with a clarification question or an explicit "not executed yet" message; never implied success.
+- Treat message history as context only. Do not reuse old event links as proof of current-turn success.
+- Do not reply with "already added/already scheduled" unless you executed `gog calendar events` in the same turn and found a matching event.
+- For plain "add/create event" requests, do not run a duplicate check by default; execute one `gog calendar create` command immediately.
+- If `eventId` is present in the user request, run `gog calendar update|delete` directly with that `eventId` in the first tool call.
+- Do not run shell pipelines like `| grep` for event lookup; use `gog calendar events ... --query ... --json` when lookup is required.
+- For update/delete without `eventId`, do at most one lookup command to resolve an event id, then execute one mutation command.
+- If a create/update succeeded but the returned event time is wrong, do one corrective update with explicit UTC `--from/--to`; do not create duplicate events.

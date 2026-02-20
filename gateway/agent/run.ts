@@ -122,6 +122,8 @@ const ROUTER_HANDOFF_DIRECTIVE_RE =
   /\[\[router_handoff:([a-z0-9_-]+)(?:\s+reason=(["']?)([^"'\]]+)\2)?\s*\]\]/gi;
 const FOLLOWUP_PROMPT_RE =
   /\b(?:please\s+confirm|confirm(?:ation)?|should\s+i|do\s+you\s+want\s+me\s+to|is\s+that\s+right|is\s+that\s+correct|would\s+you\s+like\s+me\s+to|can\s+you\s+confirm)\b/i;
+const CALENDAR_CONFIRMATION_FASTPATH_HINT =
+  "Router confirmation fast-path: user confirmed the pending calendar action. Execute the already pending calendar mutation now with an exec call. Do not ask for confirmation again unless execution fails.";
 const NEXT_WEEKDAY_RE = /\bnext\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi;
 const WEEKDAY_TO_INDEX: Record<string, number> = {
   sunday: 0,
@@ -131,6 +133,32 @@ const WEEKDAY_TO_INDEX: Record<string, number> = {
   thursday: 4,
   friday: 5,
   saturday: 6,
+};
+const MONTH_TO_INDEX: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
 };
 const TZ_ABBR_TO_OFFSET_MINUTES: Record<string, number> = {
   UTC: 0,
@@ -267,11 +295,190 @@ function extractRequestedTime(
   };
 }
 
+function extractRequestedDurationMinutes(cleanedBody: string): number | null {
+  const hourWord = cleanedBody.match(/\bfor\s+an?\s+hour\b/i);
+  if (hourWord) {
+    return 60;
+  }
+  const hourCount = cleanedBody.match(/\bfor\s+(\d+(?:\.\d+)?)\s*hours?\b/i);
+  if (hourCount) {
+    const hours = Number(hourCount[1]);
+    if (Number.isFinite(hours) && hours > 0) {
+      return Math.round(hours * 60);
+    }
+  }
+  const minuteCount = cleanedBody.match(/\bfor\s+(\d+)\s*(?:m|min|mins|minute|minutes)\b/i);
+  if (minuteCount) {
+    const minutes = Number(minuteCount[1]);
+    if (Number.isInteger(minutes) && minutes > 0) {
+      return minutes;
+    }
+  }
+  return null;
+}
+
+function addMinutesToClock(
+  hour24: number,
+  minute: number,
+  minutesToAdd: number,
+): { hour24: number; minute: number } {
+  const total = hour24 * 60 + minute + minutesToAdd;
+  const wrapped = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  return { hour24: Math.floor(wrapped / 60), minute: wrapped % 60 };
+}
+
+function extractRequestedTimeWithoutMeridiem(
+  cleanedBody: string,
+): { hour24: number; minute: number; label: string } | null {
+  const compactRangeNoMeridiem = cleanedBody.match(/\b(\d{3,4})\s*-\s*(\d{3,4})\b/);
+  const compactToken = compactRangeNoMeridiem?.[1];
+  const compactNoMeridiem = cleanedBody.match(/\b(?:at\s+)?(\d{3,4})(?!\s*(?:am|pm))\b/i);
+  const digits = compactToken ?? compactNoMeridiem?.[1];
+  if (!digits) {
+    return null;
+  }
+  if (!/^\d{3,4}$/.test(digits)) {
+    return null;
+  }
+  const hourDigits = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2);
+  const minuteDigits = digits.slice(-2);
+  const rawHour = Number(hourDigits);
+  const minute = Number(minuteDigits);
+  if (
+    !Number.isInteger(rawHour) ||
+    !Number.isInteger(minute) ||
+    rawHour < 1 ||
+    rawHour > 12 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+  // For compact time without meridiem in scheduling phrasing (e.g. 530-730),
+  // assume PM to avoid morning misfires.
+  const hour24 = rawHour % 12 === 0 ? 12 : (rawHour % 12) + 12;
+  return {
+    hour24,
+    minute,
+    label: `${rawHour}:${pad2(minute)}pm (assumed)`,
+  };
+}
+
+function extractRequestedTimeWindow(cleanedBody: string): {
+  start: { hour24: number; minute: number; label: string };
+  end?: { hour24: number; minute: number; label: string };
+} | null {
+  const compactRangeNoMeridiem = cleanedBody.match(/\b(\d{3,4})\s*-\s*(\d{3,4})\b/);
+  if (compactRangeNoMeridiem) {
+    const startDigits = compactRangeNoMeridiem[1] ?? "";
+    const endDigits = compactRangeNoMeridiem[2] ?? "";
+    const parseAssumedPm = (
+      digits: string,
+    ): { hour24: number; minute: number; label: string } | null => {
+      if (!/^\d{3,4}$/.test(digits)) {
+        return null;
+      }
+      const hourDigits = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2);
+      const minuteDigits = digits.slice(-2);
+      const rawHour = Number(hourDigits);
+      const minute = Number(minuteDigits);
+      if (
+        !Number.isInteger(rawHour) ||
+        !Number.isInteger(minute) ||
+        rawHour < 1 ||
+        rawHour > 12 ||
+        minute < 0 ||
+        minute > 59
+      ) {
+        return null;
+      }
+      const hour24 = rawHour % 12 === 0 ? 12 : (rawHour % 12) + 12;
+      return {
+        hour24,
+        minute,
+        label: `${rawHour}:${pad2(minute)}pm (assumed)`,
+      };
+    };
+    const start = parseAssumedPm(startDigits);
+    const end = parseAssumedPm(endDigits);
+    if (start && end) {
+      return { start, end };
+    }
+  }
+
+  const start =
+    extractRequestedTime(cleanedBody) ?? extractRequestedTimeWithoutMeridiem(cleanedBody);
+  if (!start) {
+    return null;
+  }
+  const durationMinutes = extractRequestedDurationMinutes(cleanedBody);
+  if (!durationMinutes) {
+    return { start };
+  }
+  const endClock = addMinutesToClock(start.hour24, start.minute, durationMinutes);
+  return {
+    start,
+    end: {
+      hour24: endClock.hour24,
+      minute: endClock.minute,
+      label: `${pad2(endClock.hour24)}:${pad2(endClock.minute)} (from duration ${durationMinutes}m)`,
+    },
+  };
+}
+
+function collectAbsoluteMonthDayDates(
+  cleanedBody: string,
+  anchor: ParsedAnchor,
+): Array<{
+  phrase: string;
+  date: Date;
+}> {
+  const out: Array<{ phrase: string; date: Date }> = [];
+  const re =
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/gi;
+  let match: RegExpExecArray | null = re.exec(cleanedBody);
+  while (match) {
+    const monthToken = (match[1] ?? "").toLowerCase();
+    const month = MONTH_TO_INDEX[monthToken];
+    const day = Number(match[2]);
+    if (!month || !Number.isInteger(day) || day < 1 || day > 31) {
+      match = re.exec(cleanedBody);
+      continue;
+    }
+    let year = Number(match[3]);
+    if (!Number.isInteger(year)) {
+      year = anchor.date.getUTCFullYear();
+      const candidate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+      const anchorDay = new Date(
+        Date.UTC(
+          anchor.date.getUTCFullYear(),
+          anchor.date.getUTCMonth(),
+          anchor.date.getUTCDate(),
+          12,
+          0,
+          0,
+        ),
+      );
+      if (candidate.getTime() < anchorDay.getTime()) {
+        year += 1;
+      }
+    }
+    out.push({
+      phrase: (match[0] ?? "").trim().toLowerCase(),
+      date: new Date(Date.UTC(year, month - 1, day, 12, 0, 0)),
+    });
+    match = re.exec(cleanedBody);
+  }
+  return out;
+}
+
 function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
   const hints: string[] = [];
   const seen = new Set<string>();
   const anchor = extractAnchor(cleanedBody);
-  const requestedTime = extractRequestedTime(cleanedBody);
+  const requestedWindow = extractRequestedTimeWindow(cleanedBody);
+  const requestedTime = requestedWindow?.start;
+  let emittedExactWindow = false;
   NEXT_WEEKDAY_RE.lastIndex = 0;
   let match: RegExpExecArray | null = NEXT_WEEKDAY_RE.exec(cleanedBody);
   while (match) {
@@ -306,13 +513,113 @@ function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
           seen.add(timeLine);
           hints.push(timeLine);
         }
+        if (requestedWindow?.end) {
+          const endLocalIso = toIsoLocalWithOffset(
+            year,
+            month,
+            day,
+            requestedWindow.end.hour24,
+            requestedWindow.end.minute,
+            anchor.tzOffsetMinutes,
+          );
+          const endUtcMillis =
+            Date.UTC(
+              year,
+              month - 1,
+              day,
+              requestedWindow.end.hour24,
+              requestedWindow.end.minute,
+              0,
+            ) -
+            anchor.tzOffsetMinutes * 60 * 1000;
+          const endUtcIso = new Date(endUtcMillis).toISOString().replace(".000Z", "Z");
+          const endLine = `${normalizedPhrase} ends at ${requestedWindow.end.label} local = ${endLocalIso} (UTC ${endUtcIso})`;
+          if (!seen.has(endLine)) {
+            seen.add(endLine);
+            hints.push(endLine);
+          }
+          const exactLine = `${normalizedPhrase} execution UTC window: --from ${utcIso} --to ${endUtcIso}`;
+          if (!seen.has(exactLine)) {
+            seen.add(exactLine);
+            hints.push(exactLine);
+            emittedExactWindow = true;
+          }
+        }
       }
     }
     match = NEXT_WEEKDAY_RE.exec(cleanedBody);
   }
 
+  for (const absolute of collectAbsoluteMonthDayDates(cleanedBody, anchor)) {
+    const line = `${absolute.phrase} = ${formatIsoDateUtc(absolute.date)}`;
+    if (!seen.has(line)) {
+      seen.add(line);
+      hints.push(line);
+    }
+    if (requestedTime) {
+      const year = absolute.date.getUTCFullYear();
+      const month = absolute.date.getUTCMonth() + 1;
+      const day = absolute.date.getUTCDate();
+      const localIso = toIsoLocalWithOffset(
+        year,
+        month,
+        day,
+        requestedTime.hour24,
+        requestedTime.minute,
+        anchor.tzOffsetMinutes,
+      );
+      const utcMillis =
+        Date.UTC(year, month - 1, day, requestedTime.hour24, requestedTime.minute, 0) -
+        anchor.tzOffsetMinutes * 60 * 1000;
+      const utcIso = new Date(utcMillis).toISOString().replace(".000Z", "Z");
+      const timeLine = `${absolute.phrase} at ${requestedTime.label} local = ${localIso} (UTC ${utcIso})`;
+      if (!seen.has(timeLine)) {
+        seen.add(timeLine);
+        hints.push(timeLine);
+      }
+      if (requestedWindow?.end) {
+        const endLocalIso = toIsoLocalWithOffset(
+          year,
+          month,
+          day,
+          requestedWindow.end.hour24,
+          requestedWindow.end.minute,
+          anchor.tzOffsetMinutes,
+        );
+        const endUtcMillis =
+          Date.UTC(
+            year,
+            month - 1,
+            day,
+            requestedWindow.end.hour24,
+            requestedWindow.end.minute,
+            0,
+          ) -
+          anchor.tzOffsetMinutes * 60 * 1000;
+        const endUtcIso = new Date(endUtcMillis).toISOString().replace(".000Z", "Z");
+        const endLine = `${absolute.phrase} ends at ${requestedWindow.end.label} local = ${endLocalIso} (UTC ${endUtcIso})`;
+        if (!seen.has(endLine)) {
+          seen.add(endLine);
+          hints.push(endLine);
+        }
+        const exactLine = `${absolute.phrase} execution UTC window: --from ${utcIso} --to ${endUtcIso}`;
+        if (!seen.has(exactLine)) {
+          seen.add(exactLine);
+          hints.push(exactLine);
+          emittedExactWindow = true;
+        }
+      }
+    }
+  }
+
   if (hints.length === 0) {
     return cleanedBody;
+  }
+
+  if (emittedExactWindow) {
+    hints.push(
+      "Execution rule: for calendar create/update commands, use the exact UTC --from/--to window above; do not reinterpret timezone.",
+    );
   }
 
   return `${cleanedBody}\n\nCalendar date hints (deterministic):\n${hints.map((h) => `- ${h}`).join("\n")}`;
@@ -326,6 +633,22 @@ function withCalendarDateHints(
   if (augmented === cleanedBody) {
     return preparedParams;
   }
+  return {
+    ...preparedParams,
+    sessionCtx: {
+      ...preparedParams.sessionCtx,
+      BodyForAgent: augmented,
+      Body: augmented,
+      BodyStripped: augmented,
+    },
+  };
+}
+
+function withCalendarConfirmationFastPathHint(
+  preparedParams: Parameters<typeof runPreparedReply>[0],
+  cleanedBody: string,
+): Parameters<typeof runPreparedReply>[0] {
+  const augmented = `${cleanedBody}\n\n${CALENDAR_CONFIRMATION_FASTPATH_HINT}`;
   return {
     ...preparedParams,
     sessionCtx: {
@@ -595,10 +918,14 @@ export async function runAgentFlow(
     if (complete) {
       ACTIVE_ONBOARDING_BY_SESSION.delete(onboardingSessionKey);
       ACTIVE_ONBOARDING_BY_USER.delete(userScopeKey);
+      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
       return;
     }
     ACTIVE_ONBOARDING_BY_SESSION.set(onboardingSessionKey, agentId);
     ACTIVE_ONBOARDING_BY_USER.set(userScopeKey, agentId);
+    upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, "onboarding");
+    upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, "onboarding");
   };
 
   if (activeOnboardingAgentId) {
@@ -969,8 +1296,18 @@ export async function runAgentFlow(
       trackOnboardingProgress("calendar", complete);
       return onboardingReply;
     }
+    const confirmationLike =
+      routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
+    const confirmationHoldReason = (hold?.reason ?? "").toLowerCase();
+    const shouldFastPathConfirmation =
+      hold?.agentId === "calendar" &&
+      confirmationLike &&
+      (confirmationHoldReason.includes("confirm") || confirmationHoldReason === "followup_prompt");
+    const calendarParams = shouldFastPathConfirmation
+      ? withCalendarConfirmationFastPathHint(params.runPreparedReplyParams, cleanedBody)
+      : params.runPreparedReplyParams;
     const reply = await runCalendarReply({
-      ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
+      ...withCalendarDateHints(calendarParams, cleanedBody),
       provider: effectiveProvider,
       model: effectiveModel,
     });
@@ -1075,7 +1412,7 @@ export async function runAgentFlow(
     `[runAgentFlow] complex path: invoking runComplexReply (agent=${params.runPreparedReplyParams.agentId})`,
   );
   return runComplexReply({
-    ...params.runPreparedReplyParams,
+    ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
     provider: effectiveProvider,
     model: effectiveModel,
   });

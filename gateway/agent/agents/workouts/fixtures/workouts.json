@@ -5,6 +5,7 @@
     "focus": "weights",
     "program": "5/3/1",
     "bodyWeightLb": 182,
+    "coachingStyle": "supportive",
     "equipment": ["barbell", "dumbbells", "cable"],
     "daysPerWeek": 4
   },

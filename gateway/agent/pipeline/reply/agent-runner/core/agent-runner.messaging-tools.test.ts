@@ -126,6 +126,108 @@ describe("runReplyAgent messaging tool suppression", () => {
     expect((result as { text?: string }).text).toContain("no event was changed");
   });
 
+  it("blocks calendar past-tense success claims when no successful exec tool call occurred", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        {
+          text: "I've added Ani’s fundraiser to your calendar for March 5th from 5:30 PM to 7:30 PM.",
+        },
+      ],
+      meta: {
+        toolExecutions: [],
+      },
+    });
+
+    const result = await createRun("webchat", { agentId: "calendar" });
+
+    expect(result).toMatchObject({
+      isError: true,
+    });
+    expect((result as { text?: string }).text).toContain("no event was changed");
+  });
+
+  it("blocks calendar 'already added' success claims with event links when no successful exec tool call occurred", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        {
+          text: "I've already added Ani’s fundraiser to your calendar for March 5th from 5:30 PM to 7:30 PM.\n\nHere's the event link:\n\n[Event Link](https://www.google.com/calendar/event?eid=fake)",
+        },
+      ],
+      meta: {
+        toolExecutions: [],
+      },
+    });
+
+    const result = await createRun("webchat", { agentId: "calendar" });
+
+    expect(result).toMatchObject({
+      isError: true,
+    });
+    expect((result as { text?: string }).text).toContain("no event was changed");
+  });
+
+  it("blocks non-clarifying calendar mutation replies when no successful exec occurred", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [
+        { text: "Done. Here is your event link: https://www.google.com/calendar/event?eid=fake" },
+      ],
+      meta: {
+        toolExecutions: [],
+      },
+    });
+
+    const result = await runReplyAgent({
+      commandBody: "Add Ani's fundraiser for march 5th 530-730",
+      followupRun: {
+        prompt: "hello",
+        summaryLine: "hello",
+        enqueuedAt: Date.now(),
+        run: {
+          sessionId: "session",
+          sessionKey: "main",
+          messageProvider: "webchat",
+          sessionFile: "/tmp/session.jsonl",
+          workspaceDir: "/tmp",
+          config: {},
+          skillsSnapshot: {},
+          provider: "anthropic",
+          model: "claude",
+          thinkLevel: "low",
+          verboseLevel: "off",
+          elevatedLevel: "off",
+          bashElevated: { enabled: false, allowed: false, defaultLevel: "off" },
+          timeoutMs: 1_000,
+          blockReplyBreak: "message_end",
+          agentId: "calendar",
+        },
+      } as unknown as FollowupRun,
+      queueKey: "main",
+      resolvedQueue: { mode: "interrupt" } as unknown as QueueSettings,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing: createMockTypingController(),
+      sessionCtx: {
+        Provider: "webchat",
+        OriginatingTo: "channel:C1",
+        AccountId: "primary",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      sessionKey: "main",
+      defaultModel: "anthropic/claude-opus-4-5",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(result).toMatchObject({ isError: true });
+    expect((result as { text?: string }).text).toContain("no event was changed");
+  });
+
   it("keeps calendar success claims when exec tool call succeeded", async () => {
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Your event was created." }],

@@ -236,6 +236,62 @@ function extractReplyText(reply: unknown): string {
   return typeof text === "string" ? text : "";
 }
 
+function needsConfirmation(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("confirm") ||
+    lower.includes("is that") ||
+    lower.includes("is this correct") ||
+    lower.includes("correct?") ||
+    lower.includes("should i")
+  );
+}
+
+function pickDateTime(event: Record<string, unknown>, key: "start" | "end"): string {
+  const direct = event[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  if (direct && typeof direct === "object") {
+    const rec = direct as Record<string, unknown>;
+    const dateTime = rec.dateTime;
+    if (typeof dateTime === "string") {
+      return dateTime;
+    }
+  }
+  const fallbacks = [
+    `${key}Local`,
+    `${key}_local`,
+    `${key}DateTime`,
+    `${key}_date_time`,
+    `${key}-local`,
+  ];
+  for (const candidate of fallbacks) {
+    const value = event[candidate];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return "";
+}
+
+function toEpochMillis(isoLike: string): number | null {
+  if (!isoLike) {
+    return null;
+  }
+  const ms = Date.parse(isoLike);
+  if (Number.isNaN(ms)) {
+    return null;
+  }
+  return ms;
+}
+
+function assertNotBlockedByMutationSafety(text: string): void {
+  const lower = text.toLowerCase();
+  expect(lower).not.toContain("no event was changed");
+  expect(lower).not.toContain("not executed the calendar command");
+}
+
 function calendarAgentConfig(workspaceDir: string, home: string) {
   return {
     agents: {
@@ -337,18 +393,29 @@ describe("calendar agent-level e2e – real model", () => {
       return;
     }
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "calendar-agent-e2e-"));
+    const runId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const testUser = `${TEST_USER}-read-${runId}`;
+    const testSessionKey = `agent:calendar:read-${runId}`;
     const previousHome = process.env.HOME;
     try {
       process.env.HOME = AUTH_HOME;
       const workspaceDir = path.join(tempRoot, "openclaw-calendar");
       await setupWorkspace(workspaceDir);
+      const from = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const to = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
       const reply = await getReplyFromConfig(
         {
-          Body: "what's on my calendar in the next 24 hours?",
-          From: TEST_USER,
-          To: TEST_USER,
+          Body:
+            `List events in this exact window.\n` +
+            `calendarId: ${CALENDAR_TEST_ID}\n` +
+            `account: ${CALENDAR_TEST_ACCOUNT}\n` +
+            `from: ${from}\n` +
+            `to: ${to}`,
+          From: testUser,
+          To: testUser,
           Provider: "webchat",
+          SessionKey: testSessionKey,
         },
         {},
         calendarAgentConfig(workspaceDir, tempRoot),
@@ -399,9 +466,19 @@ describe("calendar agent-level e2e – real model", () => {
             cfg,
           );
 
+        const recurringStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        recurringStart.setUTCMinutes(45, 0, 0);
+        const recurringEnd = new Date(recurringStart.getTime() + 60 * 60 * 1000);
         const firstReply = extractReplyText(
           await send(
-            "add singing lesson to my calendar, it's at 445 next thursday for an hour. It'll reoccur every week",
+            `Create a weekly recurring calendar event now.\n` +
+              `calendarId: ${CALENDAR_TEST_ID}\n` +
+              `account: ${CALENDAR_TEST_ACCOUNT}\n` +
+              `summary: Singing Lesson\n` +
+              `from: ${recurringStart.toISOString()}\n` +
+              `to: ${recurringEnd.toISOString()}\n` +
+              `rrule: RRULE:FREQ=WEEKLY\n` +
+              `Do it now.`,
           ),
         ).toLowerCase();
         if (
@@ -482,6 +559,8 @@ describe("calendar agent-level e2e – real model", () => {
       const runId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
       const marker = `[E2E-CALENDAR ${runId}]`;
       const summary = `${marker} OpenClaw Calendar CRUD`;
+      const testUser = `${TEST_USER}-crud-${runId}`;
+      const testSessionKey = `agent:calendar:crud-${runId}`;
       const now = Date.now();
       const start = new Date(now + 2 * 60 * 60 * 1000);
       start.setUTCSeconds(0, 0);
@@ -503,9 +582,10 @@ describe("calendar agent-level e2e – real model", () => {
           getReplyFromConfig(
             {
               Body: body,
-              From: TEST_USER,
-              To: TEST_USER,
+              From: testUser,
+              To: testUser,
               Provider: "webchat",
+              SessionKey: testSessionKey,
             },
             {},
             cfg,
@@ -577,6 +657,148 @@ describe("calendar agent-level e2e – real model", () => {
       } finally {
         try {
           await cleanupEventsByQuery(marker);
+        } catch {
+          // best-effort cleanup
+        }
+        process.env.HOME = previousHome;
+        if (previousGogAccount === undefined) {
+          delete process.env.GOG_ACCOUNT;
+        } else {
+          process.env.GOG_ACCOUNT = previousGogAccount;
+        }
+        await fs.rm(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it(
+    "handles exact add prompt plus add/update/reschedule/delete/cancel flows with real model",
+    { timeout: 420_000 },
+    async () => {
+      if (!canRunLiveWrites) {
+        return;
+      }
+
+      const runId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const summaryV1 = `[E2E-MUT ${runId}] Ani fundraiser`;
+      const summaryV2 = `${summaryV1} updated`;
+      const summaryV3 = `${summaryV1} rescheduled`;
+      const recurringSummary = `[E2E-MUT ${runId}] Weekly check-in`;
+      const testUser = `${TEST_USER}-mut-${runId}`;
+      const testSessionKey = `agent:calendar:mut-${runId}`;
+      const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "calendar-agent-e2e-mutation-"));
+      const previousHome = process.env.HOME;
+      const previousGogAccount = process.env.GOG_ACCOUNT;
+
+      const now = Date.now();
+      const from1 = new Date(now + 3 * 60 * 60 * 1000);
+      from1.setUTCSeconds(0, 0);
+      const to1 = new Date(from1.getTime() + 60 * 60 * 1000);
+      const from2 = new Date(from1.getTime() + 2 * 60 * 60 * 1000);
+      const to2 = new Date(from2.getTime() + 60 * 60 * 1000);
+      const from3 = new Date(from2.getTime() + 2 * 60 * 60 * 1000);
+      const to3 = new Date(from3.getTime() + 60 * 60 * 1000);
+      const fromRecurring = new Date(now + 24 * 60 * 60 * 1000);
+      fromRecurring.setUTCSeconds(0, 0);
+      const toRecurring = new Date(fromRecurring.getTime() + 45 * 60 * 1000);
+
+      try {
+        process.env.HOME = AUTH_HOME;
+        process.env.GOG_ACCOUNT = CALENDAR_TEST_ACCOUNT;
+        const workspaceDir = path.join(tempRoot, "openclaw-calendar");
+        await setupWorkspace(workspaceDir);
+        await cleanupEventsByQuery("Ani");
+        await cleanupEventsByQuery(summaryV1);
+        await cleanupEventsByQuery(summaryV2);
+        await cleanupEventsByQuery(summaryV3);
+        await cleanupEventsByQuery(recurringSummary);
+
+        const cfg = calendarAgentConfig(workspaceDir, tempRoot);
+        const send = async (body: string) =>
+          getReplyFromConfig(
+            {
+              Body: body,
+              From: testUser,
+              To: testUser,
+              Provider: "webchat",
+              SessionKey: testSessionKey,
+            },
+            {},
+            cfg,
+          );
+        const sendWithOptionalConfirm = async (prompt: string, confirmText: string) => {
+          const first = extractReplyText(await send(prompt));
+          if (needsConfirmation(first)) {
+            const second = extractReplyText(await send(confirmText));
+            return `${first}\n${second}`;
+          }
+          return first;
+        };
+
+        const exactAddReply = await sendWithOptionalConfirm(
+          "Add Ani’s fundraiser for march 5th 530-730",
+          "yes, add it now",
+        );
+        assertNotBlockedByMutationSafety(exactAddReply);
+        const aniEvents = await listRawEventsByQuery("Ani");
+        const expectedFromUtc = Date.parse("2026-03-06T01:30:00Z");
+        const expectedToUtc = Date.parse("2026-03-06T03:30:00Z");
+        const matchingWindowCount = aniEvents.filter((event) => {
+          const fromMs = toEpochMillis(pickDateTime(event, "start"));
+          const toMs = toEpochMillis(pickDateTime(event, "end"));
+          return fromMs === expectedFromUtc && toMs === expectedToUtc;
+        }).length;
+        expect(matchingWindowCount).toBeGreaterThan(0);
+
+        const addReply = await sendWithOptionalConfirm(
+          `Create a one-time calendar event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary: ${summaryV1}\nfrom: ${from1.toISOString()}\nto: ${to1.toISOString()}\nDo it now.`,
+          "yes, create it now",
+        );
+        assertNotBlockedByMutationSafety(addReply);
+        expect((await listEventsByQuery(summaryV1)).length).toBeGreaterThan(0);
+
+        const updateReply = await sendWithOptionalConfirm(
+          `Update the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV1}\nnew summary: ${summaryV2}\nfrom: ${from2.toISOString()}\nto: ${to2.toISOString()}`,
+          "yes, update it now",
+        );
+        assertNotBlockedByMutationSafety(updateReply);
+        expect((await listEventsByQuery(summaryV2)).length).toBeGreaterThan(0);
+
+        const rescheduleReply = await sendWithOptionalConfirm(
+          `Reschedule the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV2}\nnew summary: ${summaryV3}\nfrom: ${from3.toISOString()}\nto: ${to3.toISOString()}`,
+          "yes, reschedule it now",
+        );
+        assertNotBlockedByMutationSafety(rescheduleReply);
+        expect((await listEventsByQuery(summaryV3)).length).toBeGreaterThan(0);
+
+        const deleteReply = await sendWithOptionalConfirm(
+          `Delete the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV3}`,
+          "yes, delete it now",
+        );
+        assertNotBlockedByMutationSafety(deleteReply);
+        expect((await listEventsByQuery(summaryV3)).length).toBe(0);
+
+        const recurringAddReply = await sendWithOptionalConfirm(
+          `Create a weekly recurring event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary: ${recurringSummary}\nfrom: ${fromRecurring.toISOString()}\nto: ${toRecurring.toISOString()}\nrrule: RRULE:FREQ=WEEKLY`,
+          "yes, create recurring event now",
+        );
+        assertNotBlockedByMutationSafety(recurringAddReply);
+        const recurringEvents = await listRawEventsByQuery(recurringSummary);
+        expect(recurringEvents.length).toBeGreaterThan(0);
+
+        const cancelReply = await sendWithOptionalConfirm(
+          `Cancel and delete recurring events matching this summary now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${recurringSummary}`,
+          "yes, cancel it now",
+        );
+        assertNotBlockedByMutationSafety(cancelReply);
+        expect((await listEventsByQuery(recurringSummary)).length).toBe(0);
+      } finally {
+        try {
+          await cleanupEventsByQuery("Ani");
+          await cleanupEventsByQuery(summaryV1);
+          await cleanupEventsByQuery(summaryV2);
+          await cleanupEventsByQuery(summaryV3);
+          await cleanupEventsByQuery(recurringSummary);
         } catch {
           // best-effort cleanup
         }

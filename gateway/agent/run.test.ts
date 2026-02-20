@@ -416,6 +416,96 @@ describe("runAgentFlow", () => {
     expect(bodyForAgent).toContain(
       "next thursday at 4:45pm local = 2026-02-26T16:45:00-08:00 (UTC 2026-02-27T00:45:00Z)",
     );
+    expect(bodyForAgent).toContain(
+      "next thursday execution UTC window: --from 2026-02-27T00:45:00Z --to 2026-02-27T01:45:00Z",
+    );
+    expect(bodyForAgent).toContain(
+      "Execution rule: for calendar create/update commands, use the exact UTC --from/--to window above; do not reinterpret timezone.",
+    );
+  });
+
+  it("injects deterministic absolute-date hints for calendar prompts", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"calendar"}' }],
+      usage: { input: 10, output: 8 },
+    });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { exec: { safeBins: ["gog"] } },
+            pi: { preset: "exec-only" },
+          },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "[Fri 2026-02-20 12:30 PST] Add Ani's fundraiser for march 5th 530-730",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+    const call = runPreparedReplyMock.mock.calls[0][0];
+    const bodyForAgent = String(call.sessionCtx?.BodyForAgent ?? "");
+    expect(bodyForAgent).toContain("Calendar date hints (deterministic)");
+    expect(bodyForAgent).toContain("march 5th = 2026-03-05");
+    expect(bodyForAgent).toContain(
+      "march 5th at 5:30pm (assumed) local = 2026-03-05T17:30:00-08:00 (UTC 2026-03-06T01:30:00Z)",
+    );
+    expect(bodyForAgent).toContain(
+      "march 5th execution UTC window: --from 2026-03-06T01:30:00Z --to 2026-03-06T03:30:00Z",
+    );
+  });
+
+  it("injects deterministic date hints even when classifier routes to complex", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"escalate"}' }],
+      usage: { input: 10, output: 8 },
+    });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [{ id: "main", default: true }],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody:
+        "[Thu 2026-02-19 22:48 PST] add singing lesson to my calendar, it's at 445pm next thursday for an hour",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+    const call = runPreparedReplyMock.mock.calls[0][0];
+    const bodyForAgent = String(call.sessionCtx?.BodyForAgent ?? "");
+    expect(call.agentId).toBe("main");
+    expect(bodyForAgent).toContain("Calendar date hints (deterministic)");
+    expect(bodyForAgent).toContain("next thursday = 2026-02-26");
   });
 
   it("keeps short confirmation follow-ups on calendar after a calendar turn", async () => {
@@ -668,6 +758,9 @@ describe("runAgentFlow", () => {
     const secondCall = runPreparedReplyMock.mock.calls[1][0];
     expect(firstCall.agentId).toBe("calendar");
     expect(secondCall.agentId).toBe("calendar");
+    expect(String(secondCall.sessionCtx?.BodyForAgent ?? "")).toContain(
+      "Router confirmation fast-path: user confirmed the pending calendar action.",
+    );
   });
 
   it("supports explicit handoff queue from calendar to mail", async () => {

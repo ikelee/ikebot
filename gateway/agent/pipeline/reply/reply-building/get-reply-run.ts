@@ -16,6 +16,7 @@ import {
   updateSessionStore,
 } from "../../../../infra/config/sessions.js";
 import { normalizeMainKey } from "../../../../infra/routing/session-key.js";
+import { drainSystemEvents } from "../../../../infra/system-events.js";
 import { clearCommandLane, getQueueSize } from "../../../../process/command-queue.js";
 import { resolvePiConfig } from "../../../../runtime/agent-scope.js";
 import { resolveSessionAuthProfileOverride } from "../../../../runtime/auth-profiles/session-override.js";
@@ -39,7 +40,7 @@ import {
 } from "../../thinking.js";
 import { SILENT_REPLY_TOKEN } from "../../tokens.js";
 import { runReplyAgent } from "../agent-runner/core/agent-runner.js";
-import { resolveQueueSettings } from "../agent-runner/queue.js";
+import { clearSessionQueues, resolveQueueSettings } from "../agent-runner/queue.js";
 import { routeReply } from "../agent-runner/routing/route-reply.js";
 import {
   ensureSkillSnapshot,
@@ -58,7 +59,22 @@ type AgentDefaults = NonNullable<OpenClawConfig["agents"]>["defaults"];
 type ExecOverrides = Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
 
 const BARE_SESSION_RESET_PROMPT =
-  "A new session was started via /new or /reset. Greet the user in your configured persona, if one is provided. Be yourself - use your defined voice, mannerisms, and mood. Keep it to 1-3 sentences and ask what they want to do. If the runtime model differs from default_model in the system prompt, mention the default model. Do not mention internal steps, files, tools, or reasoning.";
+  "A new session was started via /new or /reset. Greet the user in your configured persona, if one is provided. Be yourself - use your defined voice, mannerisms, and mood. Keep it to 1-3 sentences and ask what they want to do. If the runtime model differs from default_model in the system prompt, mention the default model. Reply with plain text only in this turn and do not call any tools (especially sessions_send, message, or tts). Do not mention internal steps, files, tools, or reasoning.";
+
+function sanitizeBlueBubblesInboundNoise(text: string): string {
+  if (!text) {
+    return text;
+  }
+  let sanitized = text;
+  // Strip relay/system envelope lines that can confuse follow-up turns.
+  sanitized = sanitized.replace(/^System:\s*\[[^\]]+\]\s*Assistant sent[^\n]*\n*/gim, "");
+  // Strip queue wrapper scaffolding while preserving the queued message content.
+  sanitized = sanitized.replace(/^\[Queued messages while agent was busy\]\s*\n*/i, "");
+  sanitized = sanitized.replace(/^\s*---\s*$/gm, "");
+  sanitized = sanitized.replace(/^\s*Queued #\d+\s*$/gm, "");
+  sanitized = sanitized.replace(/\n{3,}/g, "\n\n").trim();
+  return sanitized || text;
+}
 
 type RunPreparedReplyParams = {
   ctx: MsgContext;
@@ -209,7 +225,10 @@ export async function runPreparedReply(
   const extraSystemPrompt = [inboundMetaPrompt, groupIntro, groupSystemPrompt, orchestratePrompt]
     .filter(Boolean)
     .join("\n\n");
-  const baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";
+  let baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";
+  if (sessionCtx.Provider?.trim().toLowerCase() === "bluebubbles") {
+    baseBody = sanitizeBlueBubblesInboundNoise(baseBody);
+  }
   // Use CommandBody/RawBody for bare reset detection (clean message without structural context).
   const rawBodyTrimmed = (ctx.CommandBody ?? ctx.RawBody ?? ctx.Body ?? "").trim();
   const baseBodyTrimmedRaw = baseBody.trim();
@@ -382,6 +401,19 @@ export async function runPreparedReply(
     logVerbose(`Interrupting ${sessionLaneKey} (cleared ${cleared}, aborted=${aborted})`);
   }
   const queueKey = sessionKey ?? sessionIdFinal;
+  if (resetTriggered && command.isAuthorizedSender) {
+    const cleared = clearSessionQueues([queueKey, sessionKey, sessionIdFinal]);
+    for (const key of [queueKey, sessionKey, sessionIdFinal]) {
+      const cleaned = key?.trim();
+      if (!cleaned) {
+        continue;
+      }
+      drainSystemEvents(cleaned);
+    }
+    logVerbose(
+      `Reset cleared queues keys=${cleared.keys.join(",")} followupCleared=${cleared.followupCleared} laneCleared=${cleared.laneCleared}`,
+    );
+  }
   const isActive = isEmbeddedPiRunActive(sessionIdFinal);
   const isStreaming = isEmbeddedPiRunStreaming(sessionIdFinal);
   const shouldSteer = resolvedQueue.mode === "steer" || resolvedQueue.mode === "steer-backlog";

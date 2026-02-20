@@ -61,10 +61,39 @@ function hasCalendarMutationClaim(text: string): boolean {
     return false;
   }
   return (
+    /\bi(?:'ve| have)\s+(?:already\s+)?(added|created|scheduled|updated|rescheduled|cancelled|canceled|deleted)\b/.test(
+      normalized,
+    ) ||
     /\b(i('| a)?m|i have|done|completed)\s+(adding|creating|scheduling|updating|rescheduling|cancelling|canceling|deleting)\b/.test(
       normalized,
     ) ||
     /\b(event|meeting|appointment)\b.{0,80}\b(created|scheduled|updated|rescheduled|cancelled|canceled|deleted|added)\b/.test(
+      normalized,
+    ) ||
+    /\b(added|created|scheduled|updated|rescheduled|cancelled|canceled|deleted)\b.{0,80}\b(calendar|event|meeting|appointment)\b/.test(
+      normalized,
+    )
+  );
+}
+
+function isCalendarMutationRequest(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return /\b(add|create|schedule|book|update|edit|move|reschedule|cancel|delete|remove)\b/.test(
+    normalized,
+  );
+}
+
+function isClarifyingCalendarPrompt(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    normalized.includes("?") &&
+    /\b(confirm|confirmation|is that correct|is that right|should i|do you want me to|would you like me to)\b/.test(
       normalized,
     )
   );
@@ -72,6 +101,7 @@ function hasCalendarMutationClaim(text: string): boolean {
 
 function enforceCalendarMutationSafety(params: {
   agentId?: string;
+  commandBody: string;
   payloads: ReplyPayload[];
   toolExecutions?: Array<{ toolName: string; isError: boolean }>;
 }): ReplyPayload[] {
@@ -84,9 +114,25 @@ function enforceCalendarMutationSafety(params: {
   if (hasSuccessfulExec) {
     return params.payloads;
   }
+  const mutationRequested = isCalendarMutationRequest(params.commandBody);
   let patched = false;
   const nextPayloads = params.payloads.map((payload) => {
-    if (!payload.text || payload.isError || !hasCalendarMutationClaim(payload.text)) {
+    if (!payload.text || payload.isError) {
+      return payload;
+    }
+
+    // Strong gate: if the user asked for a mutation this turn, require a successful exec
+    // before allowing a non-clarifying final response.
+    if (mutationRequested && !isClarifyingCalendarPrompt(payload.text)) {
+      patched = true;
+      return {
+        ...payload,
+        text: "I have not executed the calendar command yet, so no event was changed. Please confirm and I will run it now.",
+        isError: true,
+      };
+    }
+
+    if (!hasCalendarMutationClaim(payload.text)) {
       return payload;
     }
     patched = true;
@@ -427,6 +473,7 @@ export async function runReplyAgent(params: {
 
     const payloadArray = enforceCalendarMutationSafety({
       agentId: followupRun.run.agentId,
+      commandBody,
       payloads: runResult.payloads ?? [],
       toolExecutions: runResult.meta.toolExecutions,
     });

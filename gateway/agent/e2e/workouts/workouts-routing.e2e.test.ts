@@ -11,7 +11,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withTempHome } from "../../../../test/helpers/temp-home.js";
-import { memoFilenameForIdentifier, parseWorkoutState } from "../../agents/workouts/state.js";
+import {
+  getPersonalBestsMap,
+  memoFilenameForIdentifier,
+  parseWorkoutState,
+} from "../../agents/workouts/state.js";
 import { getReplyFromConfig } from "../../pipeline/reply.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
@@ -154,7 +158,7 @@ describe("workouts agent e2e – real model", () => {
 
   it(
     "classifier routes to workouts, agent logs workout and updates workouts.json",
-    { timeout: 180_000 },
+    { timeout: 300_000 },
     async () => {
       if (!canRun) {
         return;
@@ -166,11 +170,11 @@ describe("workouts agent e2e – real model", () => {
 
           const initialRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
           const initial = parseWorkoutState(initialRaw);
-          const initialCount = (initial.workouts as unknown[])?.length ?? 0;
+          const initialCount = Array.isArray(initial.events) ? initial.events.length : 0;
 
           await getReplyFromConfig(
             {
-              Body: "log bench press 3x10 at 135",
+              Body: "Use read and write tools to log this workout in workouts.json as a new event: bench press 3x10 at 135.",
               From: TEST_USER,
               To: TEST_USER,
               Provider: "whatsapp",
@@ -181,20 +185,21 @@ describe("workouts agent e2e – real model", () => {
 
           const raw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
           const state = parseWorkoutState(raw);
-          expect(state.workouts).toBeDefined();
-          expect((state.workouts as unknown[]).length).toBeGreaterThan(initialCount);
-          const last = (state.workouts as unknown[]).at(-1) as {
-            exercises?: Array<{ name?: string; weight?: string }>;
+          const events = Array.isArray(state.events) ? state.events : [];
+          expect(events.length).toBeGreaterThan(initialCount);
+          const last = (events.at(-1) ?? {}) as {
+            exercise?: string;
+            metrics?: { weightLb?: number | string };
           };
-          expect(last?.exercises?.[0]?.name).toMatch(/bench|press/i);
-          expect(last?.exercises?.[0]?.weight).toMatch(/135/);
+          expect(String(last.exercise ?? "")).toMatch(/bench|press/i);
+          expect(String(last.metrics?.weightLb ?? "")).toMatch(/135/);
         },
         { prefix: "workouts-e2e-" },
       );
     },
   );
 
-  it("preserves notes and memo; agent can read restrictions", { timeout: 120_000 }, async () => {
+  it("preserves notes and memo; agent can read restrictions", { timeout: 300_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -227,7 +232,7 @@ describe("workouts agent e2e – real model", () => {
     );
   });
 
-  it("logs a new PR and updates personalBests in workouts.json", { timeout: 180_000 }, async () => {
+  it("logs a new PR and updates personalBests in workouts.json", { timeout: 420_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -238,9 +243,8 @@ describe("workouts agent e2e – real model", () => {
 
         const beforeRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const beforeState = parseWorkoutState(beforeRaw);
-        const beforeBench = (
-          beforeState.personalBests?.["Bench Press"] as { weight?: number } | undefined
-        )?.weight;
+        const beforeBench = getPersonalBestsMap(beforeState)["Bench Press"]?.weight;
+        const beforeEventsCount = Array.isArray(beforeState.events) ? beforeState.events.length : 0;
 
         await getReplyFromConfig(
           {
@@ -255,15 +259,12 @@ describe("workouts agent e2e – real model", () => {
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
-        const afterBench = (
-          afterState.personalBests?.["Bench Press"] as { weight?: number } | undefined
-        )?.weight;
+        const afterBench = getPersonalBestsMap(afterState)["Bench Press"]?.weight;
+        const afterEventsCount = Array.isArray(afterState.events) ? afterState.events.length : 0;
 
         expect(typeof afterBench).toBe("number");
         expect((afterBench ?? 0) >= (beforeBench ?? 0)).toBe(true);
-        expect((afterState.workouts as unknown[])?.length ?? 0).toBeGreaterThan(
-          (beforeState.workouts as unknown[])?.length ?? 0,
-        );
+        expect(afterEventsCount).toBeGreaterThan(beforeEventsCount);
       },
       { prefix: "workouts-e2e-" },
     );

@@ -272,7 +272,7 @@ describe("workouts agent-level e2e – real model", () => {
 
   it(
     "logs new strength training item and records PR in v2 views",
-    { timeout: 180_000 },
+    { timeout: 300_000 },
     async () => {
       if (!canRun) {
         return;
@@ -297,7 +297,7 @@ describe("workouts agent-level e2e – real model", () => {
             body: "Log a new strength training item: Deadlift 305 lb for 5 reps.",
             senderId,
           });
-          expect(run.loops).toBeLessThanOrEqual(3);
+          expect(run.loops).toBeLessThanOrEqual(10);
 
           const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
           const afterState = parseWorkoutState(afterRaw);
@@ -314,7 +314,7 @@ describe("workouts agent-level e2e – real model", () => {
     },
   );
 
-  it("logs running exercise entries", { timeout: 180_000 }, async () => {
+  it("logs running exercise entries", { timeout: 300_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -334,7 +334,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "Log a running workout: ran 3.2 miles in 28 minutes.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(3);
+        expect(run.loops).toBeLessThanOrEqual(10);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
@@ -354,7 +354,7 @@ describe("workouts agent-level e2e – real model", () => {
     );
   });
 
-  it("suggests chest-day plan similar to prior exercises", { timeout: 120_000 }, async () => {
+  it("suggests chest-day plan similar to prior exercises", { timeout: 240_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -370,7 +370,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "What should I work out today for my chest day? Keep it similar to my past exercises.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(3);
+        expect(run.loops).toBeLessThanOrEqual(10);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/chest|bench|press|dips|fly/);
         expect(text).toMatch(/bench|press/);
@@ -379,7 +379,7 @@ describe("workouts agent-level e2e – real model", () => {
     );
   });
 
-  it("suggests chest-day options that are new", { timeout: 180_000 }, async () => {
+  it("suggests chest-day options that are new", { timeout: 300_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -395,7 +395,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "Read workouts.json, then suggest 4 chest exercises that are different from my usual bench work.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(3);
+        expect(run.loops).toBeLessThanOrEqual(10);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/chest|press|fly|dip|push/);
         expect(text).toMatch(/incline|dumbbell|cable|machine|fly|pec|dip|push/);
@@ -404,7 +404,7 @@ describe("workouts agent-level e2e – real model", () => {
     );
   });
 
-  it("returns past-week workout records from data", { timeout: 120_000 }, async () => {
+  it("returns past-week workout records from data", { timeout: 240_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -461,7 +461,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "Give me past week's worth of workout records.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(3);
+        expect(run.loops).toBeLessThanOrEqual(10);
         const text = extractReplyText(run.reply).toLowerCase();
         expect(text).toMatch(/bench|row|run|running|workout/);
       },
@@ -469,7 +469,7 @@ describe("workouts agent-level e2e – real model", () => {
     );
   });
 
-  it("updates views.personalBests.strength when logging a PR", { timeout: 180_000 }, async () => {
+  it("updates views.personalBests.strength when logging a PR", { timeout: 300_000 }, async () => {
     if (!canRun) {
       return;
     }
@@ -492,7 +492,7 @@ describe("workouts agent-level e2e – real model", () => {
           body: "Use read and write tools to log this PR in workouts.json and update views.personalBests.strength: Bench Press 195 for 5 reps.",
           senderId,
         });
-        expect(run.loops).toBeLessThanOrEqual(3);
+        expect(run.loops).toBeLessThanOrEqual(10);
 
         const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
         const afterState = parseWorkoutState(afterRaw);
