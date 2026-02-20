@@ -235,6 +235,7 @@ describe("resolveAgentConfig", () => {
     expect(result.promptMode).toBe("minimal");
     expect(result.toolsAllow).toEqual(["exec"]);
     expect(result.skills).toBe(false);
+    expect(result.stream?.temperature).toBe(0);
   });
 
   it("resolvePiConfig uses config pi when present (overrides agent registry)", () => {

@@ -169,6 +169,38 @@ async function listEventsByQuery(query: string): Promise<Array<{ id: string; sum
     .filter((event) => event.id.length > 0);
 }
 
+async function listRawEventsByQuery(
+  query: string,
+): Promise<Array<Record<string, unknown> & { id: string; summary: string }>> {
+  const now = new Date();
+  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const to = new Date(now.getTime() + 21 * 24 * 60 * 60 * 1000).toISOString();
+  const payload = await runGogJson([
+    "calendar",
+    "events",
+    CALENDAR_TEST_ID,
+    "--account",
+    CALENDAR_TEST_ACCOUNT,
+    "--from",
+    from,
+    "--to",
+    to,
+    "--query",
+    query,
+    "--max",
+    "200",
+    "--json",
+  ]);
+  const events = extractEvents(payload);
+  return events
+    .map((event) => ({
+      ...event,
+      id: String(event.id ?? ""),
+      summary: String(event.summary ?? ""),
+    }))
+    .filter((event) => event.id.length > 0);
+}
+
 async function cleanupEventsByQuery(query: string): Promise<void> {
   const events = await listEventsByQuery(query);
   for (const event of events) {
@@ -330,6 +362,115 @@ describe("calendar agent-level e2e – real model", () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it(
+    "handles exact natural-language recurring prompt and creates weekly series",
+    { timeout: 240_000 },
+    async () => {
+      if (!canRunLiveWrites) {
+        return;
+      }
+      const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "calendar-agent-e2e-recur-"));
+      const previousHome = process.env.HOME;
+      const previousGogAccount = process.env.GOG_ACCOUNT;
+      const query = "Singing Lesson";
+      const testUser = `${TEST_USER}-recur-${Date.now()}`;
+      const testSessionKey = `agent:calendar:recur-${Date.now()}`;
+      try {
+        process.env.HOME = AUTH_HOME;
+        process.env.GOG_ACCOUNT = CALENDAR_TEST_ACCOUNT;
+        const workspaceDir = path.join(tempRoot, "openclaw-calendar");
+        await setupWorkspace(workspaceDir);
+
+        const before = await listRawEventsByQuery(query);
+        const beforeIds = new Set(before.map((event) => event.id));
+
+        const cfg = calendarAgentConfig(workspaceDir, tempRoot);
+        const send = async (body: string) =>
+          getReplyFromConfig(
+            {
+              Body: body,
+              From: testUser,
+              To: testUser,
+              Provider: "webchat",
+              SessionKey: testSessionKey,
+            },
+            {},
+            cfg,
+          );
+
+        const firstReply = extractReplyText(
+          await send(
+            "add singing lesson to my calendar, it's at 445 next thursday for an hour. It'll reoccur every week",
+          ),
+        ).toLowerCase();
+        if (
+          firstReply.includes("confirm") ||
+          firstReply.includes("is that") ||
+          firstReply.includes("is this correct") ||
+          firstReply.includes("should it recur")
+        ) {
+          await send("yes");
+        }
+
+        const after = await listRawEventsByQuery(query);
+        const added = after.filter((event) => !beforeIds.has(event.id));
+        expect(added.length).toBeGreaterThan(0);
+
+        const recurringSignals = added.filter((event) => {
+          const recurringEventId = String(event.recurringEventId ?? "");
+          const recurrence = event.recurrence;
+          return (
+            recurringEventId.length > 0 ||
+            (Array.isArray(recurrence) &&
+              recurrence.some((entry) => String(entry).toUpperCase().includes("FREQ=WEEKLY")))
+          );
+        });
+        expect(recurringSignals.length).toBeGreaterThan(0);
+
+        // Cleanup newly created events/series from this test.
+        const deleteIds = new Set<string>();
+        for (const event of added) {
+          const recurringEventId = String(event.recurringEventId ?? "").trim();
+          if (recurringEventId) {
+            deleteIds.add(recurringEventId);
+          } else {
+            deleteIds.add(event.id);
+          }
+        }
+        for (const eventId of deleteIds) {
+          await execFileAsync(
+            "gog",
+            [
+              "calendar",
+              "delete",
+              CALENDAR_TEST_ID,
+              eventId,
+              "--account",
+              CALENDAR_TEST_ACCOUNT,
+              "--force",
+            ],
+            {
+              timeout: 30_000,
+              env: {
+                ...process.env,
+                HOME: AUTH_HOME,
+                GOG_ACCOUNT: CALENDAR_TEST_ACCOUNT,
+              },
+            },
+          );
+        }
+      } finally {
+        process.env.HOME = previousHome;
+        if (previousGogAccount === undefined) {
+          delete process.env.GOG_ACCOUNT;
+        } else {
+          process.env.GOG_ACCOUNT = previousGogAccount;
+        }
+        await fs.rm(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it(
     "creates then deletes a test event on live calendar via agent",

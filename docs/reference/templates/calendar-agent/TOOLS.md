@@ -53,6 +53,7 @@ gog calendar colors
 - Use ISO 8601 for --from and --to (e.g. 2025-02-12T14:00:00Z)
 - Resolve "today", "tomorrow", "next Monday" using the user's timezone
 - Default timezone: UTC unless user specifies
+- Do not use shell date substitution (`$(date ...)`) in gog commands.
 
 ### exec
 
@@ -65,3 +66,5 @@ You run gog via the exec tool. Ensure `gog` is in the agent's exec allowlist (to
 - Do not use unsupported flags (for example, use `--rrule`, not `--recurrence`).
 - After the user confirms a pending create/update/delete (for example replying "yes"), run the `gog` command in the same turn before finalizing your reply.
 - If you did not execute a `gog` command, never claim that an event was created, updated, or deleted.
+- Keep tool loops low: for create/update/delete, use one gog write command unless clarification is required.
+- Do not run a preflight `gog calendar events` query before create unless the user asked to check for conflicts.

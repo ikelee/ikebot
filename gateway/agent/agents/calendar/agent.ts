@@ -30,6 +30,15 @@ export const CALENDAR_PI_CONFIG: AgentPiConfig = {
   promptMode: "minimal",
   tools: { allow: ["exec"] },
   skills: false,
+  promptSections: {
+    safety: false,
+    cliQuickRef: false,
+    reasoningFormat: false,
+  },
+  stream: {
+    temperature: 0,
+    maxTokens: 2048,
+  },
 };
 
 export class CalendarAgent extends Agent {
@@ -52,7 +61,7 @@ export class CalendarAgent extends Agent {
         provider: "ollama",
         modelId: "qwen2.5:14b",
         maxTokens: 4096,
-        temperature: 0.3,
+        temperature: 0,
       },
     };
     super(config);

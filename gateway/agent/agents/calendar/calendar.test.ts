@@ -171,6 +171,10 @@ describe("calendar agent", () => {
       expect(result.skills).toBe(false);
       expect(result.toolsAllow).toContain("exec");
       expect(result.toolsAllow?.length).toBe(1);
+      expect(result.stream?.temperature).toBe(0);
+      expect(result.promptSections?.safety).toBe(false);
+      expect(result.promptSections?.cliQuickRef).toBe(false);
+      expect(result.promptSections?.reasoningFormat).toBe(false);
     });
 
     it("runCalendarReply passes agentId=calendar to runPreparedReply", async () => {

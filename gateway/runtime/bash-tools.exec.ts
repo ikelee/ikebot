@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { Type } from "@sinclair/typebox";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import {
@@ -377,33 +378,354 @@ function applyShellPath(env: Record<string, string>, shellPath?: string | null) 
   }
 }
 
-async function resolveCalendarIdForExec(workdir: string): Promise<string | null> {
-  try {
-    const raw = await fs.readFile(path.join(workdir, "calendar-settings.json"), "utf8");
-    const parsed = JSON.parse(raw) as { profile?: { calendarId?: unknown } };
-    const calendarId = parsed?.profile?.calendarId;
-    return typeof calendarId === "string" && calendarId.trim() ? calendarId.trim() : null;
-  } catch {
-    return null;
-  }
+function shellQuoteArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-async function normalizeCalendarExecCommand(command: string, agentId?: string, workdir?: string) {
-  const normalizedAgentId = agentId?.trim().toLowerCase();
-  if (normalizedAgentId !== "calendar" || !/\bgog\s+calendar\b/i.test(command)) {
+const WEEKDAY_TO_INDEX: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+const WEEKDAY_ABBR_TO_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+function nextWeekdayFrom(base: Date, targetWeekday: number): Date {
+  const result = new Date(base.getTime());
+  const current = result.getDay();
+  let delta = (targetWeekday - current + 7) % 7;
+  if (delta === 0) {
+    delta = 7;
+  }
+  result.setDate(result.getDate() + delta);
+  return result;
+}
+
+function parseTimeFromDateExpr(expr: string): { hour: number; minute: number } | null {
+  const fromFormat = expr.match(/%Y-%m-%dT(\d{1,2}):(\d{2})(?::\d{2})?Z/i);
+  if (fromFormat) {
+    return {
+      hour: Number.parseInt(fromFormat[1] ?? "0", 10),
+      minute: Number.parseInt(fromFormat[2] ?? "0", 10),
+    };
+  }
+
+  const ampm = expr.match(/-v\s+'(\d{1,2}):(\d{2})\s*(am|pm)'/i);
+  if (ampm) {
+    let hour = Number.parseInt(ampm[1] ?? "0", 10);
+    const minute = Number.parseInt(ampm[2] ?? "0", 10);
+    const meridiem = (ampm[3] ?? "").toLowerCase();
+    if (meridiem === "pm" && hour < 12) {
+      hour += 12;
+    }
+    if (meridiem === "am" && hour === 12) {
+      hour = 0;
+    }
+    return { hour, minute };
+  }
+
+  const twentyFourHour = expr.match(/-v\s+'(\d{1,2}):(\d{2})'/i);
+  if (twentyFourHour) {
+    return {
+      hour: Number.parseInt(twentyFourHour[1] ?? "0", 10),
+      minute: Number.parseInt(twentyFourHour[2] ?? "0", 10),
+    };
+  }
+
+  const twentyFourHourMinSuffix = expr.match(/-v\s*\+?(\d{1,2}):(\d{2})min\b/i);
+  if (twentyFourHourMinSuffix) {
+    return {
+      hour: Number.parseInt(twentyFourHourMinSuffix[1] ?? "0", 10),
+      minute: Number.parseInt(twentyFourHourMinSuffix[2] ?? "0", 10),
+    };
+  }
+
+  return null;
+}
+
+function resolveNextWeekdayIsoFromDateExpr(expr: string): string | null {
+  const weekdayMatch = expr.match(
+    /next\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/i,
+  );
+  if (!weekdayMatch) {
+    return null;
+  }
+  const weekdayKey = (weekdayMatch[1] ?? "").toLowerCase();
+  const weekdayIndex = WEEKDAY_TO_INDEX[weekdayKey];
+  if (typeof weekdayIndex !== "number") {
+    return null;
+  }
+  const time = parseTimeFromDateExpr(expr) ?? { hour: 9, minute: 0 };
+  const nextWeekday = nextWeekdayFrom(new Date(), weekdayIndex);
+  nextWeekday.setHours(time.hour, time.minute, 0, 0);
+  return nextWeekday.toISOString().replace(".000Z", "Z");
+}
+
+function resolveOffsetIsoFromDateExpr(expr: string): string | null {
+  const weekOffsetMatch = expr.match(/-v\s*'?\+?(\d+)\s*weeks?'?\b/i);
+  if (weekOffsetMatch) {
+    const weekOffset = Number.parseInt(weekOffsetMatch[1] ?? "0", 10);
+    if (!Number.isFinite(weekOffset)) {
+      return null;
+    }
+    const time = parseTimeFromDateExpr(expr);
+    const at = new Date();
+    at.setDate(at.getDate() + weekOffset * 7);
+    if (time) {
+      at.setHours(time.hour, time.minute, 0, 0);
+    }
+    return at.toISOString().replace(".000Z", "Z");
+  }
+
+  const dayOffsetMatch = expr.match(/-v\s*\+?(\d+)\s*(?:d|day)\b/i);
+  if (!dayOffsetMatch) {
+    return null;
+  }
+  const dayOffset = Number.parseInt(dayOffsetMatch[1] ?? "0", 10);
+  if (!Number.isFinite(dayOffset)) {
+    return null;
+  }
+  const time = parseTimeFromDateExpr(expr);
+  const at = new Date();
+  at.setDate(at.getDate() + dayOffset);
+  if (time) {
+    at.setHours(time.hour, time.minute, 0, 0);
+  }
+  return at.toISOString().replace(".000Z", "Z");
+}
+
+function resolveNextWeekdayCompactOffsetIsoFromDateExpr(expr: string): string | null {
+  const compact = expr.match(/-vnext(sun|mon|tue|wed|thu|fri|sat)(?:\+(\d{1,2})h(\d{1,2})m)?/i);
+  if (!compact) {
+    return null;
+  }
+  const dayKey = (compact[1] ?? "").toLowerCase();
+  const dayIndex = WEEKDAY_ABBR_TO_INDEX[dayKey];
+  if (typeof dayIndex !== "number") {
+    return null;
+  }
+  const hour = Number.parseInt(compact[2] ?? "9", 10);
+  const minute = Number.parseInt(compact[3] ?? "0", 10);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null;
+  }
+  const at = nextWeekdayFrom(new Date(), dayIndex);
+  at.setHours(hour, minute, 0, 0);
+  return at.toISOString().replace(".000Z", "Z");
+}
+
+function resolveLiteralIsoFromDateExpr(expr: string): string | null {
+  const literalIsoMatch = expr.match(/-v\s+'?\+?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)'?/i);
+  if (!literalIsoMatch) {
+    return null;
+  }
+  const rawIso = literalIsoMatch[1] ?? "";
+  const withSeconds = rawIso.length === 17 ? `${rawIso.slice(0, -1)}:00Z` : rawIso;
+  const parsed = new Date(withSeconds);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  // Model output occasionally hallucinates stale years in date -v substitutions.
+  // For scheduling intents, carry this timestamp forward by full weeks so it is actionable.
+  const now = new Date();
+  let shifted = new Date(parsed.getTime());
+  let guard = 0;
+  while (shifted.getTime() < now.getTime() && guard < 520) {
+    shifted = new Date(shifted.getTime() + 7 * 24 * 60 * 60 * 1000);
+    guard += 1;
+  }
+  return shifted.toISOString().replace(".000Z", "Z");
+}
+
+function normalizeCalendarDateSubstitutions(command: string): string {
+  const withTrailingZulu = command.replace(/\$\(([^)]*date[^)]*)\)Z/gi, (match, inner: string) => {
+    const iso =
+      resolveNextWeekdayCompactOffsetIsoFromDateExpr(inner) ??
+      resolveNextWeekdayIsoFromDateExpr(inner) ??
+      resolveOffsetIsoFromDateExpr(inner) ??
+      resolveLiteralIsoFromDateExpr(inner);
+    if (!iso) {
+      return match;
+    }
+    return shellQuoteArg(iso);
+  });
+
+  const withIsoSuffix = withTrailingZulu.replace(
+    /\$\(([^)]*date[^)]*)\)T(\d{2}):(\d{2})(?::(\d{2}))?Z/gi,
+    (match, inner: string, hourRaw: string, minuteRaw: string, secondRaw?: string) => {
+      const hour = Number.parseInt(hourRaw, 10);
+      const minute = Number.parseInt(minuteRaw, 10);
+      const second = Number.parseInt(secondRaw ?? "0", 10);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute) || !Number.isFinite(second)) {
+        return match;
+      }
+
+      const baseIso =
+        resolveNextWeekdayIsoFromDateExpr(inner) ??
+        resolveOffsetIsoFromDateExpr(inner) ??
+        resolveLiteralIsoFromDateExpr(inner);
+      if (!baseIso) {
+        return match;
+      }
+      const at = new Date(baseIso);
+      if (Number.isNaN(at.getTime())) {
+        return match;
+      }
+      at.setUTCHours(hour, minute, second, 0);
+      return shellQuoteArg(at.toISOString().replace(".000Z", "Z"));
+    },
+  );
+
+  return withIsoSuffix.replace(/\$\(([^)]*date[^)]*)\)/gi, (match, inner: string) => {
+    if (/-vnext(?:sun|mon|tue|wed|thu|fri|sat)\b/i.test(inner)) {
+      const iso = resolveNextWeekdayCompactOffsetIsoFromDateExpr(inner);
+      if (iso) {
+        return shellQuoteArg(iso);
+      }
+    }
+    if (/next\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)/i.test(inner)) {
+      const iso = resolveNextWeekdayIsoFromDateExpr(inner);
+      if (iso) {
+        return shellQuoteArg(iso);
+      }
+    }
+    if (/-v\s*'?\+?\d+\s*(?:weeks?|d|day)'?\b/i.test(inner)) {
+      const iso = resolveOffsetIsoFromDateExpr(inner);
+      if (iso) {
+        return shellQuoteArg(iso);
+      }
+    }
+    if (/-v\s+'?\+?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z'?\b/i.test(inner)) {
+      const iso = resolveLiteralIsoFromDateExpr(inner);
+      if (iso) {
+        return shellQuoteArg(iso);
+      }
+    }
+    return match;
+  });
+}
+
+function parseFlagValue(command: string, flag: string): string | null {
+  const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`${escapedFlag}\\s+('([^']*)'|"([^"]*)"|(\\S+))`, "i");
+  const match = command.match(regex);
+  if (!match) {
+    return null;
+  }
+  return match[2] ?? match[3] ?? match[4] ?? null;
+}
+
+function replaceFlagValue(command: string, flag: string, nextValue: string): string {
+  const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escapedFlag}\\s+)('([^']*)'|"([^"]*)"|(\\S+))`, "i");
+  return command.replace(regex, `$1${shellQuoteArg(nextValue)}`);
+}
+
+function normalizeCalendarBounds(command: string): string {
+  const fromRaw = parseFlagValue(command, "--from");
+  const toRaw = parseFlagValue(command, "--to");
+  if (!fromRaw || !toRaw) {
     return command;
   }
-  const hasPlaceholder = /\b(?:user|you)@gmail\.com\b/i.test(command);
-  if (!hasPlaceholder) {
+  const from = new Date(fromRaw);
+  const to = new Date(toRaw);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     return command;
   }
-  const calendarId = workdir ? await resolveCalendarIdForExec(workdir) : null;
-  if (!calendarId) {
+  if (to.getTime() > from.getTime()) {
+    return command;
+  }
+  const fixedTo = new Date(from.getTime() + 60 * 60 * 1000).toISOString().replace(".000Z", "Z");
+  return replaceFlagValue(command, "--to", fixedTo);
+}
+
+function normalizeCalendarRrule(command: string): string {
+  const rruleRaw = parseFlagValue(command, "--rrule");
+  if (!rruleRaw) {
+    return command;
+  }
+  const normalizedRaw = rruleRaw.trim();
+  if (!normalizedRaw) {
+    return command;
+  }
+  if (/^RRULE:/i.test(normalizedRaw)) {
+    return command;
+  }
+  return replaceFlagValue(command, "--rrule", `RRULE:${normalizedRaw}`);
+}
+
+async function resolveCalendarIdForExec(workdir?: string): Promise<string | null> {
+  const candidates = new Set<string>();
+  const trimmedWorkdir = workdir?.trim();
+  if (trimmedWorkdir) {
+    candidates.add(trimmedWorkdir);
+    if (path.basename(trimmedWorkdir).startsWith("workspace")) {
+      candidates.add(path.join(path.dirname(trimmedWorkdir), "workspace-calendar"));
+    }
+  }
+  const home = os.homedir();
+  if (home) {
+    candidates.add(path.join(home, ".openclaw", "workspace-calendar"));
+    candidates.add(path.join(home, ".openclaw", "workspace"));
+  }
+
+  for (const dir of candidates) {
+    try {
+      const raw = await fs.readFile(path.join(dir, "calendar-settings.json"), "utf8");
+      const parsed = JSON.parse(raw) as { profile?: { calendarId?: unknown } };
+      const calendarId = parsed?.profile?.calendarId;
+      if (typeof calendarId === "string" && calendarId.trim()) {
+        return calendarId.trim();
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+  return null;
+}
+
+async function normalizeCalendarExecCommand(command: string, _agentId?: string, workdir?: string) {
+  if (!/\bgog\s+calendar\b/i.test(command)) {
+    return command;
+  }
+
+  // Normalize common model mistake: gog uses --rrule, not --recurrence.
+  let normalized = command.replace(/(^|\s)--recurrence(?=\s|=)/gi, "$1--rrule");
+  normalized = normalizeCalendarDateSubstitutions(normalized);
+  normalized = normalizeCalendarRrule(normalized);
+  normalized = normalizeCalendarBounds(normalized);
+
+  const hasPlaceholder = /\b(?:user|you)@gmail\.com\b/i.test(normalized);
+  const hasAccountFlag = /(?:^|\s)--account(?:\s|=)/i.test(normalized);
+  if (!hasPlaceholder && hasAccountFlag) {
+    return normalized;
+  }
+
+  const calendarId = await resolveCalendarIdForExec(workdir);
+  if (hasPlaceholder && !calendarId) {
     throw new Error(
       "calendar exec denied: placeholder calendarId found but profile.calendarId is missing in calendar-settings.json",
     );
   }
-  return command.replace(/\b(?:user|you)@gmail\.com\b/gi, calendarId);
+
+  if (hasPlaceholder && calendarId) {
+    normalized = normalized.replace(/\b(?:user|you)@gmail\.com\b/gi, calendarId);
+  }
+  if (!hasAccountFlag && calendarId) {
+    normalized = `${normalized} --account ${shellQuoteArg(calendarId)}`;
+  }
+  return normalized;
 }
 
 function maybeNotifyOnExit(session: ProcessSession, status: "completed" | "failed") {
@@ -881,7 +1203,11 @@ export function createExecTool(
       if (!params.command) {
         throw new Error("Provide a command to start.");
       }
-      const command = await normalizeCalendarExecCommand(params.command, agentId, defaults?.cwd);
+      const command = await normalizeCalendarExecCommand(
+        params.command,
+        agentId,
+        params.workdir ?? defaults?.cwd,
+      );
 
       const maxOutput = DEFAULT_MAX_OUTPUT;
       const pendingMaxOutput = DEFAULT_PENDING_MAX_OUTPUT;

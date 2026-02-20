@@ -372,6 +372,52 @@ describe("runAgentFlow", () => {
     expect(call.agentDir).toContain("agent");
   });
 
+  it("injects deterministic next-weekday date hints for calendar prompts", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"calendar"}' }],
+      usage: { input: 10, output: 8 },
+    });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { exec: { safeBins: ["gog"] } },
+            pi: { preset: "exec-only" },
+          },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody:
+        "[Thu 2026-02-19 22:48 PST] add singing lesson to my calendar, it's at 445pm next thursday for an hour",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+    const call = runPreparedReplyMock.mock.calls[0][0];
+    const bodyForAgent = String(call.sessionCtx?.BodyForAgent ?? "");
+    expect(bodyForAgent).toContain("Calendar date hints (deterministic)");
+    expect(bodyForAgent).toContain("next thursday = 2026-02-26");
+    expect(bodyForAgent).toContain(
+      "next thursday at 4:45pm local = 2026-02-26T16:45:00-08:00 (UTC 2026-02-27T00:45:00Z)",
+    );
+  });
+
   it("keeps short confirmation follow-ups on calendar after a calendar turn", async () => {
     vi.mocked(completeSimple)
       .mockResolvedValueOnce({

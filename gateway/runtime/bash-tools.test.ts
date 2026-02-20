@@ -337,6 +337,28 @@ describe("exec PATH handling", () => {
 });
 
 describe("exec calendar command normalization", () => {
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalHomePath = process.env.HOMEPATH;
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+    if (originalHomePath === undefined) {
+      delete process.env.HOMEPATH;
+    } else {
+      process.env.HOMEPATH = originalHomePath;
+    }
+  });
+
   it("rewrites placeholder calendar IDs using calendar-settings.json", async () => {
     const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
     await fsp.writeFile(
@@ -359,9 +381,325 @@ describe("exec calendar command normalization", () => {
 
     const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
     expect(text).toContain("gog calendar events ikelee98@gmail.com");
+    expect(text).toContain("--account ikelee98@gmail.com");
     expect(text).not.toContain("user@gmail.com");
 
     await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("injects --account for gog calendar commands when calendar settings exist", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command: "echo gog calendar events ikelee98@gmail.com --from 2026-02-20T00:00:00Z",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites --recurrence to --rrule and injects --account", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --recurrence 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("--rrule RRULE:FREQ=WEEKLY");
+    expect(text).not.toContain("--recurrence");
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites --recurrence to --rrule even when --account is already present", async () => {
+    const tool = createExecTool();
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create ikebotai@gmail.com --account ikebotai@gmail.com --recurrence 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("--rrule RRULE:FREQ=WEEKLY");
+    expect(text).not.toContain("--recurrence");
+  });
+
+  it("normalizes --rrule values without RRULE prefix", async () => {
+    const tool = createExecTool();
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create ikebotai@gmail.com --account ikebotai@gmail.com --rrule 'FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("--rrule RRULE:FREQ=WEEKLY");
+    expect(text).not.toContain("--rrule FREQ=WEEKLY");
+  });
+
+  it("rewrites next-weekday date substitutions to concrete RFC3339 timestamps", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -v 'next Thursday' +'%Y-%m-%dT16:45:%SZ') --to $(date -v 'next Thursday' +'%Y-%m-%dT17:45:%SZ') --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("next Thursday");
+    expect(text).not.toContain("$(date");
+    expect(text).toMatch(/--from\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
+    expect(text).toMatch(/--to\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites day-offset date substitutions and fixes invalid --to bounds", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -Iseconds -v+6day -v14:45min) --to $(date -Iseconds -v+6day -v13:45min) --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("$(date");
+    expect(text).not.toContain("-v+6day");
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    const fromMatch = text.match(/--from\s+(\S+)/);
+    const toMatch = text.match(/--to\s+(\S+)/);
+    expect(fromMatch?.[1]).toBeTruthy();
+    expect(toMatch?.[1]).toBeTruthy();
+    const fromValue = fromMatch![1].replace(/^['"]|['"]$/g, "");
+    const toValue = toMatch![1].replace(/^['"]|['"]$/g, "");
+    const fromTime = new Date(fromValue);
+    const toTime = new Date(toValue);
+    expect(Number.isNaN(fromTime.getTime())).toBe(false);
+    expect(Number.isNaN(toTime.getTime())).toBe(false);
+    expect(toTime.getTime()).toBeGreaterThan(fromTime.getTime());
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites week-offset date substitutions to concrete RFC3339 timestamps", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -v '+1 week' +'%Y-%m-%dT%H:%M:%SZ') --to $(date -v '+1 week' +'%Y-%m-%dT%H:%M:%SZ' -v '+1 hour') --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("$(date");
+    expect(text).not.toContain("+1 week");
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites date substitutions with appended time suffix into valid RFC3339 values", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -Iseconds -v+7d)T16:45:00Z --to $(date -Iseconds -v+8d)T16:45:00Z --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("$(date");
+    expect(text).not.toContain("T16:45:00ZT");
+    expect(text).toContain("--account ikelee98@gmail.com");
+    expect(text).toMatch(/--from\s+'?\d{4}-\d{2}-\d{2}T16:45:00Z'?/);
+    expect(text).toMatch(/--to\s+'?\d{4}-\d{2}-\d{2}T16:45:00Z'?/);
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites compact next-weekday date substitutions with trailing Z", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -vnextthu+4h5m -j \"%Y%m%d%H%M%S\" +%FT%T)Z --to $(date -vnextthu+5h5m -j \"%Y%m%d%H%M%S\" +%FT%T)Z --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("$(date");
+    expect(text).toContain("--account ikelee98@gmail.com");
+    expect(text).toMatch(/--from\s+'?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'?/);
+    expect(text).toMatch(/--to\s+'?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'?/);
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("rewrites literal ISO date substitutions and carries stale timestamps forward", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar create user@gmail.com --summary 'Singing Lesson' --from $(date -v '+2023-11-09T16:45:00Z' +'%Y-%m-%dT%H:%M:%SZ') --to $(date -v '+2023-11-09T17:45:00Z' +'%Y-%m-%dT%H:%M:%SZ') --rrule 'RRULE:FREQ=WEEKLY'",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).not.toContain("$(date");
+    expect(text).toContain("--account ikelee98@gmail.com");
+    const fromMatch = text.match(/--from\s+(\S+)/);
+    const toMatch = text.match(/--to\s+(\S+)/);
+    expect(fromMatch?.[1]).toBeTruthy();
+    expect(toMatch?.[1]).toBeTruthy();
+    const fromValue = fromMatch![1].replace(/^['"]|['"]$/g, "");
+    const toValue = toMatch![1].replace(/^['"]|['"]$/g, "");
+    const fromTime = new Date(fromValue);
+    const toTime = new Date(toValue);
+    expect(Number.isNaN(fromTime.getTime())).toBe(false);
+    expect(Number.isNaN(toTime.getTime())).toBe(false);
+    expect(fromTime.getTime()).toBeGreaterThan(Date.now() - 60_000);
+    expect(toTime.getTime()).toBeGreaterThan(fromTime.getTime());
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("uses ~/.openclaw/workspace-calendar fallback when cwd has no settings", async () => {
+    const fakeHome = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-home-"));
+    const calendarWorkspace = path.join(fakeHome, ".openclaw", "workspace-calendar");
+    await fsp.mkdir(calendarWorkspace, { recursive: true });
+    await fsp.writeFile(
+      path.join(calendarWorkspace, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    process.env.HOMEPATH = fakeHome;
+
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-cwd-"));
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command: "echo gog calendar events user@gmail.com --from 2026-02-20T00:00:00Z",
+    });
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("gog calendar events ikelee98@gmail.com");
+    expect(text).toContain("--account ikelee98@gmail.com");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+    await fsp.rm(fakeHome, { recursive: true, force: true });
   });
 
   it("fails fast when calendar command uses placeholder but settings are missing", async () => {

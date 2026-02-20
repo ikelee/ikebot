@@ -122,6 +122,220 @@ const ROUTER_HANDOFF_DIRECTIVE_RE =
   /\[\[router_handoff:([a-z0-9_-]+)(?:\s+reason=(["']?)([^"'\]]+)\2)?\s*\]\]/gi;
 const FOLLOWUP_PROMPT_RE =
   /\b(?:please\s+confirm|confirm(?:ation)?|should\s+i|do\s+you\s+want\s+me\s+to|is\s+that\s+right|is\s+that\s+correct|would\s+you\s+like\s+me\s+to|can\s+you\s+confirm)\b/i;
+const NEXT_WEEKDAY_RE = /\bnext\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi;
+const WEEKDAY_TO_INDEX: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+const TZ_ABBR_TO_OFFSET_MINUTES: Record<string, number> = {
+  UTC: 0,
+  PST: -8 * 60,
+  PDT: -7 * 60,
+};
+
+type ParsedAnchor = {
+  date: Date;
+  tzOffsetMinutes: number;
+};
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function formatIsoDateUtc(date: Date): string {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
+function formatOffset(minutes: number): string {
+  const sign = minutes >= 0 ? "+" : "-";
+  const abs = Math.abs(minutes);
+  const hh = Math.floor(abs / 60);
+  const mm = abs % 60;
+  return `${sign}${pad2(hh)}:${pad2(mm)}`;
+}
+
+function toIsoLocalWithOffset(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  offsetMinutes: number,
+): string {
+  return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00${formatOffset(offsetMinutes)}`;
+}
+
+function extractAnchor(cleanedBody: string): ParsedAnchor {
+  const stamped = cleanedBody.match(
+    /\[[^\]]*?(\d{4})-(\d{2})-(\d{2})(?:\s+\d{2}:\d{2}\s+([A-Z]{2,4}))?[^\]]*?\]/,
+  );
+  if (stamped) {
+    const year = Number(stamped[1]);
+    const month = Number(stamped[2]);
+    const day = Number(stamped[3]);
+    const tzAbbr = (stamped[4] ?? "").toUpperCase();
+    const tzOffsetMinutes =
+      typeof TZ_ABBR_TO_OFFSET_MINUTES[tzAbbr] === "number"
+        ? TZ_ABBR_TO_OFFSET_MINUTES[tzAbbr]
+        : -new Date().getTimezoneOffset();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31
+    ) {
+      // Noon UTC avoids accidental day rollovers while keeping weekday math deterministic.
+      return {
+        date: new Date(Date.UTC(year, month - 1, day, 12, 0, 0)),
+        tzOffsetMinutes,
+      };
+    }
+  }
+  return {
+    date: new Date(),
+    tzOffsetMinutes: -new Date().getTimezoneOffset(),
+  };
+}
+
+function resolveNextWeekdayDate(anchor: Date, targetDay: number): Date {
+  const currentDay = anchor.getUTCDay();
+  let delta = (targetDay - currentDay + 7) % 7;
+  if (delta === 0) {
+    delta = 7;
+  }
+  const result = new Date(anchor.getTime());
+  result.setUTCDate(result.getUTCDate() + delta);
+  return result;
+}
+
+function extractRequestedTime(
+  cleanedBody: string,
+): { hour24: number; minute: number; label: string } | null {
+  const compact = cleanedBody.match(/\b(?:at\s+)?(\d{3,4})\s*(am|pm)\b/i);
+  if (compact) {
+    const digits = compact[1] ?? "";
+    const meridiem = (compact[2] ?? "").toLowerCase();
+    if (/^\d{3,4}$/.test(digits)) {
+      const hourDigits = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2);
+      const minuteDigits = digits.slice(-2);
+      const rawHour = Number(hourDigits);
+      const minute = Number(minuteDigits);
+      if (
+        Number.isInteger(rawHour) &&
+        Number.isInteger(minute) &&
+        rawHour >= 1 &&
+        rawHour <= 12 &&
+        minute >= 0 &&
+        minute <= 59
+      ) {
+        const hour24 = (rawHour % 12) + (meridiem === "pm" ? 12 : 0);
+        return {
+          hour24,
+          minute,
+          label: `${rawHour}:${pad2(minute)}${meridiem}`,
+        };
+      }
+    }
+  }
+
+  const match = cleanedBody.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (!match) {
+    return null;
+  }
+  const rawHour = Number(match[1]);
+  const minute = Number(match[2] ?? "0");
+  if (!Number.isInteger(rawHour) || !Number.isInteger(minute) || rawHour < 1 || rawHour > 12) {
+    return null;
+  }
+  if (minute < 0 || minute > 59) {
+    return null;
+  }
+  const meridiem = (match[3] ?? "").toLowerCase();
+  const hour24 = (rawHour % 12) + (meridiem === "pm" ? 12 : 0);
+  return {
+    hour24,
+    minute,
+    label: `${rawHour}:${pad2(minute)}${meridiem}`,
+  };
+}
+
+function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
+  const hints: string[] = [];
+  const seen = new Set<string>();
+  const anchor = extractAnchor(cleanedBody);
+  const requestedTime = extractRequestedTime(cleanedBody);
+  NEXT_WEEKDAY_RE.lastIndex = 0;
+  let match: RegExpExecArray | null = NEXT_WEEKDAY_RE.exec(cleanedBody);
+  while (match) {
+    const weekday = (match[1] ?? "").toLowerCase();
+    const index = WEEKDAY_TO_INDEX[weekday];
+    if (index !== undefined) {
+      const date = resolveNextWeekdayDate(anchor.date, index);
+      const normalizedPhrase = `next ${weekday}`;
+      const line = `${normalizedPhrase} = ${formatIsoDateUtc(date)}`;
+      if (!seen.has(line)) {
+        seen.add(line);
+        hints.push(line);
+      }
+      if (requestedTime) {
+        const year = date.getUTCFullYear();
+        const month = date.getUTCMonth() + 1;
+        const day = date.getUTCDate();
+        const localIso = toIsoLocalWithOffset(
+          year,
+          month,
+          day,
+          requestedTime.hour24,
+          requestedTime.minute,
+          anchor.tzOffsetMinutes,
+        );
+        const utcMillis =
+          Date.UTC(year, month - 1, day, requestedTime.hour24, requestedTime.minute, 0) -
+          anchor.tzOffsetMinutes * 60 * 1000;
+        const utcIso = new Date(utcMillis).toISOString().replace(".000Z", "Z");
+        const timeLine = `${normalizedPhrase} at ${requestedTime.label} local = ${localIso} (UTC ${utcIso})`;
+        if (!seen.has(timeLine)) {
+          seen.add(timeLine);
+          hints.push(timeLine);
+        }
+      }
+    }
+    match = NEXT_WEEKDAY_RE.exec(cleanedBody);
+  }
+
+  if (hints.length === 0) {
+    return cleanedBody;
+  }
+
+  return `${cleanedBody}\n\nCalendar date hints (deterministic):\n${hints.map((h) => `- ${h}`).join("\n")}`;
+}
+
+function withCalendarDateHints(
+  preparedParams: Parameters<typeof runPreparedReply>[0],
+  cleanedBody: string,
+): Parameters<typeof runPreparedReply>[0] {
+  const augmented = augmentCalendarPromptWithDateHints(cleanedBody);
+  if (augmented === cleanedBody) {
+    return preparedParams;
+  }
+  return {
+    ...preparedParams,
+    sessionCtx: {
+      ...preparedParams.sessionCtx,
+      BodyForAgent: augmented,
+      Body: augmented,
+      BodyStripped: augmented,
+    },
+  };
+}
 
 export function __resetOnboardingStateForTests(): void {
   ACTIVE_ONBOARDING_BY_SESSION.clear();
@@ -421,7 +635,7 @@ export async function runAgentFlow(
         return onboardingReply;
       }
       return runCalendarReply({
-        ...params.runPreparedReplyParams,
+        ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
         provider,
         model,
       });
@@ -756,7 +970,7 @@ export async function runAgentFlow(
       return onboardingReply;
     }
     const reply = await runCalendarReply({
-      ...params.runPreparedReplyParams,
+      ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
       provider: effectiveProvider,
       model: effectiveModel,
     });
