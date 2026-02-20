@@ -294,7 +294,7 @@ describe("workouts agent-level e2e – real model", () => {
           const run = await runWorkoutsAgentWithLoopCount({
             workspaceDir,
             home,
-            body: "Log a new strength training item: Deadlift 305 lb for 5 reps.",
+            body: "I just hit deadlift 305 lb for 5 reps. Please log it.",
             senderId,
           });
           expect(run.loops).toBeLessThanOrEqual(10);
@@ -331,7 +331,7 @@ describe("workouts agent-level e2e – real model", () => {
         const run = await runWorkoutsAgentWithLoopCount({
           workspaceDir,
           home,
-          body: "Log a running workout: ran 3.2 miles in 28 minutes.",
+          body: "I ran 3.2 miles in 28 minutes today. Add that to my workout history.",
           senderId,
         });
         expect(run.loops).toBeLessThanOrEqual(10);
@@ -392,7 +392,7 @@ describe("workouts agent-level e2e – real model", () => {
         const run = await runWorkoutsAgentWithLoopCount({
           workspaceDir,
           home,
-          body: "Read workouts.json, then suggest 4 chest exercises that are different from my usual bench work.",
+          body: "For chest day, give me 4 options that are different from my usual bench-focused exercises.",
           senderId,
         });
         expect(run.loops).toBeLessThanOrEqual(10);
@@ -458,7 +458,7 @@ describe("workouts agent-level e2e – real model", () => {
         const run = await runWorkoutsAgentWithLoopCount({
           workspaceDir,
           home,
-          body: "Give me past week's worth of workout records.",
+          body: "What workouts have I done in the last 7 days?",
           senderId,
         });
         expect(run.loops).toBeLessThanOrEqual(10);
@@ -489,7 +489,7 @@ describe("workouts agent-level e2e – real model", () => {
         const run = await runWorkoutsAgentWithLoopCount({
           workspaceDir,
           home,
-          body: "Use read and write tools to log this PR in workouts.json and update views.personalBests.strength: Bench Press 195 for 5 reps.",
+          body: "I hit a bench press PR: 195 lb for 5 reps. Add it to my records.",
           senderId,
         });
         expect(run.loops).toBeLessThanOrEqual(10);

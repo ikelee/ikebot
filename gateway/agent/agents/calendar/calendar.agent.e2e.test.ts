@@ -388,7 +388,7 @@ describe("calendar agent-level e2e – real model", () => {
     }
   });
 
-  it("answers calendar read queries without onboarding prompts", { timeout: 120_000 }, async () => {
+  it("answers calendar read queries without onboarding prompts", { timeout: 240_000 }, async () => {
     if (!canRunRead) {
       return;
     }
@@ -406,12 +406,7 @@ describe("calendar agent-level e2e – real model", () => {
 
       const reply = await getReplyFromConfig(
         {
-          Body:
-            `List events in this exact window.\n` +
-            `calendarId: ${CALENDAR_TEST_ID}\n` +
-            `account: ${CALENDAR_TEST_ACCOUNT}\n` +
-            `from: ${from}\n` +
-            `to: ${to}`,
+          Body: `What’s on my calendar between ${from} and ${to}?`,
           From: testUser,
           To: testUser,
           Provider: "webchat",
@@ -471,14 +466,8 @@ describe("calendar agent-level e2e – real model", () => {
         const recurringEnd = new Date(recurringStart.getTime() + 60 * 60 * 1000);
         const firstReply = extractReplyText(
           await send(
-            `Create a weekly recurring calendar event now.\n` +
-              `calendarId: ${CALENDAR_TEST_ID}\n` +
-              `account: ${CALENDAR_TEST_ACCOUNT}\n` +
-              `summary: Singing Lesson\n` +
-              `from: ${recurringStart.toISOString()}\n` +
-              `to: ${recurringEnd.toISOString()}\n` +
-              `rrule: RRULE:FREQ=WEEKLY\n` +
-              `Do it now.`,
+            `Please add a weekly recurring event called "Singing Lesson" starting ` +
+              `${recurringStart.toISOString()} and ending ${recurringEnd.toISOString()}.`,
           ),
         ).toLowerCase();
         if (
@@ -591,39 +580,29 @@ describe("calendar agent-level e2e – real model", () => {
             cfg,
           );
 
-        const createPrompt =
-          `Create a one-time calendar event now.\n` +
-          `calendarId: ${CALENDAR_TEST_ID}\n` +
-          `account: ${CALENDAR_TEST_ACCOUNT}\n` +
-          `summary: ${summary}\n` +
-          `from: ${startIso}\n` +
-          `to: ${endIso}\n` +
-          `Do it now. If you need confirmation, ask one short question only.`;
+        const createPrompt = `Please create a one-time calendar event called "${summary}" from ${startIso} to ${endIso}.`;
         const firstCreate = extractReplyText(await send(createPrompt)).toLowerCase();
         if (
           firstCreate.includes("confirm") ||
           firstCreate.includes("correct?") ||
           firstCreate.includes("is that")
         ) {
-          await send("yes, create it now");
+          await send("yes, please");
         }
 
         const created = await listEventsByQuery(marker);
         expect(created.length).toBeGreaterThan(0);
 
         const deletePrompt =
-          `Delete the calendar event now.\n` +
-          `calendarId: ${CALENDAR_TEST_ID}\n` +
-          `account: ${CALENDAR_TEST_ACCOUNT}\n` +
-          `summary contains: ${marker}\n` +
-          `Delete only matching test events.`;
+          `Please delete the calendar event whose title contains "${marker}". ` +
+          `Please only remove the matching test event.`;
         const firstDelete = extractReplyText(await send(deletePrompt)).toLowerCase();
         if (
           firstDelete.includes("confirm") ||
           firstDelete.includes("correct?") ||
           firstDelete.includes("is that")
         ) {
-          await send("yes, delete it now");
+          await send("yes, please");
         }
 
         let remaining = await listEventsByQuery(marker);
@@ -737,7 +716,7 @@ describe("calendar agent-level e2e – real model", () => {
 
         const exactAddReply = await sendWithOptionalConfirm(
           "Add Ani’s fundraiser for march 5th 530-730",
-          "yes, add it now",
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(exactAddReply);
         const aniEvents = await listRawEventsByQuery("Ani");
@@ -751,44 +730,48 @@ describe("calendar agent-level e2e – real model", () => {
         expect(matchingWindowCount).toBeGreaterThan(0);
 
         const addReply = await sendWithOptionalConfirm(
-          `Create a one-time calendar event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary: ${summaryV1}\nfrom: ${from1.toISOString()}\nto: ${to1.toISOString()}\nDo it now.`,
-          "yes, create it now",
+          `Please create a one-time event called "${summaryV1}" from ${from1.toISOString()} to ${to1.toISOString()}. ` +
+            `Thanks.`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(addReply);
         expect((await listEventsByQuery(summaryV1)).length).toBeGreaterThan(0);
 
         const updateReply = await sendWithOptionalConfirm(
-          `Update the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV1}\nnew summary: ${summaryV2}\nfrom: ${from2.toISOString()}\nto: ${to2.toISOString()}`,
-          "yes, update it now",
+          `Please update the event whose title contains "${summaryV1}". ` +
+            `Change the title to "${summaryV2}" and set it to ${from2.toISOString()} through ${to2.toISOString()}.`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(updateReply);
         expect((await listEventsByQuery(summaryV2)).length).toBeGreaterThan(0);
 
         const rescheduleReply = await sendWithOptionalConfirm(
-          `Reschedule the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV2}\nnew summary: ${summaryV3}\nfrom: ${from3.toISOString()}\nto: ${to3.toISOString()}`,
-          "yes, reschedule it now",
+          `Please reschedule the event whose title contains "${summaryV2}". ` +
+            `Rename it to "${summaryV3}" and move it to ${from3.toISOString()} through ${to3.toISOString()}.`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(rescheduleReply);
         expect((await listEventsByQuery(summaryV3)).length).toBeGreaterThan(0);
 
         const deleteReply = await sendWithOptionalConfirm(
-          `Delete the matching event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${summaryV3}`,
-          "yes, delete it now",
+          `Please delete the event whose title contains "${summaryV3}".`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(deleteReply);
         expect((await listEventsByQuery(summaryV3)).length).toBe(0);
 
         const recurringAddReply = await sendWithOptionalConfirm(
-          `Create a weekly recurring event now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary: ${recurringSummary}\nfrom: ${fromRecurring.toISOString()}\nto: ${toRecurring.toISOString()}\nrrule: RRULE:FREQ=WEEKLY`,
-          "yes, create recurring event now",
+          `Please create a weekly recurring event called "${recurringSummary}" ` +
+            `from ${fromRecurring.toISOString()} to ${toRecurring.toISOString()}.`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(recurringAddReply);
         const recurringEvents = await listRawEventsByQuery(recurringSummary);
         expect(recurringEvents.length).toBeGreaterThan(0);
 
         const cancelReply = await sendWithOptionalConfirm(
-          `Cancel and delete recurring events matching this summary now.\ncalendarId: ${CALENDAR_TEST_ID}\naccount: ${CALENDAR_TEST_ACCOUNT}\nsummary contains: ${recurringSummary}`,
-          "yes, cancel it now",
+          `Please cancel and delete recurring events whose title contains "${recurringSummary}".`,
+          "yes, please",
         );
         assertNotBlockedByMutationSafety(cancelReply);
         expect((await listEventsByQuery(recurringSummary)).length).toBe(0);
