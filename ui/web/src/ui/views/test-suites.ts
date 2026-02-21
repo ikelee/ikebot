@@ -180,15 +180,55 @@ function stripAnsiAndControl(input: string): string {
 
 function parseModelCalls(output: string): ParsedModelCall[] {
   const lines = output.split(/\r?\n/);
-  const calls = new Map<string, ParsedModelCall>();
+  const calls: ParsedModelCall[] = [];
+  const callIndexById = new Map<string, number>();
+  const openReqIdsByNum = new Map<number, string[]>();
   let latestReqId: string | null = null;
   let syntheticSeq = 0;
-  const order: string[] = [];
 
   const pushCall = (call: ParsedModelCall) => {
-    calls.set(call.id, call);
-    order.push(call.id);
+    callIndexById.set(call.id, calls.length);
+    calls.push(call);
     latestReqId = call.id;
+    if (call.reqNum !== undefined && !call.done) {
+      const current = openReqIdsByNum.get(call.reqNum) ?? [];
+      openReqIdsByNum.set(call.reqNum, [...current, call.id]);
+    }
+  };
+  const getCall = (id: string | null | undefined): ParsedModelCall | null => {
+    if (!id) {
+      return null;
+    }
+    const index = callIndexById.get(id);
+    if (index === undefined) {
+      return null;
+    }
+    return calls[index] ?? null;
+  };
+  const updateCall = (id: string, patch: Partial<ParsedModelCall>) => {
+    const index = callIndexById.get(id);
+    if (index === undefined) {
+      return;
+    }
+    const next = {
+      ...calls[index],
+      ...patch,
+    };
+    calls[index] = next;
+  };
+  const takeOpenReqId = (reqNum: number): string | null => {
+    const current = openReqIdsByNum.get(reqNum) ?? [];
+    if (current.length === 0) {
+      return null;
+    }
+    const id = current[current.length - 1] ?? null;
+    const next = current.slice(0, -1);
+    if (next.length > 0) {
+      openReqIdsByNum.set(reqNum, next);
+    } else {
+      openReqIdsByNum.delete(reqNum);
+    }
+    return id;
   };
   const normalizeModel = (value: string) => value.trim().toLowerCase();
   const sameModel = (a: string, b: string) => {
@@ -200,8 +240,8 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     return aa === bb || aa.endsWith(`/${bb}`) || bb.endsWith(`/${aa}`);
   };
   const findLatestOpenCall = (model?: string): ParsedModelCall | null => {
-    for (let idx = order.length - 1; idx >= 0; idx -= 1) {
-      const call = calls.get(order[idx]);
+    for (let idx = calls.length - 1; idx >= 0; idx -= 1) {
+      const call = calls[idx];
       if (!call || call.done) {
         continue;
       }
@@ -236,7 +276,8 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     const startMatch = line.match(/req#(\d+) start model=([^\s]+)/);
     if (startMatch) {
       const reqNum = Number(startMatch[1]);
-      const id = `req-${startMatch[1]}`;
+      syntheticSeq += 1;
+      const id = `req-${reqNum}-${syntheticSeq}`;
       pushCall({
         id,
         reqNum,
@@ -252,19 +293,33 @@ function parseModelCalls(output: string): ParsedModelCall[] {
       /req#(\d+) done\s+(\d+)ms(?:\s+.*?usage\.in=(\d+))?(?:\s+.*?usage\.out=(\d+))?/,
     );
     if (doneMatch) {
-      const id = `req-${doneMatch[1]}`;
-      const existing = calls.get(id);
+      const reqNum = Number(doneMatch[1]);
+      const id = takeOpenReqId(reqNum);
+      const existing = getCall(id);
       if (existing) {
         const inputTokens =
           doneMatch[3] !== undefined ? Number(doneMatch[3]) : existing.inputTokens;
         const outputTokens =
           doneMatch[4] !== undefined ? Number(doneMatch[4]) : existing.outputTokens;
-        calls.set(id, {
-          ...existing,
+        updateCall(existing.id, {
           done: true,
           durationMs: Number(doneMatch[2]),
           inputTokens,
           outputTokens,
+        });
+        latestReqId = existing.id;
+      } else {
+        syntheticSeq += 1;
+        pushCall({
+          id: `req-${reqNum}-done-${syntheticSeq}`,
+          reqNum,
+          model: "unknown",
+          startedAtLine: i,
+          done: true,
+          durationMs: Number(doneMatch[2]),
+          inputTokens: doneMatch[3] !== undefined ? Number(doneMatch[3]) : undefined,
+          outputTokens: doneMatch[4] !== undefined ? Number(doneMatch[4]) : undefined,
+          source: "req",
         });
       }
       continue;
@@ -275,14 +330,13 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     );
     if (modelOutputMatch) {
       const model = modelOutputMatch[1];
-      const existing = findLatestOpenCall(model) ?? (latestReqId ? calls.get(latestReqId) : null);
+      const existing = findLatestOpenCall(model) ?? getCall(latestReqId);
       if (existing) {
         const inputTokens =
           modelOutputMatch[2] !== undefined ? Number(modelOutputMatch[2]) : existing.inputTokens;
         const outputTokens =
           modelOutputMatch[3] !== undefined ? Number(modelOutputMatch[3]) : existing.outputTokens;
-        calls.set(existing.id, {
-          ...existing,
+        updateCall(existing.id, {
           done: true,
           inputTokens,
           outputTokens,
@@ -308,11 +362,10 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     );
     if (timingWaitMatch) {
       const waitMs = Number(timingWaitMatch[1]);
-      if (latestReqId && calls.has(latestReqId)) {
-        const existing = calls.get(latestReqId);
+      if (latestReqId) {
+        const existing = getCall(latestReqId);
         if (existing && !existing.done) {
-          calls.set(latestReqId, {
-            ...existing,
+          updateCall(latestReqId, {
             waitMs,
           });
           continue;
@@ -332,13 +385,13 @@ function parseModelCalls(output: string): ParsedModelCall[] {
 
     const promptTookMatch = line.match(/activeSession\.prompt\(\)\s+took\s+(\d+)ms/i);
     if (promptTookMatch) {
-      const existing = latestReqId ? calls.get(latestReqId) : findLatestOpenCall();
+      const existing = getCall(latestReqId) ?? findLatestOpenCall();
       if (existing) {
-        calls.set(existing.id, {
-          ...existing,
+        updateCall(existing.id, {
           durationMs: Number(promptTookMatch[1]),
           done: true,
         });
+        latestReqId = existing.id;
       }
       continue;
     }
@@ -346,11 +399,10 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     const usageFallbackMatch = line.match(
       /model output:\s+[^\s]+\s+response=\d+\s+chars\s+input=(\d+)\s+output=(\d+)/,
     );
-    if (usageFallbackMatch && latestReqId && calls.has(latestReqId)) {
-      const existing = calls.get(latestReqId);
+    if (usageFallbackMatch && latestReqId) {
+      const existing = getCall(latestReqId);
       if (existing) {
-        calls.set(latestReqId, {
-          ...existing,
+        updateCall(latestReqId, {
           inputTokens: existing.inputTokens ?? Number(usageFallbackMatch[1]),
           outputTokens: existing.outputTokens ?? Number(usageFallbackMatch[2]),
         });
@@ -358,7 +410,7 @@ function parseModelCalls(output: string): ParsedModelCall[] {
     }
   }
 
-  return Array.from(calls.values()).toSorted((a, b) => a.startedAtLine - b.startedAtLine);
+  return calls.toSorted((a, b) => a.startedAtLine - b.startedAtLine);
 }
 
 function renderRunDetails(

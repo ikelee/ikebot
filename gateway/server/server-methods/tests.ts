@@ -49,7 +49,7 @@ type TestRunSnapshot = {
 };
 
 const TEST_RUN_TTL_MS = 24 * 60 * 60_000;
-const TEST_RUN_TAIL_CHARS = 12_000;
+const TEST_RUN_TAIL_CHARS = 250_000;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const TEST_DISCOVER_DEFAULT_LIMIT = 80;
 
@@ -381,6 +381,7 @@ async function runCommandStreaming(params: {
       ...process.env,
       OPENCLAW_TEST_LOCAL_ONLY: localOnly ? "1" : "0",
       OPENCLAW_TEST_MODEL_MODE: localOnly ? "local" : "cloud",
+      OPENCLAW_LOG_FULL_MODEL_IO: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
