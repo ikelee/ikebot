@@ -182,14 +182,62 @@ function parseModelCalls(output: string): ParsedModelCall[] {
   const lines = output.split(/\r?\n/);
   const calls = new Map<string, ParsedModelCall>();
   let latestReqId: string | null = null;
+  let syntheticSeq = 0;
+  const order: string[] = [];
+
+  const pushCall = (call: ParsedModelCall) => {
+    calls.set(call.id, call);
+    order.push(call.id);
+    latestReqId = call.id;
+  };
+  const normalizeModel = (value: string) => value.trim().toLowerCase();
+  const sameModel = (a: string, b: string) => {
+    const aa = normalizeModel(a);
+    const bb = normalizeModel(b);
+    if (!aa || !bb) {
+      return false;
+    }
+    return aa === bb || aa.endsWith(`/${bb}`) || bb.endsWith(`/${aa}`);
+  };
+  const findLatestOpenCall = (model?: string): ParsedModelCall | null => {
+    for (let idx = order.length - 1; idx >= 0; idx -= 1) {
+      const call = calls.get(order[idx]);
+      if (!call || call.done) {
+        continue;
+      }
+      if (!model || sameModel(call.model, model)) {
+        return call;
+      }
+    }
+    return null;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const modelInputMatch = line.match(/model input:\s+([^\s]+)/i);
+    if (modelInputMatch) {
+      const model = modelInputMatch[1];
+      const existing = findLatestOpenCall(model);
+      if (!existing) {
+        syntheticSeq += 1;
+        pushCall({
+          id: `model-${syntheticSeq}`,
+          model,
+          startedAtLine: i,
+          done: false,
+          source: "req",
+        });
+      } else {
+        latestReqId = existing.id;
+      }
+      continue;
+    }
+
     const startMatch = line.match(/req#(\d+) start model=([^\s]+)/);
     if (startMatch) {
       const reqNum = Number(startMatch[1]);
       const id = `req-${startMatch[1]}`;
-      calls.set(id, {
+      pushCall({
         id,
         reqNum,
         model: startMatch[2],
@@ -197,7 +245,6 @@ function parseModelCalls(output: string): ParsedModelCall[] {
         done: false,
         source: "req",
       });
-      latestReqId = id;
       continue;
     }
 
@@ -223,6 +270,39 @@ function parseModelCalls(output: string): ParsedModelCall[] {
       continue;
     }
 
+    const modelOutputMatch = line.match(
+      /model output:\s+([^\s]+).*?(?:\sinput=(\d+))?(?:\soutput=(\d+))?/i,
+    );
+    if (modelOutputMatch) {
+      const model = modelOutputMatch[1];
+      const existing = findLatestOpenCall(model) ?? (latestReqId ? calls.get(latestReqId) : null);
+      if (existing) {
+        const inputTokens =
+          modelOutputMatch[2] !== undefined ? Number(modelOutputMatch[2]) : existing.inputTokens;
+        const outputTokens =
+          modelOutputMatch[3] !== undefined ? Number(modelOutputMatch[3]) : existing.outputTokens;
+        calls.set(existing.id, {
+          ...existing,
+          done: true,
+          inputTokens,
+          outputTokens,
+        });
+        latestReqId = existing.id;
+      } else {
+        syntheticSeq += 1;
+        pushCall({
+          id: `model-${syntheticSeq}`,
+          model,
+          startedAtLine: i,
+          done: true,
+          inputTokens: modelOutputMatch[2] !== undefined ? Number(modelOutputMatch[2]) : undefined,
+          outputTokens: modelOutputMatch[3] !== undefined ? Number(modelOutputMatch[3]) : undefined,
+          source: "req",
+        });
+      }
+      continue;
+    }
+
     const timingWaitMatch = line.match(
       /activeSession\.prompt\(\)\s+still running after\s+(\d+)ms\s+provider=([^\s]+)\s+model=([^\s]+)/i,
     );
@@ -239,7 +319,7 @@ function parseModelCalls(output: string): ParsedModelCall[] {
         }
       }
       const syntheticId = `req-wait-${i}`;
-      calls.set(syntheticId, {
+      pushCall({
         id: syntheticId,
         model: `${timingWaitMatch[2]}/${timingWaitMatch[3]}`,
         startedAtLine: i,
@@ -247,7 +327,19 @@ function parseModelCalls(output: string): ParsedModelCall[] {
         done: false,
         source: "req",
       });
-      latestReqId = syntheticId;
+      continue;
+    }
+
+    const promptTookMatch = line.match(/activeSession\.prompt\(\)\s+took\s+(\d+)ms/i);
+    if (promptTookMatch) {
+      const existing = latestReqId ? calls.get(latestReqId) : findLatestOpenCall();
+      if (existing) {
+        calls.set(existing.id, {
+          ...existing,
+          durationMs: Number(promptTookMatch[1]),
+          done: true,
+        });
+      }
       continue;
     }
 
@@ -275,6 +367,8 @@ function renderRunDetails(
   selectedRunId: string | null,
   runHistory: TestSuiteRunResult[],
   onSelectRun: (runId: string) => void,
+  onRerunSuite: (suiteId: string) => void,
+  runBusy: boolean,
 ) {
   const outputRaw = [selectedRun?.stdoutTail ?? "", selectedRun?.stderrTail ?? ""]
     .filter(Boolean)
@@ -318,6 +412,15 @@ function renderRunDetails(
       ${
         selectedRun
           ? html`
+              <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                <button
+                  class="secondary"
+                  ?disabled=${runBusy}
+                  @click=${() => onRerunSuite(selectedRun.suiteId)}
+                >
+                  ${runBusy ? "Running..." : "Rerun"}
+                </button>
+              </div>
               <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
                 <div class="metric-card">
                   <div class="muted" style="font-size: 11px;">Run</div>
@@ -651,19 +754,26 @@ export function renderTestSuites(props: {
         </div>
         <button class="secondary" @click=${props.onRefresh} ?disabled=${props.loading}>Refresh</button>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-          <input
-            type="checkbox"
-            .checked=${props.localOnly}
-            @change=${(e: Event) => props.onLocalOnlyChange((e.target as HTMLInputElement).checked)}
-          />
-          <span>Local only</span>
-        </label>
-        <span class="muted" style="font-size: 12px;">
-          ${props.localOnly ? "Using local model config for test runs." : "Using cloud-integrated config (Codex where configured)."}
-        </span>
-      </div>
+      ${
+        props.viewTab === "overview"
+          ? html`
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input
+                    type="checkbox"
+                    .checked=${props.localOnly}
+                    @change=${(e: Event) =>
+                      props.onLocalOnlyChange((e.target as HTMLInputElement).checked)}
+                  />
+                  <span>Local only</span>
+                </label>
+                <span class="muted" style="font-size: 12px;">
+                  ${props.localOnly ? "Using local model config for test runs." : "Using cloud-integrated config (Codex where configured)."}
+                </span>
+              </div>
+            `
+          : null
+      }
 
       <div style="display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
         <button
@@ -693,6 +803,8 @@ export function renderTestSuites(props: {
               props.selectedRunId,
               props.runHistory,
               props.onSelectRun,
+              props.onRunSuite,
+              Boolean(props.busySuiteId),
             )
           : renderOverview(props.suites, {
               busySuiteId: props.busySuiteId,
