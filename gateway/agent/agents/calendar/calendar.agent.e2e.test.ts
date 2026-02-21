@@ -25,7 +25,9 @@ const TEST_USER = "calendar-agent-e2e-user";
 const CALENDAR_TEST_ACCOUNT =
   process.env.OPENCLAW_CALENDAR_TEST_ACCOUNT?.trim() || "ikebotai@gmail.com";
 const CALENDAR_TEST_ID = process.env.OPENCLAW_CALENDAR_TEST_ID?.trim() || CALENDAR_TEST_ACCOUNT;
-const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST === "1";
+// Live write tests default to ON for the sandbox calendar account.
+// Set OPENCLAW_CALENDAR_LIVE_WRITE_TEST=0 to disable.
+const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST !== "0";
 const AUTH_HOME =
   process.env.OPENCLAW_CALENDAR_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEMPLATES_DIR = path.join(
