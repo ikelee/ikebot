@@ -183,6 +183,8 @@ import {
   SessionsResolveParamsSchema,
   type SessionsUsageParams,
   SessionsUsageParamsSchema,
+  type TestsDiscoverParams,
+  TestsDiscoverParamsSchema,
   type TestsRunParams,
   TestsRunParamsSchema,
   type TestsSuitesParams,
@@ -314,6 +316,8 @@ export const validateSessionsCompactParams = ajv.compile<SessionsCompactParams>(
 export const validateSessionsUsageParams =
   ajv.compile<SessionsUsageParams>(SessionsUsageParamsSchema);
 export const validateTestsSuitesParams = ajv.compile<TestsSuitesParams>(TestsSuitesParamsSchema);
+export const validateTestsDiscoverParams =
+  ajv.compile<TestsDiscoverParams>(TestsDiscoverParamsSchema);
 export const validateTestsRunParams = ajv.compile<TestsRunParams>(TestsRunParamsSchema);
 export const validateTestsWaitParams = ajv.compile<TestsWaitParams>(TestsWaitParamsSchema);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
@@ -459,6 +463,7 @@ export {
   SessionsCompactParamsSchema,
   SessionsUsageParamsSchema,
   TestsSuitesParamsSchema,
+  TestsDiscoverParamsSchema,
   TestsRunParamsSchema,
   TestsWaitParamsSchema,
   ConfigGetParamsSchema,
@@ -608,6 +613,7 @@ export type {
   SessionsCompactParams,
   SessionsUsageParams,
   TestsSuitesParams,
+  TestsDiscoverParams,
   TestsRunParams,
   TestsWaitParams,
   CronJob,

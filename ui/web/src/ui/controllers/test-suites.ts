@@ -2,6 +2,9 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 import type {
   SessionsUsageEntry,
   SessionsUsageResult,
+  TestSuiteDiscoverResult,
+  TestSuiteEntry,
+  TestSuiteRunEvent,
   TestSuiteRunResult,
   TestSuiteUsageMetrics,
   TestSuitesResult,
@@ -15,11 +18,34 @@ type TestSuitesState = {
   testSuites: TestSuiteEntry[];
   testSuitesBusySuiteId: string | null;
   testSuitesActiveRunId: string | null;
+  testSuitesActiveRun: TestSuiteRunResult | null;
+  testSuitesRunHistory: TestSuiteRunResult[];
+  testSuitesSelectedRunId: string | null;
+  testSuitesRunEvents: TestSuiteRunEvent[];
+  testSuitesFileQueryBySuite: Record<string, string>;
+  testSuitesFilesBySuite: Record<string, string[]>;
+  testSuitesFilesLoadingBySuite: Record<string, boolean>;
+  testSuitesSelectedFilesBySuite: Record<string, string[]>;
+  testSuitesSingleFileBySuite: Record<string, string>;
+  testSuitesTestNameBySuite: Record<string, string>;
   testSuitesStatus: string | null;
 };
 
 const REMOTE_PROVIDER_HINTS = ["openai", "anthropic", "google", "gemini", "xai", "mistral"];
 const LOCAL_PROVIDER_HINTS = ["ollama", "llama.cpp", "llamacpp", "lmstudio", "local"];
+
+function addRunEvent(
+  state: TestSuitesState,
+  entry: Omit<TestSuiteRunEvent, "ts"> & { ts?: number },
+): void {
+  const next: TestSuiteRunEvent = {
+    ts: entry.ts ?? Date.now(),
+    runId: entry.runId,
+    level: entry.level,
+    message: entry.message,
+  };
+  state.testSuitesRunEvents = [...state.testSuitesRunEvents, next].slice(-200);
+}
 
 function providerKind(provider: string | undefined): "local" | "cloud" | "unknown" {
   if (!provider) {
@@ -198,7 +224,7 @@ function usageDelta(after: UsageSummary, before: UsageSummary): TestSuiteUsageMe
 }
 
 function mergeUpdatedRun(state: TestSuitesState, run: TestSuiteRunResult) {
-  const nextSuites = state.testSuites.map((suite) => {
+  state.testSuites = state.testSuites.map((suite) => {
     if (suite.id !== run.suiteId) {
       return suite;
     }
@@ -208,7 +234,14 @@ function mergeUpdatedRun(state: TestSuitesState, run: TestSuiteRunResult) {
       lastRun: run,
     };
   });
-  state.testSuites = nextSuites;
+
+  const without = state.testSuitesRunHistory.filter((entry) => entry.runId !== run.runId);
+  state.testSuitesRunHistory = [run, ...without].slice(0, 40);
+}
+
+function levelForSuiteId(state: TestSuitesState, suiteId: string): "unit" | "agent" | "e2e" {
+  const suite = state.testSuites.find((entry) => entry.id === suiteId);
+  return suite?.level ?? "unit";
 }
 
 export async function loadTestSuites(state: TestSuitesState) {
@@ -231,6 +264,61 @@ export async function loadTestSuites(state: TestSuitesState) {
   }
 }
 
+export async function discoverTestSuiteFiles(state: TestSuitesState, suiteId: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const suite = state.testSuites.find((entry) => entry.id === suiteId);
+  if (!suite) {
+    return;
+  }
+
+  state.testSuitesFilesLoadingBySuite = {
+    ...state.testSuitesFilesLoadingBySuite,
+    [suiteId]: true,
+  };
+
+  try {
+    const query = state.testSuitesFileQueryBySuite[suiteId]?.trim() ?? "";
+    const res = await state.client.request("tests.discover", {
+      level: suite.level,
+      query: query || undefined,
+      limit: 120,
+    });
+    const files = ((res as TestSuiteDiscoverResult | null)?.files ?? []).filter((entry) =>
+      typeof entry === "string" ? entry.trim().length > 0 : false,
+    );
+
+    state.testSuitesFilesBySuite = {
+      ...state.testSuitesFilesBySuite,
+      [suiteId]: files,
+    };
+  } catch (err) {
+    state.testSuitesError = `Failed to discover tests for ${suiteId}: ${String(err)}`;
+  } finally {
+    state.testSuitesFilesLoadingBySuite = {
+      ...state.testSuitesFilesLoadingBySuite,
+      [suiteId]: false,
+    };
+  }
+}
+
+export function toggleTestSuiteFileSelection(
+  state: TestSuitesState,
+  suiteId: string,
+  filePath: string,
+  enabled: boolean,
+) {
+  const current = state.testSuitesSelectedFilesBySuite[suiteId] ?? [];
+  const next = enabled
+    ? [...new Set([...current, filePath])]
+    : current.filter((f) => f !== filePath);
+  state.testSuitesSelectedFilesBySuite = {
+    ...state.testSuitesSelectedFilesBySuite,
+    [suiteId]: next,
+  };
+}
+
 export async function runTestSuite(state: TestSuitesState, suiteId: string) {
   if (!state.client || !state.connected) {
     return;
@@ -244,9 +332,14 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     return;
   }
 
+  const selectedFiles = state.testSuitesSelectedFilesBySuite[normalizedSuiteId] ?? [];
+  const singleFile = (state.testSuitesSingleFileBySuite[normalizedSuiteId] ?? "").trim();
+  const testName = (state.testSuitesTestNameBySuite[normalizedSuiteId] ?? "").trim();
+  const requestedFiles = singleFile ? [singleFile] : selectedFiles;
+
   state.testSuitesBusySuiteId = normalizedSuiteId;
   state.testSuitesError = null;
-  state.testSuitesStatus = `Running ${normalizedSuiteId}...`;
+  state.testSuitesStatus = `Preparing ${normalizedSuiteId}...`;
 
   const range = buildRange(14);
 
@@ -259,29 +352,66 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     });
     const usageBefore = usageBeforeRes as SessionsUsageResult;
 
+    state.testSuitesStatus = `Starting run for ${normalizedSuiteId}...`;
     const runRes = await state.client.request("tests.run", {
       suiteId: normalizedSuiteId,
       timeoutMs: 45 * 60_000,
+      files: requestedFiles.length > 0 ? requestedFiles : undefined,
+      testName: testName || undefined,
     });
+
     const runIdRaw = (runRes as { runId?: unknown } | null)?.runId;
     const runId = typeof runIdRaw === "string" ? runIdRaw.trim() : "";
     if (!runId) {
       throw new Error("tests.run did not return runId");
     }
+
+    const initialRun = (runRes as { run?: TestSuiteRunResult } | null)?.run ?? null;
+    if (initialRun) {
+      state.testSuitesActiveRun = initialRun;
+      state.testSuitesSelectedRunId = runId;
+      mergeUpdatedRun(state, initialRun);
+    }
+
     state.testSuitesActiveRunId = runId;
 
-    let snapshot: TestSuiteRunResult | null = null;
+    const level = levelForSuiteId(state, normalizedSuiteId);
+    const scopeLabel =
+      requestedFiles.length > 0
+        ? `${requestedFiles.length} file${requestedFiles.length > 1 ? "s" : ""}`
+        : `full ${level} suite`;
+
+    addRunEvent(state, {
+      runId,
+      level: "info",
+      message: `Started ${normalizedSuiteId} (${scopeLabel}${testName ? `, test name filter: ${testName}` : ""}).`,
+    });
+
+    let snapshot: TestSuiteRunResult | null = initialRun;
     for (;;) {
-      const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_500 });
+      const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_000 });
       const run = (waitRes as { run?: TestSuiteRunResult } | null)?.run;
       if (!run) {
         throw new Error(`tests.wait returned no run payload for ${runId}`);
       }
       snapshot = run;
+      state.testSuitesActiveRun = run;
+      state.testSuitesSelectedRunId = runId;
+      mergeUpdatedRun(state, run);
+
+      const elapsedMs = Math.max(0, Date.now() - (run.startedAt ?? Date.now()));
+      state.testSuitesStatus = `Running ${normalizedSuiteId}... ${Math.round(elapsedMs / 1000)}s elapsed`;
+
       if (run.status !== "running") {
         break;
       }
     }
+
+    if (!snapshot) {
+      throw new Error(`run snapshot missing for ${runId}`);
+    }
+
+    state.testSuitesStatus = `Computing usage metrics for ${normalizedSuiteId}...`;
 
     const usageAfterRes = await state.client.request("sessions.usage", {
       startDate: range.startDate,
@@ -291,22 +421,39 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     });
     const usageAfter = usageAfterRes as SessionsUsageResult;
 
-    const startedAt = snapshot?.startedAt ?? Date.now();
-    const endedAt = snapshot?.endedAt ?? Date.now();
+    const startedAt = snapshot.startedAt ?? Date.now();
+    const endedAt = snapshot.endedAt ?? Date.now();
     const windowMetrics = summarizeSessionsInWindow(usageAfter.sessions ?? [], startedAt, endedAt);
     const metrics =
       windowMetrics ?? usageDelta(summarizeUsage(usageAfter), summarizeUsage(usageBefore));
 
     const enriched: TestSuiteRunResult = { ...snapshot, metrics };
 
+    state.testSuitesActiveRun = enriched;
+    state.testSuitesSelectedRunId = runId;
     mergeUpdatedRun(state, enriched);
 
     const suiteName =
       state.testSuites.find((entry) => entry.id === normalizedSuiteId)?.name ?? normalizedSuiteId;
-    state.testSuitesStatus = `${suiteName}: ${enriched.status.toUpperCase()} (${Math.round((enriched.durationMs ?? 0) / 1000)}s)`;
+
+    const status = enriched.status.toUpperCase();
+    state.testSuitesStatus = `${suiteName}: ${status} (${Math.round((enriched.durationMs ?? 0) / 1000)}s)`;
+
+    addRunEvent(state, {
+      runId,
+      level: enriched.status === "ok" ? "ok" : "error",
+      message: `${suiteName} finished with ${status}. Duration ${Math.round((enriched.durationMs ?? 0) / 1000)}s.`,
+    });
   } catch (err) {
     state.testSuitesError = String(err);
     state.testSuitesStatus = null;
+    if (state.testSuitesActiveRunId) {
+      addRunEvent(state, {
+        runId: state.testSuitesActiveRunId,
+        level: "error",
+        message: `Run failed: ${String(err)}`,
+      });
+    }
   } finally {
     state.testSuitesBusySuiteId = null;
     state.testSuitesActiveRunId = null;

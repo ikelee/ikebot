@@ -9,6 +9,7 @@ const BASE_METHODS = [
   "usage.status",
   "usage.cost",
   "tests.suites",
+  "tests.discover",
   "tests.run",
   "tests.wait",
   "tts.status",

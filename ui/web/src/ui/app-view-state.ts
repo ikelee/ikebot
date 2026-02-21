@@ -198,6 +198,16 @@ export type AppViewState = {
   testSuites: TestSuiteEntry[];
   testSuitesBusySuiteId: string | null;
   testSuitesActiveRunId: string | null;
+  testSuitesActiveRun: import("./types.js").TestSuiteRunResult | null;
+  testSuitesRunHistory: import("./types.js").TestSuiteRunResult[];
+  testSuitesSelectedRunId: string | null;
+  testSuitesRunEvents: import("./types.js").TestSuiteRunEvent[];
+  testSuitesFileQueryBySuite: Record<string, string>;
+  testSuitesFilesBySuite: Record<string, string[]>;
+  testSuitesFilesLoadingBySuite: Record<string, boolean>;
+  testSuitesSelectedFilesBySuite: Record<string, string[]>;
+  testSuitesSingleFileBySuite: Record<string, string>;
+  testSuitesTestNameBySuite: Record<string, string>;
   testSuitesStatus: string | null;
   cronLoading: boolean;
   cronJobs: CronJob[];

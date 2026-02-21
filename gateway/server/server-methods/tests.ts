@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { access, readdir } from "node:fs/promises";
+import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
@@ -6,6 +8,7 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateTestsDiscoverParams,
   validateTestsRunParams,
   validateTestsSuitesParams,
   validateTestsWaitParams,
@@ -32,6 +35,8 @@ type TestRunSnapshot = {
   durationMs?: number;
   command: string[];
   cwd: string;
+  requestedFiles?: string[];
+  testName?: string;
   exitCode?: number | null;
   signal?: string | null;
   stdoutTail?: string;
@@ -43,6 +48,7 @@ type TestRunSnapshot = {
 const TEST_RUN_TTL_MS = 24 * 60 * 60_000;
 const TEST_RUN_TAIL_CHARS = 12_000;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
+const TEST_DISCOVER_DEFAULT_LIMIT = 80;
 
 const TEST_SUITES: readonly TestSuiteDefinition[] = [
   {
@@ -177,6 +183,120 @@ function toSuitePayload(suite: TestSuiteDefinition) {
   };
 }
 
+function shouldIncludeFileByLevel(file: string, level: SuiteLevel): boolean {
+  const normalized = file.replace(/\\/g, "/");
+  const isE2e = normalized.endsWith(".e2e.test.ts");
+  const isTest = normalized.endsWith(".test.ts") || isE2e;
+  if (!isTest) {
+    return false;
+  }
+  if (normalized.includes("/node_modules/")) {
+    return false;
+  }
+  if (level === "unit") {
+    return !isE2e;
+  }
+  if (level === "agent") {
+    return normalized.startsWith("gateway/agent/agents/");
+  }
+  return normalized.startsWith("gateway/agent/e2e/");
+}
+
+async function collectFilesRecursively(dir: string, out: string[]) {
+  let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) {
+        continue;
+      }
+      await collectFilesRecursively(fullPath, out);
+      continue;
+    }
+    if (entry.isFile()) {
+      out.push(fullPath);
+    }
+  }
+}
+
+async function discoverSuiteFiles(params: {
+  root: string;
+  level: SuiteLevel;
+  query?: string;
+  limit?: number;
+}): Promise<string[]> {
+  const filesAbs: string[] = [];
+  const { root, level } = params;
+
+  if (level === "unit") {
+    await collectFilesRecursively(root, filesAbs);
+  } else if (level === "agent") {
+    await collectFilesRecursively(path.join(root, "gateway", "agent", "agents"), filesAbs);
+  } else {
+    await collectFilesRecursively(path.join(root, "gateway", "agent", "e2e"), filesAbs);
+  }
+
+  const query = params.query?.trim().toLowerCase() ?? "";
+  const limit = Math.max(1, Math.min(params.limit ?? TEST_DISCOVER_DEFAULT_LIMIT, 200));
+
+  const normalized = filesAbs
+    .map((fullPath) => path.relative(root, fullPath).replace(/\\/g, "/"))
+    .filter((relPath) => shouldIncludeFileByLevel(relPath, level))
+    .filter((relPath) => (query ? relPath.toLowerCase().includes(query) : true))
+    .toSorted((a, b) => a.localeCompare(b));
+
+  return normalized.slice(0, limit);
+}
+
+async function resolveRequestedFiles(params: {
+  root: string;
+  level: SuiteLevel;
+  rawFiles: unknown;
+}): Promise<{ files: string[] } | { error: string }> {
+  if (!Array.isArray(params.rawFiles) || params.rawFiles.length === 0) {
+    return { files: [] };
+  }
+
+  const files: string[] = [];
+  for (const raw of params.rawFiles) {
+    if (typeof raw !== "string") {
+      return { error: "files entries must be strings" };
+    }
+    const trimmed = raw.trim().replace(/\\/g, "/");
+    if (!trimmed) {
+      continue;
+    }
+    if (trimmed.startsWith("/") || trimmed.startsWith("../") || trimmed.includes("/../")) {
+      return { error: `invalid file path: ${trimmed}` };
+    }
+    if (!shouldIncludeFileByLevel(trimmed, params.level)) {
+      return { error: `file not allowed for suite level ${params.level}: ${trimmed}` };
+    }
+
+    const fullPath = path.resolve(params.root, trimmed);
+    const relative = path.relative(params.root, fullPath).replace(/\\/g, "/");
+    if (relative.startsWith("../") || relative === "..") {
+      return { error: `file is outside repo root: ${trimmed}` };
+    }
+
+    try {
+      await access(fullPath);
+    } catch {
+      return { error: `file does not exist: ${trimmed}` };
+    }
+
+    files.push(relative);
+  }
+
+  return { files: Array.from(new Set(files)).slice(0, 50) };
+}
+
 export const testsHandlers: GatewayRequestHandlers = {
   "tests.suites": async ({ respond, params }) => {
     if (!validateTestsSuitesParams(params)) {
@@ -199,6 +319,37 @@ export const testsHandlers: GatewayRequestHandlers = {
       },
       undefined,
     );
+  },
+
+  "tests.discover": async ({ respond, params }) => {
+    if (!validateTestsDiscoverParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid tests.discover params: ${formatValidationErrors(validateTestsDiscoverParams.errors)}`,
+        ),
+      );
+      return;
+    }
+
+    const levelRaw = (params as { level?: unknown }).level;
+    const level =
+      levelRaw === "unit" || levelRaw === "agent" || levelRaw === "e2e"
+        ? levelRaw
+        : ("unit" as const);
+    const queryRaw = (params as { query?: unknown }).query;
+    const query = typeof queryRaw === "string" ? queryRaw.trim() : "";
+    const limitRaw = (params as { limit?: unknown }).limit;
+    const limit =
+      typeof limitRaw === "number" && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.min(Math.floor(limitRaw), 200))
+        : TEST_DISCOVER_DEFAULT_LIMIT;
+
+    const root = await resolveRepoRoot();
+    const files = await discoverSuiteFiles({ root, level, query, limit });
+    respond(true, { level, files }, undefined);
   },
 
   "tests.run": async ({ respond, params }) => {
@@ -232,24 +383,47 @@ export const testsHandlers: GatewayRequestHandlers = {
         ? Math.max(1_000, Math.floor(timeoutMsRaw))
         : DEFAULT_TEST_TIMEOUT_MS;
 
+    const root = await resolveRepoRoot();
+    const filesResolved = await resolveRequestedFiles({
+      root,
+      level: suite.level,
+      rawFiles: (params as { files?: unknown }).files,
+    });
+    if ("error" in filesResolved) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, filesResolved.error));
+      return;
+    }
+
+    const testNameRaw = (params as { testName?: unknown }).testName;
+    const testName = typeof testNameRaw === "string" ? testNameRaw.trim() : "";
+
+    const command = [...suite.command];
+    if (testName) {
+      command.push("-t", testName);
+    }
+    if (filesResolved.files.length > 0) {
+      command.push(...filesResolved.files);
+    }
+
     const runId = randomUUID();
     const startedAt = Date.now();
-    const cwd = await resolveRepoRoot();
     const initial: TestRunSnapshot = {
       runId,
       suiteId: suite.id,
       status: "running",
       startedAt,
-      command: suite.command,
-      cwd,
+      command,
+      cwd: root,
+      requestedFiles: filesResolved.files,
+      testName: testName || undefined,
       ts: startedAt,
     };
     runById.set(runId, initial);
 
     void (async () => {
       try {
-        const result = await runCommandWithTimeout(suite.command, {
-          cwd,
+        const result = await runCommandWithTimeout(command, {
+          cwd: root,
           timeoutMs,
         });
         const endedAt = Date.now();

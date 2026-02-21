@@ -61,7 +61,12 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
-import { loadTestSuites, runTestSuite } from "./controllers/test-suites.ts";
+import {
+  discoverTestSuiteFiles,
+  loadTestSuites,
+  runTestSuite,
+  toggleTestSuiteFileSelection,
+} from "./controllers/test-suites.ts";
 import { loadUsage, loadSessionTimeSeries, loadSessionLogs } from "./controllers/usage.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
@@ -620,9 +625,48 @@ export function renderApp(state: AppViewState) {
                 suites: state.testSuites,
                 busySuiteId: state.testSuitesBusySuiteId,
                 activeRunId: state.testSuitesActiveRunId,
+                activeRun: state.testSuitesActiveRun,
+                runHistory: state.testSuitesRunHistory,
+                selectedRunId: state.testSuitesSelectedRunId,
+                runEvents: state.testSuitesRunEvents,
+                fileQueryBySuite: state.testSuitesFileQueryBySuite,
+                filesBySuite: state.testSuitesFilesBySuite,
+                filesLoadingBySuite: state.testSuitesFilesLoadingBySuite,
+                selectedFilesBySuite: state.testSuitesSelectedFilesBySuite,
+                singleFileBySuite: state.testSuitesSingleFileBySuite,
+                testNameBySuite: state.testSuitesTestNameBySuite,
                 status: state.testSuitesStatus,
                 onRefresh: () => loadTestSuites(state),
-                onRunSuite: (suiteId) => runTestSuite(state, suiteId),
+                onSelectRun: (runId) => {
+                  state.testSuitesSelectedRunId = runId;
+                },
+                onFileQueryChange: (suiteId, value) => {
+                  state.testSuitesFileQueryBySuite = {
+                    ...state.testSuitesFileQueryBySuite,
+                    [suiteId]: value,
+                  };
+                },
+                onDiscoverFiles: (suiteId) => {
+                  void discoverTestSuiteFiles(state, suiteId);
+                },
+                onToggleFileSelection: (suiteId, file, enabled) => {
+                  toggleTestSuiteFileSelection(state, suiteId, file, enabled);
+                },
+                onSingleFileChange: (suiteId, value) => {
+                  state.testSuitesSingleFileBySuite = {
+                    ...state.testSuitesSingleFileBySuite,
+                    [suiteId]: value,
+                  };
+                },
+                onTestNameChange: (suiteId, value) => {
+                  state.testSuitesTestNameBySuite = {
+                    ...state.testSuitesTestNameBySuite,
+                    [suiteId]: value,
+                  };
+                },
+                onRunSuite: (suiteId) => {
+                  void runTestSuite(state, suiteId);
+                },
               })
             : nothing
         }

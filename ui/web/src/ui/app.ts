@@ -297,6 +297,16 @@ export class OpenClawApp extends LitElement {
   @state() testSuites: import("./types.js").TestSuiteEntry[] = [];
   @state() testSuitesBusySuiteId: string | null = null;
   @state() testSuitesActiveRunId: string | null = null;
+  @state() testSuitesActiveRun: import("./types.js").TestSuiteRunResult | null = null;
+  @state() testSuitesRunHistory: import("./types.js").TestSuiteRunResult[] = [];
+  @state() testSuitesSelectedRunId: string | null = null;
+  @state() testSuitesRunEvents: import("./types.js").TestSuiteRunEvent[] = [];
+  @state() testSuitesFileQueryBySuite: Record<string, string> = {};
+  @state() testSuitesFilesBySuite: Record<string, string[]> = {};
+  @state() testSuitesFilesLoadingBySuite: Record<string, boolean> = {};
+  @state() testSuitesSelectedFilesBySuite: Record<string, string[]> = {};
+  @state() testSuitesSingleFileBySuite: Record<string, string> = {};
+  @state() testSuitesTestNameBySuite: Record<string, string> = {};
   @state() testSuitesStatus: string | null = null;
 
   // Non-reactive (don’t trigger renders just for timer bookkeeping).

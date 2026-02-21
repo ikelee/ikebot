@@ -676,6 +676,8 @@ export type TestSuiteRunResult = {
   durationMs?: number;
   command: string[];
   cwd: string;
+  requestedFiles?: string[];
+  testName?: string;
   exitCode?: number | null;
   signal?: string | null;
   stdoutTail?: string;
@@ -697,6 +699,18 @@ export type TestSuiteEntry = {
 
 export type TestSuitesResult = {
   suites: TestSuiteEntry[];
+};
+
+export type TestSuiteDiscoverResult = {
+  level: TestSuiteLevel;
+  files: string[];
+};
+
+export type TestSuiteRunEvent = {
+  ts: number;
+  runId: string;
+  level: "info" | "ok" | "error";
+  message: string;
 };
 
 export type CronSchedule =
