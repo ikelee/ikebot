@@ -163,7 +163,7 @@ function selectActiveTestSessions(
 ): SessionsUsageEntry[] {
   const windowStart = startedAt - 5_000;
   const windowEnd = endedAt + 15_000;
-  return sessions.filter((session) => {
+  const inWindow = sessions.filter((session) => {
     const usage = session.usage;
     if (!usage) {
       return false;
@@ -177,6 +177,36 @@ function selectActiveTestSessions(
       key.includes(":testing") || key.includes(":test") || session.runKind === "test";
     return likelyTest && ts >= windowStart && ts <= windowEnd;
   });
+  if (inWindow.length > 0) {
+    return inWindow;
+  }
+
+  // Fallback: some test flows don't tag session keys with ":test" or runKind=test.
+  const broadWindow = sessions
+    .filter((session) => {
+      const usage = session.usage;
+      if (!usage) {
+        return false;
+      }
+      const ts = usage.lastActivity ?? usage.firstActivity ?? session.updatedAt ?? 0;
+      if (!ts) {
+        return false;
+      }
+      return ts >= windowStart && ts <= windowEnd;
+    })
+    .toSorted((a, b) => {
+      const ta = a.usage?.lastActivity ?? a.usage?.firstActivity ?? a.updatedAt ?? 0;
+      const tb = b.usage?.lastActivity ?? b.usage?.firstActivity ?? b.updatedAt ?? 0;
+      return tb - ta;
+    });
+  if (broadWindow.length === 0) {
+    return [];
+  }
+
+  const withModelUsage = broadWindow.filter(
+    (session) => (session.usage?.modelUsage?.length ?? 0) > 0,
+  );
+  return (withModelUsage.length > 0 ? withModelUsage : broadWindow).slice(0, 12);
 }
 
 type SessionUsageLogEntry = {
@@ -497,6 +527,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     });
 
     let snapshot: TestSuiteRunResult | null = initialRun;
+    let lastProgressEventAt = 0;
     for (;;) {
       const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_000 });
       const run = (waitRes as { run?: TestSuiteRunResult } | null)?.run;
@@ -510,6 +541,16 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
 
       const elapsedMs = Math.max(0, Date.now() - (run.startedAt ?? Date.now()));
       state.testSuitesStatus = `Running ${normalizedSuiteId}... ${Math.round(elapsedMs / 1000)}s elapsed`;
+      const now = Date.now();
+      if (now - lastProgressEventAt >= 2_000) {
+        addRunEvent(state, {
+          runId,
+          level: "info",
+          message: `Running… ${Math.round(elapsedMs / 1000)}s elapsed.`,
+          ts: now,
+        });
+        lastProgressEventAt = now;
+      }
 
       if (run.status !== "running") {
         break;
