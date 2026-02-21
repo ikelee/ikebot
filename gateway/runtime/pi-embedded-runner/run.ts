@@ -959,7 +959,7 @@ export async function runEmbeddedPiAgent(
                 : "usage=(missing)";
               log.warn(
                 `[cloud-empty-turn] provider=${provider}/${modelId} ${usageDiag} ` +
-                  `${summarizeAssistantTurn(lastAssistant)}`,
+                  summarizeAssistantTurn(lastAssistant),
               );
             }
             if (emptyNoopRetries < 1) {
