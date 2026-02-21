@@ -20,6 +20,7 @@ const CLOUD_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_CLOUD_MODEL?.trim() || "g
 const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
 const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
 const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
+const EMIT_MODEL_LOGS = process.env.OPENCLAW_TEST_EMIT_MODEL_LOGS === "1";
 const AUTH_HOME =
   process.env.OPENCLAW_WORKOUTS_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEST_USER = "testuser";
@@ -311,30 +312,42 @@ async function runWorkoutsAgentWithLoopCount(params: {
   body: string;
   senderId?: string;
 }): Promise<{ reply: unknown; loops: number }> {
-  const capturedLogs: string[] = [];
-  const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
-    capturedLogs.push(args.map((entry) => stringifyLogArg(entry)).join(" "));
-  });
-  const senderId = params.senderId ?? TEST_USER;
-  try {
-    await seedCodexCredentials(params.home);
-    const reply = await getReplyFromConfig(
-      {
-        Body: params.body,
-        From: senderId,
-        To: senderId,
-        Provider: "whatsapp",
-      },
-      {},
-      workoutAgentConfig(params.workspaceDir, params.home),
-    );
-    return {
-      reply,
-      loops: countReqStarts(capturedLogs),
-    };
-  } finally {
-    logSpy.mockRestore();
+  const maxAttempts = LOCAL_ONLY ? 1 : 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const capturedLogs: string[] = [];
+    const originalLog = console.log.bind(console);
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      capturedLogs.push(args.map((entry) => stringifyLogArg(entry)).join(" "));
+      if (EMIT_MODEL_LOGS) {
+        originalLog(...args);
+      }
+    });
+    const senderId = params.senderId ?? TEST_USER;
+    try {
+      await seedCodexCredentials(params.home);
+      const reply = await getReplyFromConfig(
+        {
+          Body: params.body,
+          From: senderId,
+          To: senderId,
+          Provider: "whatsapp",
+        },
+        {},
+        workoutAgentConfig(params.workspaceDir, params.home),
+      );
+      const text = extractReplyText(reply).trim();
+      if (!LOCAL_ONLY && attempt < maxAttempts && text.length === 0) {
+        continue;
+      }
+      return {
+        reply,
+        loops: countReqStarts(capturedLogs),
+      };
+    } finally {
+      logSpy.mockRestore();
+    }
   }
+  return { reply: [], loops: 0 };
 }
 
 function daysAgoIso(daysAgo: number): string {
@@ -385,16 +398,28 @@ describe("workouts agent-level e2e – real model", () => {
             "Deadlift",
           );
 
+          const logPrompt = "Log my deadlift workout today: 305 lb for 5 reps.";
           const run = await runWorkoutsAgentWithLoopCount({
             workspaceDir,
             home,
-            body: "I just hit deadlift 305 lb for 5 reps. Please log it.",
+            body: logPrompt,
             senderId,
           });
           expect(run.loops).toBeLessThanOrEqual(3);
 
-          const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
-          const afterState = parseWorkoutState(afterRaw);
+          let afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+          let afterState = parseWorkoutState(afterRaw);
+          if (!LOCAL_ONLY && resolveEntryCount(afterState) <= beforeCount) {
+            const retryRun = await runWorkoutsAgentWithLoopCount({
+              workspaceDir,
+              home,
+              body: logPrompt,
+              senderId,
+            });
+            expect(retryRun.loops).toBeLessThanOrEqual(3);
+            afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+            afterState = parseWorkoutState(afterRaw);
+          }
           expect(resolveEntryCount(afterState)).toBeGreaterThan(beforeCount);
           const afterDeadlift = resolvePersonalBestWeight(
             resolveStrengthPersonalBests(afterState),

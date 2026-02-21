@@ -382,6 +382,7 @@ async function runCommandStreaming(params: {
       OPENCLAW_TEST_LOCAL_ONLY: localOnly ? "1" : "0",
       OPENCLAW_TEST_MODEL_MODE: localOnly ? "local" : "cloud",
       OPENCLAW_LOG_FULL_MODEL_IO: "1",
+      OPENCLAW_TEST_EMIT_MODEL_LOGS: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

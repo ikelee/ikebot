@@ -28,6 +28,7 @@ const CALENDAR_TEST_ID = process.env.OPENCLAW_CALENDAR_TEST_ID?.trim() || CALEND
 // Live write tests default to ON for the sandbox calendar account.
 // Set OPENCLAW_CALENDAR_LIVE_WRITE_TEST=0 to disable.
 const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST !== "0";
+const EMIT_MODEL_LOGS = process.env.OPENCLAW_TEST_EMIT_MODEL_LOGS === "1";
 const AUTH_HOME =
   process.env.OPENCLAW_CALENDAR_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEMPLATES_DIR = path.join(
@@ -317,8 +318,12 @@ async function runCalendarAgentWithLoopCount(params: {
   cfg: ReturnType<typeof calendarAgentConfig>;
 }): Promise<{ reply: unknown; loops: number }> {
   const capturedLogs: string[] = [];
+  const originalLog = console.log.bind(console);
   const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     capturedLogs.push(args.map((entry) => stringifyLogArg(entry)).join(" "));
+    if (EMIT_MODEL_LOGS) {
+      originalLog(...args);
+    }
   });
   try {
     const reply = await getReplyFromConfig(
