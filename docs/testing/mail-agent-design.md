@@ -6,6 +6,11 @@
 2. Send morning and night email digests automatically.
 3. Support fast "find me X" retrieval (ticket, receipt, flight, invoice, etc.) from indexed email data.
 
+Scale target:
+
+- 58k+ emails in storage.
+- Attachments include PDFs/images/docs that require extraction.
+
 ## Existing Building Blocks We Already Have
 
 - Gmail ingress watcher:
@@ -44,6 +49,11 @@ Why this split:
 - Deterministic ingest means no data loss if model is slow/fails.
 - LLM only enriches records, not responsible for core storage correctness.
 
+At-scale requirement:
+
+- Ingestion must be idempotent and resumable by `historyId` checkpoint.
+- Never block ingest on enrichment.
+
 ## 2) Storage Model (Agent Workspace)
 
 Keep existing files, add event + index files.
@@ -70,10 +80,19 @@ New:
 - `mail-digests.jsonl`
   - Digest history (morning/night windows, message IDs included, summary text, sent channel).
 
+For 58k+ scale, migrate from flat JSON index to memory backend:
+
+- Use `gateway/infra/memory` search manager (`qmd` preferred, builtin fallback).
+- Keep `mail-events.jsonl` as audit/source-of-truth event log.
+- Store searchable email/attachment text as memory documents/chunks.
+- Keep lightweight operational state in JSON:
+  - `mail-checkpoint.json` (`lastHistoryId`, ingest watermark)
+  - `mail-jobs.json` (pending/completed enrichment tasks)
+
 Design principle:
 
 - `mail-events.jsonl` is source of truth.
-- `mail-index.json` is rebuildable from events.
+- Search index is rebuildable from events + extracted text/entities.
 
 ## 3) Query/Retrieval Path
 
@@ -87,6 +106,13 @@ When user asks "find my X":
 Loop target:
 
 - Typical retrieval should be <=2 model calls and <=1 tool call.
+
+Large-mailbox optimization:
+
+- Two-stage retrieval:
+  - Stage A: deterministic filters (sender/date/subject/entity).
+  - Stage B: semantic retrieval only on narrowed candidates.
+- Keep result caps strict (top-k) to avoid prompt bloat.
 
 ## 4) Digest Scheduling
 
@@ -158,6 +184,15 @@ Use this to answer natural requests quickly:
 - "that Amazon receipt"
 - "Francis flight number"
 
+Attachment/multimodal extraction:
+
+- PDFs: text extraction first, image render fallback for scanned docs.
+- Images/receipts/tickets: OCR + entity extraction job writes normalized entities.
+- Persist extracted text/entities linked by:
+  - `messageId`
+  - `attachmentId`
+  - `contentHash` (dedupe).
+
 ## 8) Testing Plan
 
 Unit tests:
@@ -177,6 +212,7 @@ E2E tests:
 
 - `/hooks/gmail` payload ingested -> index updated -> query answer returns from index
 - morning/night cron run emits digest and records entry in `mail-digests.jsonl`
+- large dataset replay test (tens of thousands synthetic records) validating latency + correctness.
 
 Live tests (opt-in):
 
@@ -201,10 +237,24 @@ Phase 3:
 
 Phase 4:
 
-- Add optional vector/hybrid retrieval if mailbox size grows beyond simple JSON index performance.
+- Add advanced reranking and stricter budget controls for very large stores.
 
 ## 10) Assumptions
 
 - Primary initial target is one Gmail account per mail agent workspace.
 - Cross-account retrieval can be added by namespacing indexes per account.
 - Accuracy first: never claim an email exists unless found in index or fresh `gog` query.
+
+## 11) Operational Constraints for 58k+
+
+- Indexing mode:
+  - Incremental updates continuously.
+  - Backfills run in bounded batches with resume checkpoints.
+- Re-index strategy:
+  - Nightly low-priority compaction/rebuild windows.
+  - Never block user queries on rebuild.
+- Storage lifecycle:
+  - Keep metadata long-term.
+  - Tier/prune raw attachment blobs by policy after extraction.
+- Safety:
+  - User-facing answers include evidence fields (sender/subject/date) for high-stakes lookups.
