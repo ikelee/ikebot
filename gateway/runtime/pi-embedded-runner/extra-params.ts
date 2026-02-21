@@ -76,21 +76,32 @@ function createStreamFnWithExtraParams(
   }
 
   const streamParams: CacheRetentionStreamOptions = {};
+  const droppedParams: string[] = [];
   if (
     isStreamParamAllowed({ provider, modelId, param: "temperature" }) &&
     typeof extraParams.temperature === "number"
   ) {
     streamParams.temperature = extraParams.temperature;
+  } else if (typeof extraParams.temperature === "number") {
+    droppedParams.push("temperature");
   }
   if (
     isStreamParamAllowed({ provider, modelId, param: "maxTokens" }) &&
     typeof extraParams.maxTokens === "number"
   ) {
     streamParams.maxTokens = extraParams.maxTokens;
+  } else if (typeof extraParams.maxTokens === "number") {
+    droppedParams.push("maxTokens");
   }
   const cacheRetention = resolveCacheRetention(extraParams, provider);
   if (cacheRetention) {
     streamParams.cacheRetention = cacheRetention;
+  }
+
+  if (droppedParams.length > 0) {
+    log.warn(
+      `[stream-params-policy] dropped unsupported params for ${provider}/${modelId}: ${droppedParams.join(", ")}`,
+    );
   }
 
   if (Object.keys(streamParams).length === 0) {
