@@ -1878,6 +1878,9 @@ function renderSessionDetailPanel(
             selectedDays,
           )}
         </div>
+        <div class="session-detail-row">
+          ${renderRoutingTimeline(sessionLogs)}
+        </div>
         <div class="session-detail-bottom">
           ${renderSessionLogsCompact(
             sessionLogs,
@@ -1893,6 +1896,89 @@ function renderSessionDetailPanel(
           )}
           ${renderContextPanel(session.contextWeight, usage, contextExpanded, onToggleContextExpanded)}
         </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRoutingTimeline(logs: SessionLogEntry[] | null) {
+  if (!logs || logs.length === 0) {
+    return html`
+      <div class="card" style="padding: 12px">
+        <div class="card-title" style="font-size: 13px">Model Routing Timeline (POC)</div>
+        <div class="muted" style="margin-top: 8px">No session logs available.</div>
+      </div>
+    `;
+  }
+
+  const sorted = [...logs].toSorted((a, b) => a.timestamp - b.timestamp);
+  const actorFor = (entry: SessionLogEntry): string => {
+    if (entry.role === "user") {
+      return "user";
+    }
+    if (entry.role === "assistant") {
+      if (entry.provider || entry.model) {
+        return `${entry.provider ?? "model"}${entry.model ? `/${entry.model}` : ""}`;
+      }
+      return "assistant-model";
+    }
+    if (entry.toolName?.trim()) {
+      return `tool:${entry.toolName.trim()}`;
+    }
+    return entry.role === "tool" ? "tool" : "tool-result";
+  };
+
+  const lanes = Array.from(new Set(sorted.map((entry) => actorFor(entry))));
+  const laneIndex = new Map(lanes.map((lane, index) => [lane, index]));
+  let previousTs: number | null = null;
+  const points = sorted.map((entry) => {
+    const actor = actorFor(entry);
+    const elapsedMs = previousTs != null && entry.timestamp > 0 ? entry.timestamp - previousTs : 0;
+    previousTs = entry.timestamp > 0 ? entry.timestamp : previousTs;
+    return { entry, actor, lane: laneIndex.get(actor) ?? 0, elapsedMs };
+  });
+
+  const rows = points.slice(-40);
+  return html`
+    <div class="card" style="padding: 12px;">
+      <div class="card-title" style="font-size: 13px;">Model Routing Timeline (POC)</div>
+      <div class="muted" style="margin-top: 4px; font-size: 12px;">
+        Sequence-style view of user/model/tool hops with per-hop timing and payload stats.
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+        ${lanes.map((lane, index) => html`<span class="chip">L${index + 1}: ${lane}</span>`)}
+      </div>
+      <div style="display: grid; gap: 6px; margin-top: 10px;">
+        ${rows.map(({ entry, actor, lane, elapsedMs }, index) => {
+          const next = rows[index + 1];
+          const transition = next ? `${actor} -> ${next.actor}` : `${actor} -> end`;
+          const payloadMeta = [
+            entry.tokens != null ? `${formatTokens(entry.tokens)} tok` : "",
+            entry.cost != null ? formatCost(entry.cost) : "",
+            entry.durationMs != null
+              ? formatDurationCompact(entry.durationMs, { spaced: true })
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return html`
+            <div
+              style="display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px;"
+            >
+              <span class="chip">L${lane + 1}</span>
+              <div style="min-width: 0;">
+                <div style="font-size: 12px;"><strong>${transition}</strong></div>
+                <div class="muted" style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${entry.content.slice(0, 180)}
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <div class="mono" style="font-size: 11px;">+${formatDurationCompact(elapsedMs, { spaced: true }) ?? "0ms"}</div>
+                ${payloadMeta ? html`<div class="muted" style="font-size: 11px;">${payloadMeta}</div>` : nothing}
+              </div>
+            </div>
+          `;
+        })}
       </div>
     </div>
   `;

@@ -19,6 +19,7 @@ import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
+import { testsHandlers } from "./server-methods/tests.js";
 import { ttsHandlers } from "./server-methods/tts.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
@@ -73,6 +74,7 @@ const READ_METHODS = new Set([
   "node.list",
   "node.describe",
   "chat.history",
+  "tests.suites",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -89,6 +91,8 @@ const WRITE_METHODS = new Set([
   "chat.send",
   "chat.abort",
   "browser.request",
+  "tests.run",
+  "tests.wait",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
@@ -178,6 +182,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...configHandlers,
   ...wizardHandlers,
   ...talkHandlers,
+  ...testsHandlers,
   ...ttsHandlers,
   ...skillsHandlers,
   ...sessionsHandlers,

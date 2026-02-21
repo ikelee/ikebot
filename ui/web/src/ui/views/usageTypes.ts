@@ -281,6 +281,10 @@ export type SessionLogEntry = {
   timestamp: number;
   role: "user" | "assistant" | "tool" | "toolResult";
   content: string;
+  toolName?: string;
+  provider?: string;
+  model?: string;
+  durationMs?: number;
   tokens?: number;
   cost?: number;
 };

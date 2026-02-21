@@ -61,6 +61,7 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import { loadTestSuites, runTestSuite } from "./controllers/test-suites.ts";
 import { loadUsage, loadSessionTimeSeries, loadSessionLogs } from "./controllers/usage.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
@@ -90,6 +91,7 @@ import { renderOverview } from "./views/overview.ts";
 import { renderRouting } from "./views/routing.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
+import { renderTestSuites } from "./views/test-suites.ts";
 import { renderUsage } from "./views/usage.ts";
 
 const AVATAR_DATA_RE = /^data:/i;
@@ -606,6 +608,21 @@ export function renderApp(state: AppViewState) {
                 result: state.monitoringResult,
                 onDaysChange: (v) => (state.monitoringDays = v),
                 onRefresh: () => loadMonitoring(state),
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "test-suites"
+            ? renderTestSuites({
+                loading: state.testSuitesLoading,
+                error: state.testSuitesError,
+                suites: state.testSuites,
+                busySuiteId: state.testSuitesBusySuiteId,
+                activeRunId: state.testSuitesActiveRunId,
+                status: state.testSuitesStatus,
+                onRefresh: () => loadTestSuites(state),
+                onRunSuite: (suiteId) => runTestSuite(state, suiteId),
               })
             : nothing
         }

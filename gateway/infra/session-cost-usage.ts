@@ -922,6 +922,10 @@ export type SessionLogEntry = {
   timestamp: number;
   role: "user" | "assistant" | "tool" | "toolResult";
   content: string;
+  toolName?: string;
+  provider?: string;
+  model?: string;
+  durationMs?: number;
   tokens?: number;
   cost?: number;
 };
@@ -1072,6 +1076,20 @@ export async function loadSessionLogs(params: {
         timestamp,
         role,
         content,
+        toolName,
+        provider:
+          typeof message.provider === "string"
+            ? message.provider
+            : typeof parsed.provider === "string"
+              ? parsed.provider
+              : undefined,
+        model:
+          typeof message.model === "string"
+            ? message.model
+            : typeof parsed.model === "string"
+              ? parsed.model
+              : undefined,
+        durationMs: toFiniteNumber(message.durationMs ?? parsed.durationMs),
         tokens,
         cost,
       });

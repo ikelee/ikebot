@@ -292,6 +292,12 @@ export class OpenClawApp extends LitElement {
   @state() monitoringError: string | null = null;
   @state() monitoringDays = "7";
   @state() monitoringResult: import("./types.js").SessionsUsageResult | null = null;
+  @state() testSuitesLoading = false;
+  @state() testSuitesError: string | null = null;
+  @state() testSuites: import("./types.js").TestSuiteEntry[] = [];
+  @state() testSuitesBusySuiteId: string | null = null;
+  @state() testSuitesActiveRunId: string | null = null;
+  @state() testSuitesStatus: string | null = null;
 
   // Non-reactive (don’t trigger renders just for timer bookkeeping).
   usageQueryDebounceTimer: number | null = null;

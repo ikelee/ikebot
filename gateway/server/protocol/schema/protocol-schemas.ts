@@ -132,6 +132,7 @@ import {
   SessionsUsageParamsSchema,
 } from "./sessions.js";
 import { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
+import { TestsRunParamsSchema, TestsSuitesParamsSchema, TestsWaitParamsSchema } from "./tests.js";
 import {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -182,6 +183,9 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   SessionsDeleteParams: SessionsDeleteParamsSchema,
   SessionsCompactParams: SessionsCompactParamsSchema,
   SessionsUsageParams: SessionsUsageParamsSchema,
+  TestsSuitesParams: TestsSuitesParamsSchema,
+  TestsRunParams: TestsRunParamsSchema,
+  TestsWaitParams: TestsWaitParamsSchema,
   ConfigGetParams: ConfigGetParamsSchema,
   ConfigSetParams: ConfigSetParamsSchema,
   ConfigApplyParams: ConfigApplyParamsSchema,

@@ -4,7 +4,17 @@ export const TAB_GROUPS = [
   { label: "Chat", tabs: ["chat"] },
   {
     label: "Control",
-    tabs: ["overview", "channels", "instances", "sessions", "usage", "monitor", "cron", "routing"],
+    tabs: [
+      "overview",
+      "channels",
+      "instances",
+      "sessions",
+      "usage",
+      "monitor",
+      "test-suites",
+      "cron",
+      "routing",
+    ],
   },
   { label: "Agent", tabs: ["agents", "agent-testing", "skills", "nodes"] },
   { label: "Settings", tabs: ["config", "debug", "logs"] },
@@ -18,6 +28,7 @@ export type Tab =
   | "sessions"
   | "usage"
   | "monitor"
+  | "test-suites"
   | "cron"
   | "routing"
   | "skills"
@@ -36,6 +47,7 @@ const TAB_PATHS: Record<Tab, string> = {
   sessions: "/sessions",
   usage: "/usage",
   monitor: "/monitor",
+  "test-suites": "/test-suites",
   cron: "/cron",
   routing: "/routing",
   skills: "/skills",
@@ -146,6 +158,8 @@ export function iconForTab(tab: Tab): IconName {
       return "barChart";
     case "monitor":
       return "monitor";
+    case "test-suites":
+      return "loader";
     case "cron":
       return "loader";
     case "routing":
@@ -183,6 +197,8 @@ export function titleForTab(tab: Tab) {
       return "Usage";
     case "monitor":
       return "Monitoring";
+    case "test-suites":
+      return "Test Suites";
     case "cron":
       return "Cron Jobs";
     case "routing":
@@ -222,6 +238,8 @@ export function subtitleForTab(tab: Tab) {
       return "";
     case "monitor":
       return "Live operational metrics for model calls and latency.";
+    case "test-suites":
+      return "Run and compare unit, agent-level, and full E2E suites.";
     case "cron":
       return "Schedule wakeups and recurring agent runs.";
     case "routing":

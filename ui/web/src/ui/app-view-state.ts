@@ -29,6 +29,7 @@ import type {
   SessionsUsageResult,
   CostUsageSummary,
   SessionUsageTimeSeries,
+  TestSuiteEntry,
   SessionsListResult,
   SkillStatusReport,
   StatusSummary,
@@ -192,6 +193,12 @@ export type AppViewState = {
   monitoringError: string | null;
   monitoringDays: string;
   monitoringResult: SessionsUsageResult | null;
+  testSuitesLoading: boolean;
+  testSuitesError: string | null;
+  testSuites: TestSuiteEntry[];
+  testSuitesBusySuiteId: string | null;
+  testSuitesActiveRunId: string | null;
+  testSuitesStatus: string | null;
   cronLoading: boolean;
   cronJobs: CronJob[];
   cronStatus: CronStatus | null;

@@ -653,6 +653,52 @@ export type SessionUsageTimeSeries = {
   points: SessionUsageTimePoint[];
 };
 
+export type TestSuiteLevel = "unit" | "agent" | "e2e";
+export type TestSuiteRunStatus = "running" | "ok" | "error" | "timeout";
+
+export type TestSuiteUsageMetrics = {
+  userInputs: number;
+  totalInvocations: number;
+  localInvocations: number;
+  cloudInvocations: number;
+  avgLatencyMs: number;
+  totalTokens: number;
+  localTokens: number;
+  cloudTokens: number;
+};
+
+export type TestSuiteRunResult = {
+  runId: string;
+  suiteId: string;
+  status: TestSuiteRunStatus;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  command: string[];
+  cwd: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  stdoutTail?: string;
+  stderrTail?: string;
+  error?: string;
+  ts: number;
+  metrics?: TestSuiteUsageMetrics;
+};
+
+export type TestSuiteEntry = {
+  id: string;
+  name: string;
+  description: string;
+  level: TestSuiteLevel;
+  command: string;
+  lastRun: TestSuiteRunResult | null;
+  previousRun?: TestSuiteRunResult | null;
+};
+
+export type TestSuitesResult = {
+  suites: TestSuiteEntry[];
+};
+
 export type CronSchedule =
   | { kind: "at"; at: string }
   | { kind: "every"; everyMs: number; anchorMs?: number }
