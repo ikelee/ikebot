@@ -1,5 +1,10 @@
 import type { GatewayBrowserClient } from "../gateway.ts";
-import type { SessionsUsageResult, CostUsageSummary, SessionUsageTimeSeries } from "../types.ts";
+import type {
+  SessionsListResult,
+  SessionsUsageResult,
+  CostUsageSummary,
+  SessionUsageTimeSeries,
+} from "../types.ts";
 import type { SessionLogEntry } from "../views/usage.ts";
 
 export type UsageState = {
@@ -38,8 +43,8 @@ export async function loadUsage(
     const startDate = overrides?.startDate ?? state.usageStartDate;
     const endDate = overrides?.endDate ?? state.usageEndDate;
 
-    // Load both endpoints in parallel
-    const [sessionsRes, costRes] = await Promise.all([
+    // Load all endpoints in parallel so usage sessions can show friendly titles.
+    const [sessionsRes, costRes, listRes] = await Promise.all([
       state.client.request("sessions.usage", {
         startDate,
         endDate,
@@ -47,10 +52,39 @@ export async function loadUsage(
         includeContextWeight: true,
       }),
       state.client.request("usage.cost", { startDate, endDate }),
+      state.client.request("sessions.list", {
+        limit: 2000,
+        includeGlobal: true,
+        includeUnknown: true,
+        includeDerivedTitles: true,
+      }),
     ]);
 
     if (sessionsRes) {
-      state.usageResult = sessionsRes as SessionsUsageResult;
+      const usage = sessionsRes as SessionsUsageResult;
+      const sessionList = listRes as SessionsListResult;
+      const byKey = new Map(
+        (sessionList.sessions ?? []).map((entry) => [entry.key, entry] as const),
+      );
+      usage.sessions = usage.sessions.map((entry) => {
+        const match = byKey.get(entry.key);
+        const displayName = match?.displayName?.trim() || undefined;
+        const derivedTitle = match?.derivedTitle?.trim() || undefined;
+        const keyLower = entry.key.toLowerCase();
+        const runKind: "cron" | "test" | "session" = keyLower.includes(":testing")
+          ? "test"
+          : keyLower.includes(":cron:")
+            ? "cron"
+            : "session";
+        return {
+          ...entry,
+          label: entry.label ?? match?.label ?? undefined,
+          displayName,
+          derivedTitle,
+          runKind,
+        };
+      });
+      state.usageResult = usage;
     }
     if (costRes) {
       state.usageCostSummary = costRes as CostUsageSummary;

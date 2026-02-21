@@ -1,6 +1,9 @@
 export type UsageSessionEntry = {
   key: string;
   label?: string;
+  displayName?: string;
+  derivedTitle?: string;
+  runKind?: "cron" | "test" | "session";
   sessionId?: string;
   updatedAt?: number;
   agentId?: string;

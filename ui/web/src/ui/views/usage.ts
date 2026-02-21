@@ -929,14 +929,19 @@ function renderFilterChips(
 
   const selectedSession =
     selectedSessions.length === 1 ? sessions.find((s) => s.key === selectedSessions[0]) : null;
+  const selectedSessionTitle = selectedSession
+    ? selectedSession.label ||
+      selectedSession.displayName ||
+      selectedSession.derivedTitle ||
+      selectedSession.key
+    : null;
   const sessionsLabel = selectedSession
-    ? (selectedSession.label || selectedSession.key).slice(0, 20) +
-      ((selectedSession.label || selectedSession.key).length > 20 ? "…" : "")
+    ? selectedSessionTitle!.slice(0, 20) + (selectedSessionTitle!.length > 20 ? "…" : "")
     : selectedSessions.length === 1
       ? selectedSessions[0].slice(0, 8) + "…"
       : `${selectedSessions.length} sessions`;
   const sessionsFullName = selectedSession
-    ? selectedSession.label || selectedSession.key
+    ? selectedSessionTitle!
     : selectedSessions.length === 1
       ? selectedSessions[0]
       : selectedSessions.join(", ");
@@ -1421,12 +1426,21 @@ function renderSessionsCard(
 ) {
   const showColumn = (id: UsageColumnId) => visibleColumns.includes(id);
   const formatSessionListLabel = (s: UsageSessionEntry): string => {
-    const raw = s.label || s.key;
+    const raw = s.label || s.displayName || s.derivedTitle || s.key;
     // Agent session keys often include a token query param; remove it for readability.
     if (raw.startsWith("agent:") && raw.includes("?token=")) {
       return raw.slice(0, raw.indexOf("?token="));
     }
     return raw;
+  };
+  const resolveSessionBadge = (s: UsageSessionEntry): string | null => {
+    if (s.runKind === "test") {
+      return "test";
+    }
+    if (s.runKind === "cron") {
+      return "cron";
+    }
+    return null;
   };
   const copySessionName = async (s: UsageSessionEntry) => {
     const text = formatSessionListLabel(s);
@@ -1593,7 +1607,14 @@ function renderSessionsCard(
                         title="${s.key}"
                       >
                         <div class="session-bar-label">
-                          <div class="session-bar-title">${displayLabel}</div>
+                          <div class="session-bar-title">
+                            ${displayLabel}
+                            ${
+                              resolveSessionBadge(s)
+                                ? html`<span class="chip" style="margin-left: 8px;">${resolveSessionBadge(s)}</span>`
+                                : nothing
+                            }
+                          </div>
                           ${meta.length > 0 ? html`<div class="session-bar-meta">${meta.join(" · ")}</div>` : nothing}
                         </div>
                         <div class="session-bar-track" style="display: none;"></div>
@@ -1634,7 +1655,14 @@ function renderSessionsCard(
                         title="${s.key}"
                       >
                         <div class="session-bar-label">
-                          <div class="session-bar-title">${displayLabel}</div>
+                          <div class="session-bar-title">
+                            ${displayLabel}
+                            ${
+                              resolveSessionBadge(s)
+                                ? html`<span class="chip" style="margin-left: 8px;">${resolveSessionBadge(s)}</span>`
+                                : nothing
+                            }
+                          </div>
                           ${meta.length > 0 ? html`<div class="session-bar-meta">${meta.join(" · ")}</div>` : nothing}
                         </div>
                         <div class="session-bar-track" style="display: none;"></div>
@@ -1675,7 +1703,14 @@ function renderSessionsCard(
                         title="${s.key}"
                       >
                         <div class="session-bar-label">
-                          <div class="session-bar-title">${displayLabel}</div>
+                          <div class="session-bar-title">
+                            ${displayLabel}
+                            ${
+                              resolveSessionBadge(s)
+                                ? html`<span class="chip" style="margin-left: 8px;">${resolveSessionBadge(s)}</span>`
+                                : nothing
+                            }
+                          </div>
                           ${meta.length > 0 ? html`<div class="session-bar-meta">${meta.join(" · ")}</div>` : nothing}
                         </div>
                   <div class="session-bar-track" style="display: none;"></div>
@@ -1806,7 +1841,7 @@ function renderSessionDetailPanel(
   onToggleContextExpanded: () => void,
   onClose: () => void,
 ) {
-  const label = session.label || session.key;
+  const label = session.label || session.displayName || session.derivedTitle || session.key;
   const displayLabel = label.length > 50 ? label.slice(0, 50) + "…" : label;
   const usage = session.usage;
 

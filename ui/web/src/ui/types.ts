@@ -389,6 +389,8 @@ export type GatewaySessionRow = {
   kind: "direct" | "group" | "global" | "unknown";
   label?: string;
   displayName?: string;
+  derivedTitle?: string;
+  lastMessagePreview?: string;
   surface?: string;
   subject?: string;
   room?: string;
@@ -434,6 +436,9 @@ export type SessionsPatchResult = {
 export type SessionsUsageEntry = {
   key: string;
   label?: string;
+  displayName?: string;
+  derivedTitle?: string;
+  runKind?: "cron" | "test" | "session";
   sessionId?: string;
   updatedAt?: number;
   agentId?: string;
