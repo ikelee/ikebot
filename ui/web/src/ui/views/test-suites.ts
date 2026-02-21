@@ -78,34 +78,89 @@ function eventTone(level: TestSuiteRunEvent["level"]): string {
 }
 
 type ParsedModelCall = {
-  id: number;
+  id: string;
   model: string;
   startedAtLine: number;
   durationMs?: number;
   done: boolean;
+  source: "req" | "timing";
 };
+
+function stripAnsiAndControl(input: string): string {
+  if (!input) {
+    return "";
+  }
+  let out = "";
+  let i = 0;
+  while (i < input.length) {
+    const ch = input.charCodeAt(i);
+    if (ch === 27) {
+      const next = input.charCodeAt(i + 1);
+      if (next === 91) {
+        i += 2;
+        while (i < input.length) {
+          const code = input.charCodeAt(i);
+          if (code >= 64 && code <= 126) {
+            i += 1;
+            break;
+          }
+          i += 1;
+        }
+        continue;
+      }
+      if (next === 93) {
+        i += 2;
+        while (i < input.length) {
+          const code = input.charCodeAt(i);
+          if (code === 7) {
+            i += 1;
+            break;
+          }
+          if (code === 27 && input.charCodeAt(i + 1) === 92) {
+            i += 2;
+            break;
+          }
+          i += 1;
+        }
+        continue;
+      }
+      i += 2;
+      continue;
+    }
+    if (ch === 13 && input.charCodeAt(i + 1) !== 10) {
+      out += "\n";
+      i += 1;
+      continue;
+    }
+    out += input[i];
+    i += 1;
+  }
+  return out;
+}
 
 function parseModelCalls(output: string): ParsedModelCall[] {
   const lines = output.split(/\r?\n/);
-  const calls = new Map<number, ParsedModelCall>();
+  const calls = new Map<string, ParsedModelCall>();
+  let timingSeq = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const startMatch = line.match(/req#(\d+) start model=([^\s]+)/);
     if (startMatch) {
-      const id = Number(startMatch[1]);
+      const id = `req-${startMatch[1]}`;
       calls.set(id, {
         id,
         model: startMatch[2],
         startedAtLine: i,
         done: false,
+        source: "req",
       });
       continue;
     }
 
     const doneMatch = line.match(/req#(\d+) done\s+(\d+)ms/);
     if (doneMatch) {
-      const id = Number(doneMatch[1]);
+      const id = `req-${doneMatch[1]}`;
       const existing = calls.get(id);
       if (existing) {
         calls.set(id, {
@@ -114,10 +169,27 @@ function parseModelCalls(output: string): ParsedModelCall[] {
           durationMs: Number(doneMatch[2]),
         });
       }
+      continue;
+    }
+
+    const timingWaitMatch = line.match(
+      /activeSession\.prompt\(\)\s+still running after\s+(\d+)ms\s+provider=([^\s]+)\s+model=([^\s]+)/i,
+    );
+    if (timingWaitMatch) {
+      timingSeq += 1;
+      const id = `timing-${timingSeq}`;
+      calls.set(id, {
+        id,
+        model: `${timingWaitMatch[2]}/${timingWaitMatch[3]}`,
+        startedAtLine: i,
+        durationMs: Number(timingWaitMatch[1]),
+        done: false,
+        source: "timing",
+      });
     }
   }
 
-  return Array.from(calls.values()).toSorted((a, b) => a.id - b.id);
+  return Array.from(calls.values()).toSorted((a, b) => a.startedAtLine - b.startedAtLine);
 }
 
 function renderRunDetails(
@@ -127,9 +199,10 @@ function renderRunDetails(
   runHistory: TestSuiteRunResult[],
   onSelectRun: (runId: string) => void,
 ) {
-  const output = [selectedRun?.stdoutTail ?? "", selectedRun?.stderrTail ?? ""]
+  const outputRaw = [selectedRun?.stdoutTail ?? "", selectedRun?.stderrTail ?? ""]
     .filter(Boolean)
     .join("\n");
+  const output = stripAnsiAndControl(outputRaw);
 
   const modelCalls = parseModelCalls(output);
   const anyInflight = modelCalls.some((call) => !call.done);
@@ -176,10 +249,16 @@ function renderRunDetails(
                         : modelCalls.map(
                             (call) => html`
                             <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;">
-                              <span class="chip">req#${call.id}</span>
+                              <span class="chip">${call.id}</span>
                               <span class="mono" style="font-size: 12px;">router -> ${call.model}</span>
                               <span class="chip" style="border-color: ${call.done ? "var(--success)" : "var(--accent)"};">
-                                ${call.done ? `done ${formatMs(call.durationMs ?? 0)}` : "waiting"}
+                                ${
+                                  call.done
+                                    ? `done ${formatMs(call.durationMs ?? 0)}`
+                                    : call.source === "timing"
+                                      ? `waiting ${formatMs(call.durationMs ?? 0)}`
+                                      : "waiting"
+                                }
                               </span>
                             </div>
                           `,
