@@ -67,6 +67,42 @@ function formatRunScope(run: TestSuiteRunResult | null): string {
   return "full suite";
 }
 
+function modelExecutionScope(
+  metrics: {
+    localInvocations?: number;
+    cloudInvocations?: number;
+    totalInvocations?: number;
+  } | null,
+): "local-only" | "cloud-integrated" | "none" {
+  const local = metrics?.localInvocations ?? 0;
+  const cloud = metrics?.cloudInvocations ?? 0;
+  const total = metrics?.totalInvocations ?? local + cloud;
+  if (total <= 0 && local <= 0 && cloud <= 0) {
+    return "none";
+  }
+  if (local > 0 && cloud <= 0) {
+    return "local-only";
+  }
+  return "cloud-integrated";
+}
+
+function modelExecutionLabel(
+  metrics: {
+    localInvocations?: number;
+    cloudInvocations?: number;
+    totalInvocations?: number;
+  } | null,
+): string {
+  const scope = modelExecutionScope(metrics);
+  if (scope === "local-only") {
+    return "Local only";
+  }
+  if (scope === "cloud-integrated") {
+    return "Cloud integrated";
+  }
+  return "No model calls yet";
+}
+
 function eventTone(level: TestSuiteRunEvent["level"]): string {
   if (level === "ok") {
     return "var(--success)";
@@ -264,8 +300,17 @@ function renderRunDetails(
   const displayCloudTokens = liveTotalTokens > 0 ? 0 : (selectedRun?.metrics?.cloudTokens ?? 0);
   const displayInvocations =
     liveInvocationCount > 0 ? liveInvocationCount : (selectedRun?.metrics?.totalInvocations ?? 0);
+  const displayLocalInvocations =
+    liveInvocationCount > 0 ? liveInvocationCount : (selectedRun?.metrics?.localInvocations ?? 0);
+  const displayCloudInvocations =
+    liveInvocationCount > 0 ? 0 : (selectedRun?.metrics?.cloudInvocations ?? 0);
   const displayAvgLatency =
     liveAvgLatencyMs > 0 ? liveAvgLatencyMs : (selectedRun?.metrics?.avgLatencyMs ?? 0);
+  const displayExecutionMetrics = {
+    localInvocations: displayLocalInvocations,
+    cloudInvocations: displayCloudInvocations,
+    totalInvocations: displayInvocations,
+  };
 
   return html`
     <div class="card" style="background: var(--panel); border: 1px solid var(--border);">
@@ -294,6 +339,9 @@ function renderRunDetails(
                   <div class="metric-value">${formatTokens(displayInvocations)}</div>
                   <div class="muted" style="font-size: 11px;">avg ${formatMs(displayAvgLatency)}</div>
                 </div>
+              </div>
+              <div style="margin-top: 8px;">
+                <span class="chip">${modelExecutionLabel(displayExecutionMetrics)}</span>
               </div>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
@@ -445,6 +493,7 @@ function renderOverview(
                   <strong>${suite.name}</strong>
                   <span class="chip">${levelChip(suite.level)}</span>
                   <span class="chip">${runStatusChip(run)}</span>
+                  <span class="chip">${modelExecutionLabel(run?.metrics ?? null)}</span>
                 </div>
                 <div class="muted" style="font-size: 12px;">${suite.description}</div>
                 <div class="mono muted" style="font-size: 11px;">${suite.command}</div>
@@ -576,6 +625,7 @@ export function renderTestSuites(props: {
   singleFileBySuite: Record<string, string>;
   testNameBySuite: Record<string, string>;
   status: string | null;
+  localOnly: boolean;
   onRefresh: () => void;
   onSelectRun: (runId: string) => void;
   onSelectView: (tab: "overview" | "run") => void;
@@ -585,6 +635,7 @@ export function renderTestSuites(props: {
   onSingleFileChange: (suiteId: string, value: string) => void;
   onTestNameChange: (suiteId: string, value: string) => void;
   onRunSuite: (suiteId: string) => void;
+  onLocalOnlyChange: (value: boolean) => void;
 }) {
   const selectedRun =
     props.runHistory.find((entry) => entry.runId === props.selectedRunId) ?? props.activeRun;
@@ -599,6 +650,19 @@ export function renderTestSuites(props: {
           </div>
         </div>
         <button class="secondary" @click=${props.onRefresh} ?disabled=${props.loading}>Refresh</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input
+            type="checkbox"
+            .checked=${props.localOnly}
+            @change=${(e: Event) => props.onLocalOnlyChange((e.target as HTMLInputElement).checked)}
+          />
+          <span>Local only</span>
+        </label>
+        <span class="muted" style="font-size: 12px;">
+          ${props.localOnly ? "Using local model config for test runs." : "Using cloud-integrated config (Codex where configured)."}
+        </span>
       </div>
 
       <div style="display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">

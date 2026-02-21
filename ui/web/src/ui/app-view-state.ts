@@ -210,6 +210,7 @@ export type AppViewState = {
   testSuitesSingleFileBySuite: Record<string, string>;
   testSuitesTestNameBySuite: Record<string, string>;
   testSuitesStatus: string | null;
+  testSuitesLocalOnly: boolean;
   cronLoading: boolean;
   cronJobs: CronJob[];
   cronStatus: CronStatus | null;

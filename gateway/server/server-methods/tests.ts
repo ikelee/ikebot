@@ -37,6 +37,7 @@ type TestRunSnapshot = {
   cwd: string;
   requestedFiles?: string[];
   testName?: string;
+  localOnly?: boolean;
   pid?: number;
   lastOutputAt?: number;
   exitCode?: number | null;
@@ -75,6 +76,35 @@ const TEST_SUITES: readonly TestSuiteDefinition[] = [
     command: ["pnpm", "-s", "test:e2e:full-flow"],
   },
 ] as const;
+
+function buildRunCommand(params: {
+  suite: TestSuiteDefinition;
+  requestedFiles: string[];
+  testName?: string;
+}): string[] {
+  const { suite, requestedFiles, testName } = params;
+  const hasSpecificFiles = requestedFiles.length > 0;
+
+  if (!hasSpecificFiles) {
+    const command = [...suite.command];
+    if (testName) {
+      command.push("-t", testName);
+    }
+    return command;
+  }
+
+  const command = ["pnpm", "exec", "vitest", "run"];
+  if (suite.level === "unit") {
+    command.push("--config", "vitest.unit.config.ts");
+  } else {
+    command.push("--config", "vitest.e2e.config.ts");
+  }
+  if (testName) {
+    command.push("-t", testName);
+  }
+  command.push(...requestedFiles);
+  return command;
+}
 
 const runById = new Map<string, TestRunSnapshot>();
 const lastRunBySuite = new Map<string, TestRunSnapshot>();
@@ -331,12 +361,27 @@ async function runCommandStreaming(params: {
   suiteId: string;
   requestedFiles: string[];
   testName?: string;
+  localOnly: boolean;
   startedAt: number;
 }) {
-  const { runId, command, cwd, timeoutMs, suiteId, requestedFiles, testName, startedAt } = params;
+  const {
+    runId,
+    command,
+    cwd,
+    timeoutMs,
+    suiteId,
+    requestedFiles,
+    testName,
+    localOnly,
+    startedAt,
+  } = params;
   const child = spawn(resolveSpawnCommand(command[0]), command.slice(1), {
     cwd,
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      OPENCLAW_TEST_LOCAL_ONLY: localOnly ? "1" : "0",
+      OPENCLAW_TEST_MODEL_MODE: localOnly ? "local" : "cloud",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -399,6 +444,7 @@ async function runCommandStreaming(params: {
       cwd,
       requestedFiles,
       testName,
+      localOnly,
       pid: current?.pid,
       lastOutputAt: current?.lastOutputAt,
       stdoutTail: current?.stdoutTail,
@@ -426,6 +472,7 @@ async function runCommandStreaming(params: {
       cwd,
       requestedFiles,
       testName,
+      localOnly,
       pid: current?.pid,
       lastOutputAt: current?.lastOutputAt,
       exitCode: code,
@@ -536,14 +583,13 @@ export const testsHandlers: GatewayRequestHandlers = {
 
     const testNameRaw = (params as { testName?: unknown }).testName;
     const testName = typeof testNameRaw === "string" ? testNameRaw.trim() : "";
+    const localOnly = (params as { localOnly?: unknown }).localOnly === true;
 
-    const command = [...suite.command];
-    if (testName) {
-      command.push("-t", testName);
-    }
-    if (filesResolved.files.length > 0) {
-      command.push(...filesResolved.files);
-    }
+    const command = buildRunCommand({
+      suite,
+      requestedFiles: filesResolved.files,
+      testName: testName || undefined,
+    });
 
     const runId = randomUUID();
     const startedAt = Date.now();
@@ -556,6 +602,7 @@ export const testsHandlers: GatewayRequestHandlers = {
       cwd: root,
       requestedFiles: filesResolved.files,
       testName: testName || undefined,
+      localOnly,
       ts: startedAt,
     };
     runById.set(runId, initial);
@@ -568,6 +615,7 @@ export const testsHandlers: GatewayRequestHandlers = {
       suiteId: suite.id,
       requestedFiles: filesResolved.files,
       testName: testName || undefined,
+      localOnly,
       startedAt,
     });
 

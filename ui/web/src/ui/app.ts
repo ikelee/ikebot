@@ -309,6 +309,7 @@ export class OpenClawApp extends LitElement {
   @state() testSuitesSingleFileBySuite: Record<string, string> = {};
   @state() testSuitesTestNameBySuite: Record<string, string> = {};
   @state() testSuitesStatus: string | null = null;
+  @state() testSuitesLocalOnly = false;
 
   // Non-reactive (don’t trigger renders just for timer bookkeeping).
   usageQueryDebounceTimer: number | null = null;

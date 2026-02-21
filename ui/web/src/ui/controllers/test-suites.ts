@@ -30,6 +30,7 @@ type TestSuitesState = {
   testSuitesSingleFileBySuite: Record<string, string>;
   testSuitesTestNameBySuite: Record<string, string>;
   testSuitesStatus: string | null;
+  testSuitesLocalOnly: boolean;
 };
 
 const REMOTE_PROVIDER_HINTS = ["openai", "anthropic", "google", "gemini", "xai", "mistral"];
@@ -360,6 +361,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
       timeoutMs: 45 * 60_000,
       files: requestedFiles.length > 0 ? requestedFiles : undefined,
       testName: testName || undefined,
+      localOnly: state.testSuitesLocalOnly,
     });
 
     const runIdRaw = (runRes as { runId?: unknown } | null)?.runId;
@@ -387,7 +389,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     addRunEvent(state, {
       runId,
       level: "info",
-      message: `Started ${normalizedSuiteId} (${scopeLabel}${testName ? `, test name filter: ${testName}` : ""}).`,
+      message: `Started ${normalizedSuiteId} (${scopeLabel}${testName ? `, test name filter: ${testName}` : ""}, mode: ${state.testSuitesLocalOnly ? "local-only" : "cloud-integrated"}).`,
     });
 
     let snapshot: TestSuiteRunResult | null = initialRun;

@@ -637,6 +637,7 @@ export function renderApp(state: AppViewState) {
                 singleFileBySuite: state.testSuitesSingleFileBySuite,
                 testNameBySuite: state.testSuitesTestNameBySuite,
                 status: state.testSuitesStatus,
+                localOnly: state.testSuitesLocalOnly,
                 onRefresh: () => loadTestSuites(state),
                 onSelectRun: (runId) => {
                   state.testSuitesSelectedRunId = runId;
@@ -671,6 +672,9 @@ export function renderApp(state: AppViewState) {
                 },
                 onRunSuite: (suiteId) => {
                   void runTestSuite(state, suiteId);
+                },
+                onLocalOnlyChange: (value) => {
+                  state.testSuitesLocalOnly = value;
                 },
               })
             : nothing

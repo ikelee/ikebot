@@ -24,6 +24,7 @@ export const TestsRunParamsSchema = Type.Object(
     timeoutMs: Type.Optional(Type.Integer({ minimum: 1_000 })),
     files: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, maxItems: 50 })),
     testName: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+    localOnly: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

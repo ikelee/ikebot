@@ -13,7 +13,14 @@ import { getReplyFromConfig } from "../../pipeline/reply.js";
 
 const execFileAsync = promisify(execFile);
 const OLLAMA_BASE = "http://localhost:11434";
-const MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const LOCAL_ONLY =
+  process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
+  process.env.OPENCLAW_CALENDAR_TEST_LOCAL_ONLY === "1";
+const LOCAL_MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const CLOUD_MODEL = process.env.OPENCLAW_CALENDAR_TEST_CLOUD_MODEL?.trim() || "gpt-5.3-codex-spark";
+const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
+const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
+const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
 const TEST_USER = "calendar-agent-e2e-user";
 const CALENDAR_TEST_ACCOUNT =
   process.env.OPENCLAW_CALENDAR_TEST_ACCOUNT?.trim() || "ikebotai@gmail.com";
@@ -48,11 +55,41 @@ async function modelAvailable(): Promise<boolean> {
     }).then((r) => r.json());
     const models = (tags?.models ?? []) as Array<{ name?: string; model?: string }>;
     return models.some(
-      (m) => (m.name ?? "").startsWith(MODEL) || (m.model ?? "").startsWith(MODEL),
+      (m) => (m.name ?? "").startsWith(LOCAL_MODEL) || (m.model ?? "").startsWith(LOCAL_MODEL),
     );
   } catch {
     return false;
   }
+}
+
+async function codexAuthAvailable(): Promise<boolean> {
+  const oauthPath = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const authProfilesPath = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    const raw = await fs.readFile(oauthPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["openai-codex"]) {
+      return true;
+    }
+  } catch {}
+  try {
+    const raw = await fs.readFile(authProfilesPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; type?: string }>;
+    };
+    const profiles = parsed.profiles ?? {};
+    return Object.values(profiles).some(
+      (profile) => profile?.provider === "openai-codex" && profile?.type === "oauth",
+    );
+  } catch {}
+  return false;
 }
 
 async function gogCalendarAuthAvailable(): Promise<boolean> {
@@ -163,8 +200,8 @@ async function listEventsByQuery(query: string): Promise<Array<{ id: string; sum
   const events = extractEvents(payload);
   return events
     .map((event) => ({
-      id: String(event.id ?? ""),
-      summary: String(event.summary ?? ""),
+      id: asScalarString(event.id),
+      summary: asScalarString(event.summary),
     }))
     .filter((event) => event.id.length > 0);
 }
@@ -195,8 +232,8 @@ async function listRawEventsByQuery(
   return events
     .map((event) => ({
       ...event,
-      id: String(event.id ?? ""),
-      summary: String(event.summary ?? ""),
+      id: asScalarString(event.id),
+      summary: asScalarString(event.summary),
     }))
     .filter((event) => event.id.length > 0);
 }
@@ -248,6 +285,16 @@ function stringifyLogArg(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function asScalarString(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
 }
 
 function countReqStarts(lines: string[]): number {
@@ -345,12 +392,43 @@ function assertNotBlockedByMutationSafety(text: string): void {
   expect(lower).not.toContain("not executed the calendar command");
 }
 
-function calendarAgentConfig(workspaceDir: string, home: string) {
+function calendarAgentConfig(workspaceDir: string, _home: string) {
+  const providers = LOCAL_ONLY
+    ? {
+        ollama: {
+          baseUrl: `${OLLAMA_BASE}/v1`,
+          api: "openai-completions",
+          models: [
+            {
+              id: MODEL_ID,
+              name: "Qwen 2.5",
+              api: "openai-completions",
+              contextWindow: 32768,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      }
+    : {
+        "openai-codex": {
+          api: "openai-codex-responses",
+          models: [
+            {
+              id: MODEL_ID,
+              name: MODEL_ID,
+              api: "openai-codex-responses",
+              contextWindow: 200000,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      };
+
   return {
     agents: {
       defaults: {
-        model: `ollama/${MODEL}`,
-        routing: { enabled: false, classifierModel: `ollama/${MODEL}` },
+        model: MODEL_REF,
+        routing: { enabled: false, classifierModel: "ollama/qwen2.5:14b" },
         workspace: workspaceDir,
       },
       list: [
@@ -365,21 +443,7 @@ function calendarAgentConfig(workspaceDir: string, home: string) {
     },
     channels: { webchat: { allowFrom: ["*"] } },
     models: {
-      providers: {
-        ollama: {
-          baseUrl: `${OLLAMA_BASE}/v1`,
-          api: "openai-completions",
-          models: [
-            {
-              id: MODEL,
-              name: "Qwen 2.5",
-              api: "openai-completions",
-              contextWindow: 32768,
-              cost: { input: 0, output: 0 },
-            },
-          ],
-        },
-      },
+      providers,
     },
   };
 }
@@ -390,8 +454,8 @@ describe("calendar agent-level e2e – real model", () => {
   let canRunLiveWrites = false;
 
   beforeAll(async () => {
-    const ollamaOk = await ollamaAvailable();
-    const modelOk = ollamaOk && (await modelAvailable());
+    const ollamaOk = LOCAL_ONLY ? await ollamaAvailable() : true;
+    const modelOk = LOCAL_ONLY ? ollamaOk && (await modelAvailable()) : await codexAuthAvailable();
     const gogOk = await gogCalendarAuthAvailable();
     let calendarReadOk = false;
     if (modelOk && gogOk) {
@@ -418,13 +482,17 @@ describe("calendar agent-level e2e – real model", () => {
         );
       }
     }
-    if (!ollamaOk) {
+    if (LOCAL_ONLY && !ollamaOk) {
       console.warn(
         "[calendar agent e2e] Ollama not available at localhost:11434 – skipping. Run `ollama serve`.",
       );
-    } else if (!modelOk) {
+    } else if (!modelOk && LOCAL_ONLY) {
       console.warn(
-        `[calendar agent e2e] Model ${MODEL} not found – skipping. Run \`ollama pull ${MODEL}\`.`,
+        `[calendar agent e2e] Model ${LOCAL_MODEL} not found – skipping. Run \`ollama pull ${LOCAL_MODEL}\`.`,
+      );
+    } else if (!modelOk && !LOCAL_ONLY) {
+      console.warn(
+        `[calendar agent e2e] Codex auth not found under ${AUTH_HOME}/.openclaw/{credentials/oauth.json,agents/main/agent/auth-profiles.json} – skipping cloud-integrated mode.`,
       );
     } else if (!gogOk) {
       console.warn(
@@ -531,7 +599,7 @@ describe("calendar agent-level e2e – real model", () => {
         expect(added.length).toBeGreaterThan(0);
 
         const recurringSignals = added.filter((event) => {
-          const recurringEventId = String(event.recurringEventId ?? "");
+          const recurringEventId = asScalarString(event.recurringEventId);
           const recurrence = event.recurrence;
           return (
             recurringEventId.length > 0 ||
@@ -544,7 +612,7 @@ describe("calendar agent-level e2e – real model", () => {
         // Cleanup newly created events/series from this test.
         const deleteIds = new Set<string>();
         for (const event of added) {
-          const recurringEventId = String(event.recurringEventId ?? "").trim();
+          const recurringEventId = asScalarString(event.recurringEventId).trim();
           if (recurringEventId) {
             deleteIds.add(recurringEventId);
           } else {

@@ -4,6 +4,7 @@
  */
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { withTempHome } from "../../../../test/helpers/temp-home.js";
@@ -11,7 +12,16 @@ import { getReplyFromConfig } from "../../pipeline/reply.js";
 import { memoFilenameForIdentifier, parseWorkoutState } from "./state.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
-const MODEL = process.env.OPENCLAW_WORKOUTS_TEST_MODEL?.trim() || "qwen2.5:14b";
+const LOCAL_ONLY =
+  process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
+  process.env.OPENCLAW_WORKOUTS_TEST_LOCAL_ONLY === "1";
+const LOCAL_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_MODEL?.trim() || "qwen2.5:14b";
+const CLOUD_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_CLOUD_MODEL?.trim() || "gpt-5.3-codex-spark";
+const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
+const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
+const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
+const AUTH_HOME =
+  process.env.OPENCLAW_WORKOUTS_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEST_USER = "testuser";
 const FIXTURES_DIR = path.join(path.dirname(__filename), "fixtures");
 const TEMPLATES_DIR = path.join(
@@ -41,10 +51,72 @@ async function modelAvailable(): Promise<boolean> {
     }).then((r) => r.json());
     const models = (tags?.models ?? []) as Array<{ name?: string; model?: string }>;
     return models.some(
-      (m) => (m.name ?? "").startsWith(MODEL) || (m.model ?? "").startsWith(MODEL),
+      (m) => (m.name ?? "").startsWith(LOCAL_MODEL) || (m.model ?? "").startsWith(LOCAL_MODEL),
     );
   } catch {
     return false;
+  }
+}
+
+async function codexAuthAvailable(): Promise<boolean> {
+  const oauthPath = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const authProfilesPath = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    const raw = await fs.readFile(oauthPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["openai-codex"]) {
+      return true;
+    }
+  } catch {}
+  try {
+    const raw = await fs.readFile(authProfilesPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; type?: string }>;
+    };
+    const profiles = parsed.profiles ?? {};
+    return Object.values(profiles).some(
+      (profile) => profile?.provider === "openai-codex" && profile?.type === "oauth",
+    );
+  } catch {}
+  return false;
+}
+
+async function seedCodexCredentials(testHome: string): Promise<void> {
+  if (LOCAL_ONLY) {
+    return;
+  }
+  const source = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const target = path.join(testHome, ".openclaw", "credentials", "oauth.json");
+  const authProfilesSource = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  const authProfilesTarget = path.join(
+    testHome,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.mkdir(path.dirname(authProfilesTarget), { recursive: true });
+    await fs.copyFile(authProfilesSource, authProfilesTarget);
+    await fs.copyFile(source, target);
+  } catch {
+    // Cloud mode preflight handles missing creds; no-op here.
   }
 }
 
@@ -73,11 +145,42 @@ async function setupWorkspaceWithFixtures(workspaceDir: string, senderId = TEST_
 }
 
 function workoutAgentConfig(workspaceDir: string, home: string) {
+  const providers = LOCAL_ONLY
+    ? {
+        ollama: {
+          baseUrl: `${OLLAMA_BASE}/v1`,
+          api: "openai-completions",
+          models: [
+            {
+              id: MODEL_ID,
+              name: "Qwen 2.5",
+              api: "openai-completions",
+              contextWindow: 32768,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      }
+    : {
+        "openai-codex": {
+          api: "openai-codex-responses",
+          models: [
+            {
+              id: MODEL_ID,
+              name: MODEL_ID,
+              api: "openai-codex-responses",
+              contextWindow: 200000,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      };
+
   return {
     agents: {
       defaults: {
-        model: `ollama/${MODEL}`,
-        routing: { enabled: false, classifierModel: `ollama/${MODEL}` },
+        model: MODEL_REF,
+        routing: { enabled: false, classifierModel: "ollama/qwen2.5:14b" },
         workspace: workspaceDir,
       },
       list: [
@@ -102,21 +205,7 @@ function workoutAgentConfig(workspaceDir: string, home: string) {
     },
     channels: { whatsapp: { allowFrom: ["*"] } },
     models: {
-      providers: {
-        ollama: {
-          baseUrl: `${OLLAMA_BASE}/v1`,
-          api: "openai-completions",
-          models: [
-            {
-              id: MODEL,
-              name: "Qwen3",
-              api: "openai-completions",
-              contextWindow: 32768,
-              cost: { input: 0, output: 0 },
-            },
-          ],
-        },
-      },
+      providers,
     },
     session: { store: path.join(home, "sessions.json") },
   };
@@ -228,6 +317,7 @@ async function runWorkoutsAgentWithLoopCount(params: {
   });
   const senderId = params.senderId ?? TEST_USER;
   try {
+    await seedCodexCredentials(params.home);
     const reply = await getReplyFromConfig(
       {
         Body: params.body,
@@ -256,16 +346,20 @@ describe("workouts agent-level e2e – real model", () => {
   let canRun = false;
 
   beforeAll(async () => {
-    const ollamaOk = await ollamaAvailable();
-    const modelOk = ollamaOk && (await modelAvailable());
+    const ollamaOk = LOCAL_ONLY ? await ollamaAvailable() : true;
+    const modelOk = LOCAL_ONLY ? ollamaOk && (await modelAvailable()) : await codexAuthAvailable();
     canRun = modelOk;
-    if (!ollamaOk) {
+    if (LOCAL_ONLY && !ollamaOk) {
       console.warn(
         "[workouts agent e2e] Ollama not available at localhost:11434 – skipping. Run `ollama serve`.",
       );
-    } else if (!modelOk) {
+    } else if (LOCAL_ONLY && !modelOk) {
       console.warn(
-        `[workouts agent e2e] Model ${MODEL} not found – skipping. Run \`ollama pull ${MODEL}\`.`,
+        `[workouts agent e2e] Model ${LOCAL_MODEL} not found – skipping. Run \`ollama pull ${LOCAL_MODEL}\`.`,
+      );
+    } else if (!LOCAL_ONLY && !modelOk) {
+      console.warn(
+        `[workouts agent e2e] Codex auth not found under ${AUTH_HOME}/.openclaw/{credentials/oauth.json,agents/main/agent/auth-profiles.json} – skipping cloud-integrated mode.`,
       );
     }
   });
