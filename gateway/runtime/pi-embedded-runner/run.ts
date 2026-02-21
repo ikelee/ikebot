@@ -271,6 +271,7 @@ export async function runEmbeddedPiAgent(
       const attemptedThinking = new Set<ThinkLevel>();
       let apiKeyInfo: ApiKeyInfo | null = null;
       let lastProfileId: string | undefined;
+      let emptyNoopRetries = 0;
 
       const resolveAuthProfileFailoverReason = (params: {
         allInCooldown: boolean;
@@ -856,6 +857,46 @@ export async function runEmbeddedPiAgent(
             toolResultFormat: resolvedToolResultFormat,
             inlineToolResultsAllowed: false,
           });
+
+          const hasPayloads = payloads.length > 0;
+          const hasPendingToolCall = Boolean(attempt.clientToolCall);
+          const hasMessagingSend =
+            Boolean(attempt.didSendViaMessagingTool) ||
+            (attempt.messagingToolSentTexts?.length ?? 0) > 0;
+          if (
+            !hasPayloads &&
+            !hasPendingToolCall &&
+            !hasMessagingSend &&
+            !aborted &&
+            !promptError
+          ) {
+            if (emptyNoopRetries < 1) {
+              emptyNoopRetries += 1;
+              log.warn(
+                `empty model turn with no actions for ${provider}/${modelId}; retrying once`,
+              );
+              continue;
+            }
+            return {
+              payloads: [
+                {
+                  text: "The model returned an empty response and no tool action. Please try again.",
+                  isError: true,
+                },
+              ],
+              meta: {
+                durationMs: Date.now() - started,
+                agentMeta,
+                systemPromptReport: attempt.systemPromptReport,
+                error: {
+                  kind: "empty_model_turn",
+                  message: `Empty assistant turn from ${provider}/${modelId}`,
+                },
+              },
+            };
+          }
+          // Reset once we have a meaningful turn.
+          emptyNoopRetries = 0;
 
           log.debug(
             `embedded run done: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - started} aborted=${aborted}`,
