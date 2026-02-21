@@ -80,10 +80,14 @@ function eventTone(level: TestSuiteRunEvent["level"]): string {
 type ParsedModelCall = {
   id: string;
   model: string;
+  reqNum?: number;
   startedAtLine: number;
   durationMs?: number;
+  waitMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   done: boolean;
-  source: "req" | "timing";
+  source: "req";
 };
 
 function stripAnsiAndControl(input: string): string {
@@ -141,32 +145,43 @@ function stripAnsiAndControl(input: string): string {
 function parseModelCalls(output: string): ParsedModelCall[] {
   const lines = output.split(/\r?\n/);
   const calls = new Map<string, ParsedModelCall>();
-  let timingSeq = 0;
+  let latestReqId: string | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const startMatch = line.match(/req#(\d+) start model=([^\s]+)/);
     if (startMatch) {
+      const reqNum = Number(startMatch[1]);
       const id = `req-${startMatch[1]}`;
       calls.set(id, {
         id,
+        reqNum,
         model: startMatch[2],
         startedAtLine: i,
         done: false,
         source: "req",
       });
+      latestReqId = id;
       continue;
     }
 
-    const doneMatch = line.match(/req#(\d+) done\s+(\d+)ms/);
+    const doneMatch = line.match(
+      /req#(\d+) done\s+(\d+)ms(?:\s+.*?usage\.in=(\d+))?(?:\s+.*?usage\.out=(\d+))?/,
+    );
     if (doneMatch) {
       const id = `req-${doneMatch[1]}`;
       const existing = calls.get(id);
       if (existing) {
+        const inputTokens =
+          doneMatch[3] !== undefined ? Number(doneMatch[3]) : existing.inputTokens;
+        const outputTokens =
+          doneMatch[4] !== undefined ? Number(doneMatch[4]) : existing.outputTokens;
         calls.set(id, {
           ...existing,
           done: true,
           durationMs: Number(doneMatch[2]),
+          inputTokens,
+          outputTokens,
         });
       }
       continue;
@@ -176,16 +191,42 @@ function parseModelCalls(output: string): ParsedModelCall[] {
       /activeSession\.prompt\(\)\s+still running after\s+(\d+)ms\s+provider=([^\s]+)\s+model=([^\s]+)/i,
     );
     if (timingWaitMatch) {
-      timingSeq += 1;
-      const id = `timing-${timingSeq}`;
-      calls.set(id, {
-        id,
+      const waitMs = Number(timingWaitMatch[1]);
+      if (latestReqId && calls.has(latestReqId)) {
+        const existing = calls.get(latestReqId);
+        if (existing && !existing.done) {
+          calls.set(latestReqId, {
+            ...existing,
+            waitMs,
+          });
+          continue;
+        }
+      }
+      const syntheticId = `req-wait-${i}`;
+      calls.set(syntheticId, {
+        id: syntheticId,
         model: `${timingWaitMatch[2]}/${timingWaitMatch[3]}`,
         startedAtLine: i,
-        durationMs: Number(timingWaitMatch[1]),
+        waitMs,
         done: false,
-        source: "timing",
+        source: "req",
       });
+      latestReqId = syntheticId;
+      continue;
+    }
+
+    const usageFallbackMatch = line.match(
+      /model output:\s+[^\s]+\s+response=\d+\s+chars\s+input=(\d+)\s+output=(\d+)/,
+    );
+    if (usageFallbackMatch && latestReqId && calls.has(latestReqId)) {
+      const existing = calls.get(latestReqId);
+      if (existing) {
+        calls.set(latestReqId, {
+          ...existing,
+          inputTokens: existing.inputTokens ?? Number(usageFallbackMatch[1]),
+          outputTokens: existing.outputTokens ?? Number(usageFallbackMatch[2]),
+        });
+      }
     }
   }
 
@@ -206,6 +247,25 @@ function renderRunDetails(
 
   const modelCalls = parseModelCalls(output);
   const anyInflight = modelCalls.some((call) => !call.done);
+  const liveInputTokens = modelCalls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0);
+  const liveOutputTokens = modelCalls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0);
+  const liveTotalTokens = liveInputTokens + liveOutputTokens;
+  const liveInvocationCount = modelCalls.length;
+  const completedCalls = modelCalls.filter((call) => call.done);
+  const liveAvgLatencyMs =
+    completedCalls.length > 0
+      ? completedCalls.reduce((sum, call) => sum + (call.durationMs ?? 0), 0) /
+        completedCalls.length
+      : 0;
+  const displayTotalTokens =
+    liveTotalTokens > 0 ? liveTotalTokens : (selectedRun?.metrics?.totalTokens ?? 0);
+  const displayLocalTokens =
+    liveTotalTokens > 0 ? liveTotalTokens : (selectedRun?.metrics?.localTokens ?? 0);
+  const displayCloudTokens = liveTotalTokens > 0 ? 0 : (selectedRun?.metrics?.cloudTokens ?? 0);
+  const displayInvocations =
+    liveInvocationCount > 0 ? liveInvocationCount : (selectedRun?.metrics?.totalInvocations ?? 0);
+  const displayAvgLatency =
+    liveAvgLatencyMs > 0 ? liveAvgLatencyMs : (selectedRun?.metrics?.avgLatencyMs ?? 0);
 
   return html`
     <div class="card" style="background: var(--panel); border: 1px solid var(--border);">
@@ -226,13 +286,13 @@ function renderRunDetails(
                 </div>
                 <div class="metric-card">
                   <div class="muted" style="font-size: 11px;">Tokens</div>
-                  <div class="metric-value">${formatTokens(selectedRun.metrics?.totalTokens ?? 0)}</div>
-                  <div class="muted" style="font-size: 11px;">L ${formatTokens(selectedRun.metrics?.localTokens ?? 0)} · C ${formatTokens(selectedRun.metrics?.cloudTokens ?? 0)}</div>
+                  <div class="metric-value">${formatTokens(displayTotalTokens)}</div>
+                  <div class="muted" style="font-size: 11px;">L ${formatTokens(displayLocalTokens)} · C ${formatTokens(displayCloudTokens)}</div>
                 </div>
                 <div class="metric-card">
                   <div class="muted" style="font-size: 11px;">Model Calls</div>
-                  <div class="metric-value">${formatTokens(selectedRun.metrics?.totalInvocations ?? 0)}</div>
-                  <div class="muted" style="font-size: 11px;">avg ${formatMs(selectedRun.metrics?.avgLatencyMs ?? 0)}</div>
+                  <div class="metric-value">${formatTokens(displayInvocations)}</div>
+                  <div class="muted" style="font-size: 11px;">avg ${formatMs(displayAvgLatency)}</div>
                 </div>
               </div>
 
@@ -248,15 +308,16 @@ function renderRunDetails(
                           `
                         : modelCalls.map(
                             (call) => html`
-                            <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;">
+                            <div style="display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;">
                               <span class="chip">${call.id}</span>
                               <span class="mono" style="font-size: 12px;">router -> ${call.model}</span>
+                              <span class="mono muted" style="font-size: 11px;">in ${formatTokens(call.inputTokens ?? 0)} · out ${formatTokens(call.outputTokens ?? 0)}</span>
                               <span class="chip" style="border-color: ${call.done ? "var(--success)" : "var(--accent)"};">
                                 ${
                                   call.done
                                     ? `done ${formatMs(call.durationMs ?? 0)}`
-                                    : call.source === "timing"
-                                      ? `waiting ${formatMs(call.durationMs ?? 0)}`
+                                    : call.waitMs
+                                      ? `waiting ${formatMs(call.waitMs)}`
                                       : "waiting"
                                 }
                               </span>
