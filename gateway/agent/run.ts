@@ -15,6 +15,7 @@ import type { ModelAliasIndex } from "../models/model-selection.js";
 import type { runPreparedReply } from "./pipeline/reply/reply-building/get-reply-run.js";
 import type { ReplyPayload } from "./pipeline/types.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { formatUtcTimestamp } from "../infra/format-time/format-datetime.js";
 import { logModelIo } from "../logging/model-io.js";
 import { resolveModelRefFromString, parseModelRef } from "../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
@@ -176,7 +177,7 @@ function pad2(n: number): string {
 }
 
 function formatIsoDateUtc(date: Date): string {
-  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+  return formatUtcTimestamp(date).slice(0, 10);
 }
 
 function formatOffset(minutes: number): string {
@@ -196,6 +197,10 @@ function toIsoLocalWithOffset(
   offsetMinutes: number,
 ): string {
   return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00${formatOffset(offsetMinutes)}`;
+}
+
+function formatUtcIsoWithSeconds(date: Date): string {
+  return formatUtcTimestamp(date, { displaySeconds: true });
 }
 
 function extractAnchor(cleanedBody: string): ParsedAnchor {
@@ -507,7 +512,7 @@ function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
         const utcMillis =
           Date.UTC(year, month - 1, day, requestedTime.hour24, requestedTime.minute, 0) -
           anchor.tzOffsetMinutes * 60 * 1000;
-        const utcIso = new Date(utcMillis).toISOString().replace(".000Z", "Z");
+        const utcIso = formatUtcIsoWithSeconds(new Date(utcMillis));
         const timeLine = `${normalizedPhrase} at ${requestedTime.label} local = ${localIso} (UTC ${utcIso})`;
         if (!seen.has(timeLine)) {
           seen.add(timeLine);
@@ -532,7 +537,7 @@ function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
               0,
             ) -
             anchor.tzOffsetMinutes * 60 * 1000;
-          const endUtcIso = new Date(endUtcMillis).toISOString().replace(".000Z", "Z");
+          const endUtcIso = formatUtcIsoWithSeconds(new Date(endUtcMillis));
           const endLine = `${normalizedPhrase} ends at ${requestedWindow.end.label} local = ${endLocalIso} (UTC ${endUtcIso})`;
           if (!seen.has(endLine)) {
             seen.add(endLine);
@@ -571,7 +576,7 @@ function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
       const utcMillis =
         Date.UTC(year, month - 1, day, requestedTime.hour24, requestedTime.minute, 0) -
         anchor.tzOffsetMinutes * 60 * 1000;
-      const utcIso = new Date(utcMillis).toISOString().replace(".000Z", "Z");
+      const utcIso = formatUtcIsoWithSeconds(new Date(utcMillis));
       const timeLine = `${absolute.phrase} at ${requestedTime.label} local = ${localIso} (UTC ${utcIso})`;
       if (!seen.has(timeLine)) {
         seen.add(timeLine);
@@ -596,7 +601,7 @@ function augmentCalendarPromptWithDateHints(cleanedBody: string): string {
             0,
           ) -
           anchor.tzOffsetMinutes * 60 * 1000;
-        const endUtcIso = new Date(endUtcMillis).toISOString().replace(".000Z", "Z");
+        const endUtcIso = formatUtcIsoWithSeconds(new Date(endUtcMillis));
         const endLine = `${absolute.phrase} ends at ${requestedWindow.end.label} local = ${endLocalIso} (UTC ${endUtcIso})`;
         if (!seen.has(endLine)) {
           seen.add(endLine);

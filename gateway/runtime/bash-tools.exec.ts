@@ -21,6 +21,7 @@ import {
   resolveExecApprovals,
   resolveExecApprovalsFromFile,
 } from "../infra/exec-approvals.js";
+import { formatUtcTimestamp } from "../infra/format-time/format-datetime.js";
 import { requestHeartbeatNow } from "../infra/heartbeat/index.js";
 import { buildNodeShellCommand } from "../infra/node-shell.js";
 import {
@@ -382,6 +383,10 @@ function shellQuoteArg(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function formatUtcIsoWithSeconds(date: Date): string {
+  return formatUtcTimestamp(date, { displaySeconds: true });
+}
+
 const WEEKDAY_TO_INDEX: Record<string, number> = {
   sunday: 0,
   monday: 1,
@@ -469,7 +474,7 @@ function resolveNextWeekdayIsoFromDateExpr(expr: string): string | null {
   const time = parseTimeFromDateExpr(expr) ?? { hour: 9, minute: 0 };
   const nextWeekday = nextWeekdayFrom(new Date(), weekdayIndex);
   nextWeekday.setHours(time.hour, time.minute, 0, 0);
-  return nextWeekday.toISOString().replace(".000Z", "Z");
+  return formatUtcIsoWithSeconds(nextWeekday);
 }
 
 function resolveOffsetIsoFromDateExpr(expr: string): string | null {
@@ -485,7 +490,7 @@ function resolveOffsetIsoFromDateExpr(expr: string): string | null {
     if (time) {
       at.setHours(time.hour, time.minute, 0, 0);
     }
-    return at.toISOString().replace(".000Z", "Z");
+    return formatUtcIsoWithSeconds(at);
   }
 
   const dayOffsetMatch = expr.match(/-v\s*\+?(\d+)\s*(?:d|day)\b/i);
@@ -502,7 +507,7 @@ function resolveOffsetIsoFromDateExpr(expr: string): string | null {
   if (time) {
     at.setHours(time.hour, time.minute, 0, 0);
   }
-  return at.toISOString().replace(".000Z", "Z");
+  return formatUtcIsoWithSeconds(at);
 }
 
 function resolveNextWeekdayCompactOffsetIsoFromDateExpr(expr: string): string | null {
@@ -522,7 +527,7 @@ function resolveNextWeekdayCompactOffsetIsoFromDateExpr(expr: string): string | 
   }
   const at = nextWeekdayFrom(new Date(), dayIndex);
   at.setHours(hour, minute, 0, 0);
-  return at.toISOString().replace(".000Z", "Z");
+  return formatUtcIsoWithSeconds(at);
 }
 
 function resolveLiteralIsoFromDateExpr(expr: string): string | null {
@@ -545,7 +550,7 @@ function resolveLiteralIsoFromDateExpr(expr: string): string | null {
     shifted = new Date(shifted.getTime() + 7 * 24 * 60 * 60 * 1000);
     guard += 1;
   }
-  return shifted.toISOString().replace(".000Z", "Z");
+  return formatUtcIsoWithSeconds(shifted);
 }
 
 function normalizeCalendarDateSubstitutions(command: string): string {
@@ -583,7 +588,7 @@ function normalizeCalendarDateSubstitutions(command: string): string {
         return match;
       }
       at.setUTCHours(hour, minute, second, 0);
-      return shellQuoteArg(at.toISOString().replace(".000Z", "Z"));
+      return shellQuoteArg(formatUtcIsoWithSeconds(at));
     },
   );
 
@@ -646,7 +651,7 @@ function normalizeCalendarBounds(command: string): string {
   if (to.getTime() > from.getTime()) {
     return command;
   }
-  const fixedTo = new Date(from.getTime() + 60 * 60 * 1000).toISOString().replace(".000Z", "Z");
+  const fixedTo = formatUtcIsoWithSeconds(new Date(from.getTime() + 60 * 60 * 1000));
   return replaceFlagValue(command, "--to", fixedTo);
 }
 
