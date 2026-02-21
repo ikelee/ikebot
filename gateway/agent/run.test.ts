@@ -145,6 +145,52 @@ describe("runAgentFlow", () => {
     expect(runPreparedReplyMock).not.toHaveBeenCalled();
   });
 
+  it("uses per-agent model.primary for specialized calendar path", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"calendar"}' }],
+      usage: { input: 10, output: 8 },
+    });
+
+    const cfg = createMockConfig({
+      agents: {
+        defaults: {
+          routing: {
+            enabled: true,
+            classifierModel: "ollama/qwen2.5:3b",
+          },
+        },
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            model: { primary: "openai-codex/gpt-5.1-codex-mini" },
+            tools: { exec: { safeBins: ["gog"] } },
+          },
+        ],
+      },
+    });
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+
+    await runAgentFlow({
+      cleanedBody: "what's on my calendar today",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "qwen2.5:14b",
+      defaultProvider: "ollama",
+      defaultModel: "qwen2.5:14b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+    const call = runPreparedReplyMock.mock.calls[0][0];
+    expect(call.agentId).toBe("calendar");
+    expect(call.provider).toBe("openai-codex");
+    expect(call.model).toBe("gpt-5.1-codex-mini");
+  });
+
   it("supports explicit top-level onboarding intent for any agent", async () => {
     vi.mocked(maybeRunAgentOnboarding).mockResolvedValue({
       text: "Calendar onboarding",

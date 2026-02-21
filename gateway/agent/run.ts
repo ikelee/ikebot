@@ -19,7 +19,11 @@ import { formatUtcTimestamp } from "../infra/format-time/format-datetime.js";
 import { logModelIo } from "../logging/model-io.js";
 import { resolveModelRefFromString, parseModelRef } from "../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../runtime/agent-paths.js";
-import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../runtime/agent-scope.js";
+import {
+  resolveAgentConfig,
+  resolveAgentModelPrimary,
+  resolveAgentWorkspaceDir,
+} from "../runtime/agent-scope.js";
 import { log } from "../runtime/pi-embedded-runner/logger.js";
 import { resolveModel } from "../runtime/pi-embedded-runner/model.js";
 import { runCalendarReply } from "./agents/calendar/index.js";
@@ -1205,7 +1209,11 @@ export async function runAgentFlow(
     console.log(`[runAgentFlow] Router classifier skipped (hold active): tier=${tier}`);
   }
 
-  // Resolve provider/model for simple tier (classifier model override)
+  // Resolve provider/model for this turn.
+  // Priority:
+  // 1) simple tier uses classifier model (if configured)
+  // 2) specialized tiers use per-agent model.primary (if configured)
+  // 3) otherwise keep caller/session model
   let effectiveProvider = provider;
   let effectiveModel = model;
   if (tier === "simple" && enabled && classifierModelRaw) {
@@ -1217,6 +1225,19 @@ export async function runAgentFlow(
     if (resolved?.ref) {
       effectiveProvider = resolved.ref.provider;
       effectiveModel = resolved.ref.model;
+    }
+  } else if (tier !== "complex") {
+    const agentPrimary = resolveAgentModelPrimary(cfg, tier);
+    if (agentPrimary) {
+      const resolved = resolveModelRefFromString({
+        raw: agentPrimary,
+        defaultProvider,
+        aliasIndex,
+      });
+      if (resolved?.ref) {
+        effectiveProvider = resolved.ref.provider;
+        effectiveModel = resolved.ref.model;
+      }
     }
   }
 
