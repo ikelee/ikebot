@@ -1053,6 +1053,25 @@ export async function runEmbeddedAttempt(
           `model output: ${params.provider}/${params.modelId} response=${outLen} chars${usageStr}`,
         );
         logLongContent(log.info.bind(log), "model output", responseText, true);
+        if (outLen === 0 && (params.provider === "openai" || params.provider === "openai-codex")) {
+          const stopReason =
+            typeof (lastAssistant as { stopReason?: unknown } | undefined)?.stopReason === "string"
+              ? ((lastAssistant as { stopReason?: string }).stopReason ?? "unknown")
+              : "unknown";
+          const contentCount = Array.isArray(lastAssistant?.content)
+            ? lastAssistant.content.length
+            : 0;
+          const toolCalls = Array.isArray(
+            (lastAssistant as { toolCalls?: unknown[] } | undefined)?.toolCalls,
+          )
+            ? ((lastAssistant as { toolCalls?: unknown[] }).toolCalls?.length ?? 0)
+            : 0;
+          log.warn(
+            `[cloud-empty-output] provider=${params.provider}/${params.modelId} stopReason=${stopReason} ` +
+              `contentBlocks=${contentCount} toolCalls=${toolCalls} usage.in=${usage?.input ?? "?"} ` +
+              `usage.out=${usage?.output ?? "?"}`,
+          );
+        }
 
         // Run agent_end hooks to allow plugins to analyze the conversation
         // This is fire-and-forget, so we don't await

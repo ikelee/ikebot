@@ -60,6 +60,80 @@ import { describeUnknownError } from "./utils.js";
 
 type ApiKeyInfo = ResolvedProviderAuth;
 
+function isCloudProvider(provider: string): boolean {
+  const normalized = provider.trim().toLowerCase();
+  return normalized === "openai" || normalized === "openai-codex";
+}
+
+function extractTransportErrorMeta(err: unknown): {
+  name?: string;
+  status?: number;
+  code?: string;
+  requestId?: string;
+  type?: string;
+} {
+  if (!err || typeof err !== "object") {
+    return {};
+  }
+  const record = err as Record<string, unknown>;
+  const status =
+    typeof record.status === "number"
+      ? record.status
+      : typeof record.statusCode === "number"
+        ? record.statusCode
+        : undefined;
+  const requestId =
+    typeof record.request_id === "string"
+      ? record.request_id
+      : typeof record.requestId === "string"
+        ? record.requestId
+        : undefined;
+  return {
+    name: typeof record.name === "string" ? record.name : undefined,
+    status,
+    code: typeof record.code === "string" ? record.code : undefined,
+    requestId,
+    type: typeof record.type === "string" ? record.type : undefined,
+  };
+}
+
+function summarizeAssistantTurn(lastAssistant: unknown): string {
+  if (!lastAssistant || typeof lastAssistant !== "object") {
+    return "assistant=(missing)";
+  }
+  const record = lastAssistant as Record<string, unknown>;
+  const stopReason = typeof record.stopReason === "string" ? record.stopReason : "unknown";
+  const model = typeof record.model === "string" ? record.model : "unknown";
+  const provider = typeof record.provider === "string" ? record.provider : "unknown";
+  const errorMessage =
+    typeof record.errorMessage === "string" ? record.errorMessage.slice(0, 240) : undefined;
+  const content = Array.isArray(record.content) ? record.content : [];
+  const textBlocks = content.filter(
+    (block) =>
+      !!block &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string",
+  ) as Array<{ text: string }>;
+  const textChars = textBlocks.reduce((sum, block) => sum + block.text.length, 0);
+  const toolCalls = Array.isArray(record.toolCalls)
+    ? record.toolCalls.length
+    : Array.isArray(record.tool_calls)
+      ? record.tool_calls.length
+      : 0;
+  return [
+    `assistant.provider=${provider}`,
+    `assistant.model=${model}`,
+    `assistant.stopReason=${stopReason}`,
+    `assistant.contentBlocks=${content.length}`,
+    `assistant.textChars=${textChars}`,
+    `assistant.toolCalls=${toolCalls}`,
+    errorMessage ? `assistant.error=${errorMessage}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 // Avoid Anthropic's refusal test token poisoning session transcripts.
 const ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL = "ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL";
 const ANTHROPIC_MAGIC_STRING_REPLACEMENT = "ANTHROPIC MAGIC STRING TRIGGER REFUSAL (redacted)";
@@ -628,6 +702,15 @@ export async function runEmbeddedPiAgent(
 
           if (promptError && !aborted) {
             const errorText = describeUnknownError(promptError);
+            if (isCloudProvider(provider)) {
+              const transport = extractTransportErrorMeta(promptError);
+              log.warn(
+                `[cloud-prompt-error] provider=${provider}/${modelId} status=${transport.status ?? "unknown"} ` +
+                  `code=${transport.code ?? "unknown"} type=${transport.type ?? "unknown"} ` +
+                  `requestId=${transport.requestId ?? "unknown"} name=${transport.name ?? "unknown"} ` +
+                  `message=${errorText.slice(0, 280)}`,
+              );
+            }
             // Handle role ordering errors with a user-friendly message
             if (/incorrect role information|roles must alternate/i.test(errorText)) {
               return {
@@ -870,6 +953,15 @@ export async function runEmbeddedPiAgent(
             !aborted &&
             !promptError
           ) {
+            if (isCloudProvider(provider)) {
+              const usageDiag = attemptUsage
+                ? `usage.in=${attemptUsage.input ?? "?"} usage.out=${attemptUsage.output ?? "?"}`
+                : "usage=(missing)";
+              log.warn(
+                `[cloud-empty-turn] provider=${provider}/${modelId} ${usageDiag} ` +
+                  `${summarizeAssistantTurn(lastAssistant)}`,
+              );
+            }
             if (emptyNoopRetries < 1) {
               emptyNoopRetries += 1;
               log.warn(
