@@ -484,6 +484,21 @@ describe("calendar agent-level e2e – real model", () => {
         );
       }
     }
+    if (!gogOk) {
+      throw new Error(
+        "[calendar agent e2e] gog calendar auth missing/invalid; run `gog auth add <email> --services calendar`.",
+      );
+    }
+    if (modelOk && !calendarReadOk) {
+      throw new Error(
+        `[calendar agent e2e] calendar API read preflight failed for account=${CALENDAR_TEST_ACCOUNT}.`,
+      );
+    }
+    if (modelOk && LIVE_WRITE_ENABLED && !canRunLiveWrites) {
+      throw new Error(
+        `[calendar agent e2e] live write preflight failed for account=${CALENDAR_TEST_ACCOUNT}.`,
+      );
+    }
     if (LOCAL_ONLY && !ollamaOk) {
       console.warn(
         "[calendar agent e2e] Ollama not available at localhost:11434 – skipping. Run `ollama serve`.",
@@ -495,18 +510,6 @@ describe("calendar agent-level e2e – real model", () => {
     } else if (!modelOk && !LOCAL_ONLY) {
       console.warn(
         `[calendar agent e2e] Codex auth not found under ${AUTH_HOME}/.openclaw/{credentials/oauth.json,agents/main/agent/auth-profiles.json} – skipping cloud-integrated mode.`,
-      );
-    } else if (!gogOk) {
-      console.warn(
-        "[calendar agent e2e] gog calendar auth missing/invalid for read test – skipping read query test. Run `gog auth add <email> --services calendar`.",
-      );
-    } else if (!calendarReadOk) {
-      console.warn(
-        `[calendar agent e2e] calendar API not accessible for account=${CALENDAR_TEST_ACCOUNT}; read test skipped.`,
-      );
-    } else if (LIVE_WRITE_ENABLED && !canRunLiveWrites) {
-      console.warn(
-        `[calendar agent e2e] live write tests disabled due preflight failure for account=${CALENDAR_TEST_ACCOUNT}.`,
       );
     }
   });
