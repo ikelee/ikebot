@@ -50,6 +50,7 @@ import {
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
+import { loadMonitoring } from "./controllers/monitoring.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { deleteSession, loadSessions, patchSession } from "./controllers/sessions.ts";
@@ -83,6 +84,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderInstances } from "./views/instances.ts";
 import { renderLogs } from "./views/logs.ts";
+import { renderMonitor } from "./views/monitor.ts";
 import { renderNodes } from "./views/nodes.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderRouting } from "./views/routing.ts";
@@ -596,6 +598,19 @@ export function renderApp(state: AppViewState) {
         }
 
         ${
+          state.tab === "monitor"
+            ? renderMonitor({
+                loading: state.monitoringLoading,
+                error: state.monitoringError,
+                days: state.monitoringDays,
+                result: state.monitoringResult,
+                onDaysChange: (v) => (state.monitoringDays = v),
+                onRefresh: () => loadMonitoring(state),
+              })
+            : nothing
+        }
+
+        ${
           state.tab === "cron"
             ? renderCron({
                 basePath: state.basePath,
@@ -661,6 +676,8 @@ export function renderApp(state: AppViewState) {
                 agentTestBusy: state.agentTestBusy,
                 agentTestRunId: state.agentTestRunId,
                 agentTestTotalDurationMs: state.agentTestTotalDurationMs,
+                agentTestUseCloudModel: state.agentTestUseCloudModel,
+                agentTestCloudModelRef: state.agentTestCloudModelRef,
                 agentTestStatus: state.agentTestStatus,
                 agentTestError: state.agentTestError,
                 agentTestReply: state.agentTestReply,
@@ -898,6 +915,8 @@ export function renderApp(state: AppViewState) {
                   updateConfigFormValue(state, ["agents", "list", index, "skills"], []);
                 },
                 onAgentTestMessageChange: (value) => (state.agentTestMessage = value),
+                onAgentTestUseCloudModelChange: (value) => (state.agentTestUseCloudModel = value),
+                onAgentTestCloudModelRefChange: (value) => (state.agentTestCloudModelRef = value),
                 onRunAgentTest: () => {
                   if (resolvedAgentId) {
                     state.agentTestAgentId = resolvedAgentId;
@@ -1064,6 +1083,8 @@ export function renderApp(state: AppViewState) {
                 agentTestBusy: state.agentTestBusy,
                 agentTestRunId: state.agentTestRunId,
                 agentTestTotalDurationMs: state.agentTestTotalDurationMs,
+                agentTestUseCloudModel: state.agentTestUseCloudModel,
+                agentTestCloudModelRef: state.agentTestCloudModelRef,
                 agentTestStatus: state.agentTestStatus,
                 agentTestError: state.agentTestError,
                 agentTestReply: state.agentTestReply,
@@ -1073,6 +1094,8 @@ export function renderApp(state: AppViewState) {
                 agentTestCurrentFiles: state.agentTestCurrentFiles,
                 agentTestUndoBusy: state.agentTestUndoBusy,
                 onAgentTestMessageChange: (value) => (state.agentTestMessage = value),
+                onAgentTestUseCloudModelChange: (value) => (state.agentTestUseCloudModel = value),
+                onAgentTestCloudModelRefChange: (value) => (state.agentTestCloudModelRef = value),
                 onRunAgentTest: () => {
                   if (resolvedAgentId) {
                     state.agentTestAgentId = resolvedAgentId;
@@ -1372,6 +1395,8 @@ export function renderApp(state: AppViewState) {
                 agentTestBusy: state.agentTestBusy,
                 agentTestRunId: state.agentTestRunId,
                 agentTestStatus: state.agentTestStatus,
+                agentTestUseCloudModel: state.agentTestUseCloudModel,
+                agentTestCloudModelRef: state.agentTestCloudModelRef,
                 agentTestError: state.agentTestError,
                 agentTestReply: state.agentTestReply,
                 agentTestChanges: state.agentTestChanges,
@@ -1380,6 +1405,8 @@ export function renderApp(state: AppViewState) {
                 agentTestUndoBusy: state.agentTestUndoBusy,
                 onAgentTestAgentChange: (id) => (state.agentTestAgentId = id),
                 onAgentTestMessageChange: (v) => (state.agentTestMessage = v),
+                onAgentTestUseCloudModelChange: (v) => (state.agentTestUseCloudModel = v),
+                onAgentTestCloudModelRefChange: (v) => (state.agentTestCloudModelRef = v),
                 onRunAgentTest: () => runDebugAgentTest(state),
                 onRefreshAgentFiles: () => refreshDebugAgentFiles(state),
                 onUndoAgentFileChange: (name) => undoDebugAgentFileChange(state, name),

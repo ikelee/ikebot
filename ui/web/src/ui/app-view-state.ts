@@ -188,6 +188,10 @@ export type AppViewState = {
   usageLogFilterTools: string[];
   usageLogFilterHasTools: boolean;
   usageLogFilterQuery: string;
+  monitoringLoading: boolean;
+  monitoringError: string | null;
+  monitoringDays: string;
+  monitoringResult: SessionsUsageResult | null;
   cronLoading: boolean;
   cronJobs: CronJob[];
   cronStatus: CronStatus | null;
@@ -229,6 +233,8 @@ export type AppViewState = {
   agentTestBusy: boolean;
   agentTestRunId: string | null;
   agentTestTotalDurationMs: number | null;
+  agentTestUseCloudModel: boolean;
+  agentTestCloudModelRef: string;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;

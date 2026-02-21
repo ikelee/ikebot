@@ -4,7 +4,7 @@ export const TAB_GROUPS = [
   { label: "Chat", tabs: ["chat"] },
   {
     label: "Control",
-    tabs: ["overview", "channels", "instances", "sessions", "usage", "cron", "routing"],
+    tabs: ["overview", "channels", "instances", "sessions", "usage", "monitor", "cron", "routing"],
   },
   { label: "Agent", tabs: ["agents", "agent-testing", "skills", "nodes"] },
   { label: "Settings", tabs: ["config", "debug", "logs"] },
@@ -17,6 +17,7 @@ export type Tab =
   | "instances"
   | "sessions"
   | "usage"
+  | "monitor"
   | "cron"
   | "routing"
   | "skills"
@@ -34,6 +35,7 @@ const TAB_PATHS: Record<Tab, string> = {
   instances: "/instances",
   sessions: "/sessions",
   usage: "/usage",
+  monitor: "/monitor",
   cron: "/cron",
   routing: "/routing",
   skills: "/skills",
@@ -142,6 +144,8 @@ export function iconForTab(tab: Tab): IconName {
       return "fileText";
     case "usage":
       return "barChart";
+    case "monitor":
+      return "monitor";
     case "cron":
       return "loader";
     case "routing":
@@ -177,6 +181,8 @@ export function titleForTab(tab: Tab) {
       return "Sessions";
     case "usage":
       return "Usage";
+    case "monitor":
+      return "Monitoring";
     case "cron":
       return "Cron Jobs";
     case "routing":
@@ -214,6 +220,8 @@ export function subtitleForTab(tab: Tab) {
       return "Inspect active sessions and adjust per-session defaults.";
     case "usage":
       return "";
+    case "monitor":
+      return "Live operational metrics for model calls and latency.";
     case "cron":
       return "Schedule wakeups and recurring agent runs.";
     case "routing":

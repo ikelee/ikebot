@@ -91,6 +91,8 @@ export type AgentsProps = {
   agentTestBusy: boolean;
   agentTestRunId: string | null;
   agentTestTotalDurationMs: number | null;
+  agentTestUseCloudModel: boolean;
+  agentTestCloudModelRef: string;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;
@@ -120,6 +122,8 @@ export type AgentsProps = {
   >;
   agentTestUndoBusy: boolean;
   onAgentTestMessageChange: (value: string) => void;
+  onAgentTestUseCloudModelChange: (value: boolean) => void;
+  onAgentTestCloudModelRefChange: (value: string) => void;
   onRunAgentTest: () => void;
   onResetAgentOnboarding: () => void;
   onRefreshAgentTestFiles: () => void;
@@ -765,6 +769,8 @@ export function renderAgents(props: AgentsProps) {
                       busy: props.agentTestBusy,
                       runId: props.agentTestRunId,
                       totalDurationMs: props.agentTestTotalDurationMs,
+                      useCloudModel: props.agentTestUseCloudModel,
+                      cloudModelRef: props.agentTestCloudModelRef,
                       status: props.agentTestStatus,
                       error: props.agentTestError,
                       reply: props.agentTestReply,
@@ -774,6 +780,8 @@ export function renderAgents(props: AgentsProps) {
                       currentFiles: props.agentTestCurrentFiles,
                       undoBusy: props.agentTestUndoBusy,
                       onMessageChange: props.onAgentTestMessageChange,
+                      onUseCloudModelChange: props.onAgentTestUseCloudModelChange,
+                      onCloudModelRefChange: props.onAgentTestCloudModelRefChange,
                       onRun: props.onRunAgentTest,
                       onResetOnboarding: props.onResetAgentOnboarding,
                       onRefresh: props.onRefreshAgentTestFiles,
@@ -849,6 +857,8 @@ function renderAgentTesting(params: {
   busy: boolean;
   runId: string | null;
   totalDurationMs: number | null;
+  useCloudModel: boolean;
+  cloudModelRef: string;
   status: string | null;
   error: string | null;
   reply: string | null;
@@ -878,6 +888,8 @@ function renderAgentTesting(params: {
   >;
   undoBusy: boolean;
   onMessageChange: (value: string) => void;
+  onUseCloudModelChange: (value: boolean) => void;
+  onCloudModelRefChange: (value: string) => void;
   onRun: () => void;
   onResetOnboarding: () => void;
   onRefresh: () => void;
@@ -899,6 +911,27 @@ function renderAgentTesting(params: {
           placeholder="e.g. log bench press 3x10 at 135"
         ></textarea>
       </label>
+      <div class="row" style="margin-top: 10px; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <label class="field" style="display: flex; align-items: center; gap: 8px;">
+          <input
+            type="checkbox"
+            ?checked=${params.useCloudModel}
+            @change=${(e: Event) =>
+              params.onUseCloudModelChange((e.target as HTMLInputElement).checked)}
+          />
+          <span>Use cloud model</span>
+        </label>
+        <label class="field" style="min-width: 320px;">
+          <span>Cloud model ref</span>
+          <input
+            .value=${params.cloudModelRef}
+            ?disabled=${!params.useCloudModel}
+            @input=${(e: Event) =>
+              params.onCloudModelRefChange((e.target as HTMLInputElement).value)}
+            placeholder="openai-codex/gpt-5.3-codex-spark"
+          />
+        </label>
+      </div>
       <div class="row" style="margin-top: 12px; gap: 8px; flex-wrap: wrap;">
         <button class="btn primary" ?disabled=${!params.message.trim() || params.busy} @click=${params.onRun}>
           ${params.busy ? "Running…" : "Run Agent Test"}

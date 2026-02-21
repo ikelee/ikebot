@@ -68,6 +68,8 @@ export type DebugState = {
   agentTestBusy: boolean;
   agentTestRunId: string | null;
   agentTestTotalDurationMs: number | null;
+  agentTestUseCloudModel: boolean;
+  agentTestCloudModelRef: string;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;
@@ -79,6 +81,8 @@ export type DebugState = {
   agentTestHistoryError: string | null;
   agentTestHistory: DebugAgentChatMessage[];
 };
+
+const DEFAULT_CLOUD_MODEL_REF = "openai-codex/gpt-5.3-codex-spark";
 
 export async function loadDebug(state: DebugState) {
   if (!state.client || !state.connected) {
@@ -273,6 +277,33 @@ async function loadLatestAssistantReply(
   return null;
 }
 
+async function resolveSessionModelOverride(
+  state: DebugState,
+  sessionKey: string,
+): Promise<string | null> {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const resolved = await state.client.request<{ ok?: boolean; key?: string }>("sessions.resolve", {
+    key: sessionKey,
+  });
+  const resolvedKey =
+    typeof resolved?.key === "string" && resolved.key.trim() ? resolved.key : sessionKey;
+  const listed = await state.client.request<{
+    sessions?: Array<{ key?: string; model?: string | null }>;
+  }>("sessions.list", {
+    includeGlobal: true,
+    includeUnknown: true,
+    limit: 1000,
+  });
+  const row = (listed.sessions ?? []).find((entry) => entry?.key === resolvedKey);
+  if (!row) {
+    return null;
+  }
+  const model = typeof row.model === "string" ? row.model.trim() : "";
+  return model || null;
+}
+
 export async function loadDebugAgentHistory(state: DebugState) {
   if (!state.client || !state.connected || !state.agentTestAgentId) {
     return;
@@ -353,6 +384,9 @@ export async function runDebugAgentTest(state: DebugState) {
   state.agentTestError = null;
   state.agentTestReply = null;
   state.agentTestChanges = [];
+  let sessionKeyForRestore: string | null = null;
+  let restoreModelRef: string | null = null;
+  let cloudModelPatched = false;
 
   try {
     const startedAt = Date.now();
@@ -362,6 +396,18 @@ export async function runDebugAgentTest(state: DebugState) {
 
     const runId = generateUUID();
     const sessionKey = buildAgentTestingSessionKey(agentId);
+    sessionKeyForRestore = sessionKey;
+    const useCloudModel = state.agentTestUseCloudModel;
+    const cloudModelRef = state.agentTestCloudModelRef.trim() || DEFAULT_CLOUD_MODEL_REF;
+    if (useCloudModel) {
+      state.agentTestStatus = "Applying cloud model override…";
+      restoreModelRef = await resolveSessionModelOverride(state, sessionKey);
+      await state.client.request("sessions.patch", {
+        key: sessionKey,
+        model: cloudModelRef,
+      });
+      cloudModelPatched = true;
+    }
     state.agentTestStatus = "Sending test prompt (direct agent)…";
     const started = await state.client.request<{ runId?: string }>("agent", {
       agentId,
@@ -396,6 +442,16 @@ export async function runDebugAgentTest(state: DebugState) {
     state.agentTestError = String(err);
     state.agentTestStatus = null;
   } finally {
+    if (cloudModelPatched && sessionKeyForRestore && state.client && state.connected) {
+      try {
+        await state.client.request("sessions.patch", {
+          key: sessionKeyForRestore,
+          model: restoreModelRef,
+        });
+      } catch {
+        // Best-effort restore only.
+      }
+    }
     state.agentTestBusy = false;
   }
 }

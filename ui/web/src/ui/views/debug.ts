@@ -39,6 +39,8 @@ export type DebugProps = {
   agentTestMessage: string;
   agentTestBusy: boolean;
   agentTestRunId: string | null;
+  agentTestUseCloudModel: boolean;
+  agentTestCloudModelRef: string;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;
@@ -68,6 +70,8 @@ export type DebugProps = {
   agentTestUndoBusy: boolean;
   onAgentTestAgentChange: (agentId: string | null) => void;
   onAgentTestMessageChange: (v: string) => void;
+  onAgentTestUseCloudModelChange: (v: boolean) => void;
+  onAgentTestCloudModelRefChange: (v: string) => void;
   onRunAgentTest: () => void;
   onRefreshAgentFiles: () => void;
   onUndoAgentFileChange: (name: string) => void;
@@ -292,6 +296,27 @@ export function renderDebug(props: DebugProps) {
           placeholder="e.g. log bench press 3x10 at 135"
         ></textarea>
       </label>
+      <div class="row" style="margin-top: 10px; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <label class="field" style="display: flex; align-items: center; gap: 8px;">
+          <input
+            type="checkbox"
+            ?checked=${props.agentTestUseCloudModel}
+            @change=${(e: Event) =>
+              props.onAgentTestUseCloudModelChange((e.target as HTMLInputElement).checked)}
+          />
+          <span>Use cloud model</span>
+        </label>
+        <label class="field" style="min-width: 320px;">
+          <span>Cloud model ref</span>
+          <input
+            .value=${props.agentTestCloudModelRef}
+            ?disabled=${!props.agentTestUseCloudModel}
+            @input=${(e: Event) =>
+              props.onAgentTestCloudModelRefChange((e.target as HTMLInputElement).value)}
+            placeholder="openai-codex/gpt-5.3-codex-spark"
+          />
+        </label>
+      </div>
       <div class="row" style="margin-top: 12px; gap: 8px; flex-wrap: wrap;">
         <button
           class="btn primary"

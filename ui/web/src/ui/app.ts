@@ -288,6 +288,10 @@ export class OpenClawApp extends LitElement {
   @state() usageLogFilterTools: string[] = [];
   @state() usageLogFilterHasTools = false;
   @state() usageLogFilterQuery = "";
+  @state() monitoringLoading = false;
+  @state() monitoringError: string | null = null;
+  @state() monitoringDays = "7";
+  @state() monitoringResult: import("./types.js").SessionsUsageResult | null = null;
 
   // Non-reactive (don’t trigger renders just for timer bookkeeping).
   usageQueryDebounceTimer: number | null = null;
@@ -335,6 +339,8 @@ export class OpenClawApp extends LitElement {
   @state() agentTestBusy = false;
   @state() agentTestRunId: string | null = null;
   @state() agentTestTotalDurationMs: number | null = null;
+  @state() agentTestUseCloudModel = false;
+  @state() agentTestCloudModelRef = "openai-codex/gpt-5.3-codex-spark";
   @state() agentTestStatus: string | null = null;
   @state() agentTestError: string | null = null;
   @state() agentTestReply: string | null = null;

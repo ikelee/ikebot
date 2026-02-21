@@ -22,6 +22,8 @@ export type AgentTestingProps = {
   agentTestBusy: boolean;
   agentTestRunId: string | null;
   agentTestTotalDurationMs: number | null;
+  agentTestUseCloudModel: boolean;
+  agentTestCloudModelRef: string;
   agentTestStatus: string | null;
   agentTestError: string | null;
   agentTestReply: string | null;
@@ -51,6 +53,8 @@ export type AgentTestingProps = {
   >;
   agentTestUndoBusy: boolean;
   onAgentTestMessageChange: (value: string) => void;
+  onAgentTestUseCloudModelChange: (value: boolean) => void;
+  onAgentTestCloudModelRefChange: (value: string) => void;
   onRunAgentTest: () => void;
   onResetAgentOnboarding: () => void;
   onRefreshAgentFiles: () => void;
@@ -432,6 +436,31 @@ export function renderAgentTesting(props: AgentTestingProps) {
                         props.onAgentTestMessageChange((e.target as HTMLTextAreaElement).value)}
                     ></textarea>
                   </label>
+                  <div class="row" style="gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+                    <label class="field" style="display:flex; align-items:center; gap:8px;">
+                      <input
+                        type="checkbox"
+                        ?checked=${props.agentTestUseCloudModel}
+                        @change=${(e: Event) =>
+                          props.onAgentTestUseCloudModelChange(
+                            (e.target as HTMLInputElement).checked,
+                          )}
+                      />
+                      <span>Use cloud model</span>
+                    </label>
+                    <label class="field" style="min-width: 320px;">
+                      <span>Cloud model ref</span>
+                      <input
+                        .value=${props.agentTestCloudModelRef}
+                        ?disabled=${!props.agentTestUseCloudModel}
+                        @input=${(e: Event) =>
+                          props.onAgentTestCloudModelRefChange(
+                            (e.target as HTMLInputElement).value,
+                          )}
+                        placeholder="openai-codex/gpt-5.3-codex-spark"
+                      />
+                    </label>
+                  </div>
                   <div class="row" style="justify-content: flex-end;">
                     <button
                       class="btn primary"
