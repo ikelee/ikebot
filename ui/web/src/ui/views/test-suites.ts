@@ -428,6 +428,8 @@ function renderRunDetails(
     .filter(Boolean)
     .join("\n");
   const output = stripAnsiAndControl(outputRaw);
+  const outputLines = output.split(/\r?\n/);
+  const tailedOutput = outputLines.slice(-600).join("\n");
 
   const parsedCalls = parseModelCalls(output);
   const telemetryCalls: ParsedModelCall[] = (selectedRun?.modelCalls ?? []).map((call, index) => ({
@@ -587,7 +589,10 @@ function renderRunDetails(
                 <div class="muted" style="font-size: 12px; margin-top: 4px;">
                   PID ${selectedRun.pid ?? "—"} · last output ${selectedRun.lastOutputAt ? new Date(selectedRun.lastOutputAt).toLocaleTimeString() : "—"}
                 </div>
-                <pre style="margin-top: 8px; background: #0f1116; color: #d6d8de; border: 1px solid #222938; border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 11px; line-height: 1.35;">${output || "(no output yet)"}</pre>
+                <div class="muted" style="font-size: 11px; margin-top: 4px;">
+                  Showing latest ${Math.min(600, outputLines.length)} lines
+                </div>
+                <pre style="margin-top: 8px; background: #0f1116; color: #d6d8de; border: 1px solid #222938; border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 11px; line-height: 1.35;">${tailedOutput || "(no output yet)"}</pre>
               </div>
 
               <div class="mono muted" style="margin-top: 8px; font-size: 11px;">${selectedRun.command.join(" ")}</div>

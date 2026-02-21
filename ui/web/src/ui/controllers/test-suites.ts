@@ -527,7 +527,6 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     });
 
     let snapshot: TestSuiteRunResult | null = initialRun;
-    let lastProgressEventAt = 0;
     for (;;) {
       const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_000 });
       const run = (waitRes as { run?: TestSuiteRunResult } | null)?.run;
@@ -541,16 +540,6 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
 
       const elapsedMs = Math.max(0, Date.now() - (run.startedAt ?? Date.now()));
       state.testSuitesStatus = `Running ${normalizedSuiteId}... ${Math.round(elapsedMs / 1000)}s elapsed`;
-      const now = Date.now();
-      if (now - lastProgressEventAt >= 2_000) {
-        addRunEvent(state, {
-          runId,
-          level: "info",
-          message: `Running… ${Math.round(elapsedMs / 1000)}s elapsed.`,
-          ts: now,
-        });
-        lastProgressEventAt = now;
-      }
 
       if (run.status !== "running") {
         break;
