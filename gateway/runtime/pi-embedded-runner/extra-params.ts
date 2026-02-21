@@ -3,6 +3,7 @@ import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import { log } from "./logger.js";
+import { isStreamParamAllowed } from "./stream-params-policy.js";
 
 const OPENROUTER_APP_HEADERS: Record<string, string> = {
   "HTTP-Referer": "https://openclaw.ai",
@@ -68,16 +69,23 @@ function createStreamFnWithExtraParams(
   baseStreamFn: StreamFn | undefined,
   extraParams: Record<string, unknown> | undefined,
   provider: string,
+  modelId: string,
 ): StreamFn | undefined {
   if (!extraParams || Object.keys(extraParams).length === 0) {
     return undefined;
   }
 
   const streamParams: CacheRetentionStreamOptions = {};
-  if (typeof extraParams.temperature === "number") {
+  if (
+    isStreamParamAllowed({ provider, modelId, param: "temperature" }) &&
+    typeof extraParams.temperature === "number"
+  ) {
     streamParams.temperature = extraParams.temperature;
   }
-  if (typeof extraParams.maxTokens === "number") {
+  if (
+    isStreamParamAllowed({ provider, modelId, param: "maxTokens" }) &&
+    typeof extraParams.maxTokens === "number"
+  ) {
     streamParams.maxTokens = extraParams.maxTokens;
   }
   const cacheRetention = resolveCacheRetention(extraParams, provider);
@@ -142,7 +150,7 @@ export function applyExtraParamsToAgent(
         )
       : undefined;
   const merged = Object.assign({}, extraParams, override);
-  const wrappedStreamFn = createStreamFnWithExtraParams(agent.streamFn, merged, provider);
+  const wrappedStreamFn = createStreamFnWithExtraParams(agent.streamFn, merged, provider, modelId);
 
   if (wrappedStreamFn) {
     log.debug(`applying extraParams to agent streamFn for ${provider}/${modelId}`);

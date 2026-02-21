@@ -3,6 +3,7 @@ import type { Context, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import { applyExtraParamsToAgent, resolveExtraParams } from "./pi-embedded-runner.js";
+import { isStreamParamAllowed } from "./pi-embedded-runner/stream-params-policy.js";
 
 describe("resolveExtraParams", () => {
   it("returns undefined with no model config", () => {
@@ -90,5 +91,64 @@ describe("applyExtraParamsToAgent", () => {
       "X-Title": "OpenClaw",
       "X-Custom": "1",
     });
+  });
+
+  it("omits temperature for openai-codex models but keeps maxTokens", () => {
+    const calls: Array<SimpleStreamOptions | undefined> = [];
+    const baseStreamFn: StreamFn = (_model, _context, options) => {
+      calls.push(options);
+      return new AssistantMessageEventStream();
+    };
+    const agent = { streamFn: baseStreamFn };
+    const cfg = {
+      agents: {
+        defaults: {
+          models: {
+            "openai-codex/gpt-5.2-codex": {
+              params: {
+                temperature: 0,
+                maxTokens: 2048,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    applyExtraParamsToAgent(agent, cfg as never, "openai-codex", "gpt-5.2-codex");
+
+    const model = {
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      id: "gpt-5.2-codex",
+    } as Model<"openai-codex-responses">;
+    const context: Context = { messages: [] };
+    void agent.streamFn?.(model, context, {});
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.maxTokens).toBe(2048);
+    expect(calls[0]?.temperature).toBeUndefined();
+  });
+});
+
+describe("isStreamParamAllowed", () => {
+  it("blocks temperature for openai-codex", () => {
+    expect(
+      isStreamParamAllowed({
+        provider: "openai-codex",
+        modelId: "gpt-5.2-codex",
+        param: "temperature",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows maxTokens for openai-codex", () => {
+    expect(
+      isStreamParamAllowed({
+        provider: "openai-codex",
+        modelId: "gpt-5.2-codex",
+        param: "maxTokens",
+      }),
+    ).toBe(true);
   });
 });
