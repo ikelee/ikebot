@@ -22,6 +22,7 @@ type TestSuitesState = {
   testSuitesRunHistory: TestSuiteRunResult[];
   testSuitesSelectedRunId: string | null;
   testSuitesRunEvents: TestSuiteRunEvent[];
+  testSuitesViewTab: "overview" | "run";
   testSuitesFileQueryBySuite: Record<string, string>;
   testSuitesFilesBySuite: Record<string, string[]>;
   testSuitesFilesLoadingBySuite: Record<string, boolean>;
@@ -340,6 +341,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
   state.testSuitesBusySuiteId = normalizedSuiteId;
   state.testSuitesError = null;
   state.testSuitesStatus = `Preparing ${normalizedSuiteId}...`;
+  state.testSuitesViewTab = "run";
 
   const range = buildRange(14);
 
@@ -374,6 +376,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     }
 
     state.testSuitesActiveRunId = runId;
+    state.testSuitesViewTab = "run";
 
     const level = levelForSuiteId(state, normalizedSuiteId);
     const scopeLabel =

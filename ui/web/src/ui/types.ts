@@ -678,6 +678,8 @@ export type TestSuiteRunResult = {
   cwd: string;
   requestedFiles?: string[];
   testName?: string;
+  pid?: number;
+  lastOutputAt?: number;
   exitCode?: number | null;
   signal?: string | null;
   stdoutTail?: string;

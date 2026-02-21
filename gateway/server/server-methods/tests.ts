@@ -1,9 +1,9 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
-import { runCommandWithTimeout } from "../../process/exec.js";
 import {
   ErrorCodes,
   errorShape,
@@ -37,6 +37,8 @@ type TestRunSnapshot = {
   cwd: string;
   requestedFiles?: string[];
   testName?: string;
+  pid?: number;
+  lastOutputAt?: number;
   exitCode?: number | null;
   signal?: string | null;
   stdoutTail?: string;
@@ -89,14 +91,12 @@ function pruneRuns(now = Date.now()) {
   }
 }
 
-function tailText(value: string): string {
-  if (!value) {
-    return "";
+function appendTail(existing: string | undefined, chunk: string): string {
+  const next = (existing ?? "") + chunk;
+  if (next.length <= TEST_RUN_TAIL_CHARS) {
+    return next;
   }
-  if (value.length <= TEST_RUN_TAIL_CHARS) {
-    return value;
-  }
-  return value.slice(-TEST_RUN_TAIL_CHARS);
+  return next.slice(-TEST_RUN_TAIL_CHARS);
 }
 
 function findSuite(id: string): TestSuiteDefinition | null {
@@ -115,6 +115,32 @@ async function resolveRepoRoot(): Promise<string> {
       cwd: process.cwd(),
     })) ?? process.cwd()
   );
+}
+
+function resolveSpawnCommand(command: string): string {
+  if (process.platform !== "win32") {
+    return command;
+  }
+  const basename = path.basename(command).toLowerCase();
+  if (path.extname(basename)) {
+    return command;
+  }
+  if (["npm", "pnpm", "yarn", "npx"].includes(basename)) {
+    return `${command}.cmd`;
+  }
+  return command;
+}
+
+function updateRun(runId: string, patch: Partial<TestRunSnapshot>) {
+  const current = runById.get(runId);
+  if (!current) {
+    return;
+  }
+  runById.set(runId, {
+    ...current,
+    ...patch,
+    ts: Date.now(),
+  });
 }
 
 function finalizeRun(run: TestRunSnapshot) {
@@ -197,9 +223,9 @@ function shouldIncludeFileByLevel(file: string, level: SuiteLevel): boolean {
     return !isE2e;
   }
   if (level === "agent") {
-    return normalized.startsWith("gateway/agent/agents/");
+    return normalized.startsWith("gateway/agent/agents/") && isE2e;
   }
-  return normalized.startsWith("gateway/agent/e2e/");
+  return normalized.startsWith("gateway/agent/e2e/") && isE2e;
 }
 
 async function collectFilesRecursively(dir: string, out: string[]) {
@@ -295,6 +321,120 @@ async function resolveRequestedFiles(params: {
   }
 
   return { files: Array.from(new Set(files)).slice(0, 50) };
+}
+
+async function runCommandStreaming(params: {
+  runId: string;
+  command: string[];
+  cwd: string;
+  timeoutMs: number;
+  suiteId: string;
+  requestedFiles: string[];
+  testName?: string;
+  startedAt: number;
+}) {
+  const { runId, command, cwd, timeoutMs, suiteId, requestedFiles, testName, startedAt } = params;
+  const child = spawn(resolveSpawnCommand(command[0]), command.slice(1), {
+    cwd,
+    env: { ...process.env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  updateRun(runId, {
+    pid: child.pid,
+    lastOutputAt: Date.now(),
+  });
+
+  let killedByTimeout = false;
+  const timeout = setTimeout(
+    () => {
+      killedByTimeout = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+    },
+    Math.max(1_000, timeoutMs),
+  );
+
+  child.stdout?.on("data", (chunk) => {
+    const text = chunk.toString();
+    const now = Date.now();
+    const current = runById.get(runId);
+    if (!current) {
+      return;
+    }
+    updateRun(runId, {
+      stdoutTail: appendTail(current.stdoutTail, text),
+      lastOutputAt: now,
+    });
+  });
+
+  child.stderr?.on("data", (chunk) => {
+    const text = chunk.toString();
+    const now = Date.now();
+    const current = runById.get(runId);
+    if (!current) {
+      return;
+    }
+    updateRun(runId, {
+      stderrTail: appendTail(current.stderrTail, text),
+      lastOutputAt: now,
+    });
+  });
+
+  child.on("error", (err) => {
+    clearTimeout(timeout);
+    const endedAt = Date.now();
+    const current = runById.get(runId);
+    finalizeRun({
+      runId,
+      suiteId,
+      status: "error",
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, endedAt - startedAt),
+      command,
+      cwd,
+      requestedFiles,
+      testName,
+      pid: current?.pid,
+      lastOutputAt: current?.lastOutputAt,
+      stdoutTail: current?.stdoutTail,
+      stderrTail: current?.stderrTail,
+      error: String(err),
+      ts: endedAt,
+    });
+  });
+
+  child.on("close", (code, signal) => {
+    clearTimeout(timeout);
+    const endedAt = Date.now();
+    const current = runById.get(runId);
+    const status: TestRunStatus =
+      killedByTimeout || signal === "SIGKILL" ? "timeout" : code === 0 ? "ok" : "error";
+
+    finalizeRun({
+      runId,
+      suiteId,
+      status,
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, endedAt - startedAt),
+      command,
+      cwd,
+      requestedFiles,
+      testName,
+      pid: current?.pid,
+      lastOutputAt: current?.lastOutputAt,
+      exitCode: code,
+      signal,
+      stdoutTail: current?.stdoutTail,
+      stderrTail: current?.stderrTail,
+      ts: endedAt,
+    });
+  });
 }
 
 export const testsHandlers: GatewayRequestHandlers = {
@@ -420,43 +560,16 @@ export const testsHandlers: GatewayRequestHandlers = {
     };
     runById.set(runId, initial);
 
-    void (async () => {
-      try {
-        const result = await runCommandWithTimeout(command, {
-          cwd: root,
-          timeoutMs,
-        });
-        const endedAt = Date.now();
-        const status: TestRunStatus =
-          result.killed || result.signal === "SIGKILL"
-            ? "timeout"
-            : result.code === 0
-              ? "ok"
-              : "error";
-
-        finalizeRun({
-          ...initial,
-          status,
-          endedAt,
-          durationMs: Math.max(0, endedAt - startedAt),
-          exitCode: result.code,
-          signal: result.signal,
-          stdoutTail: tailText(result.stdout),
-          stderrTail: tailText(result.stderr),
-          ts: endedAt,
-        });
-      } catch (err) {
-        const endedAt = Date.now();
-        finalizeRun({
-          ...initial,
-          status: "error",
-          endedAt,
-          durationMs: Math.max(0, endedAt - startedAt),
-          error: String(err),
-          ts: endedAt,
-        });
-      }
-    })();
+    void runCommandStreaming({
+      runId,
+      command,
+      cwd: root,
+      timeoutMs,
+      suiteId: suite.id,
+      requestedFiles: filesResolved.files,
+      testName: testName || undefined,
+      startedAt,
+    });
 
     respond(
       true,

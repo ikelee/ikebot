@@ -301,6 +301,7 @@ export class OpenClawApp extends LitElement {
   @state() testSuitesRunHistory: import("./types.js").TestSuiteRunResult[] = [];
   @state() testSuitesSelectedRunId: string | null = null;
   @state() testSuitesRunEvents: import("./types.js").TestSuiteRunEvent[] = [];
+  @state() testSuitesViewTab: "overview" | "run" = "overview";
   @state() testSuitesFileQueryBySuite: Record<string, string> = {};
   @state() testSuitesFilesBySuite: Record<string, string[]> = {};
   @state() testSuitesFilesLoadingBySuite: Record<string, boolean> = {};

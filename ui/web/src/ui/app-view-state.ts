@@ -202,6 +202,7 @@ export type AppViewState = {
   testSuitesRunHistory: import("./types.js").TestSuiteRunResult[];
   testSuitesSelectedRunId: string | null;
   testSuitesRunEvents: import("./types.js").TestSuiteRunEvent[];
+  testSuitesViewTab: "overview" | "run";
   testSuitesFileQueryBySuite: Record<string, string>;
   testSuitesFilesBySuite: Record<string, string[]>;
   testSuitesFilesLoadingBySuite: Record<string, boolean>;

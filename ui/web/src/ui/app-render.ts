@@ -629,6 +629,7 @@ export function renderApp(state: AppViewState) {
                 runHistory: state.testSuitesRunHistory,
                 selectedRunId: state.testSuitesSelectedRunId,
                 runEvents: state.testSuitesRunEvents,
+                viewTab: state.testSuitesViewTab,
                 fileQueryBySuite: state.testSuitesFileQueryBySuite,
                 filesBySuite: state.testSuitesFilesBySuite,
                 filesLoadingBySuite: state.testSuitesFilesLoadingBySuite,
@@ -639,6 +640,10 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => loadTestSuites(state),
                 onSelectRun: (runId) => {
                   state.testSuitesSelectedRunId = runId;
+                  state.testSuitesViewTab = "run";
+                },
+                onSelectView: (tab) => {
+                  state.testSuitesViewTab = tab;
                 },
                 onFileQueryChange: (suiteId, value) => {
                   state.testSuitesFileQueryBySuite = {
