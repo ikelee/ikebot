@@ -2,6 +2,7 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 import type {
   SessionsUsageEntry,
   SessionsUsageResult,
+  TestSuiteModelCall,
   TestSuiteDiscoverResult,
   TestSuiteEntry,
   TestSuiteRunEvent,
@@ -153,6 +154,109 @@ function summarizeSessionsInWindow(
     localTokens,
     cloudTokens,
   };
+}
+
+function selectActiveTestSessions(
+  sessions: SessionsUsageEntry[],
+  startedAt: number,
+  endedAt: number,
+): SessionsUsageEntry[] {
+  const windowStart = startedAt - 5_000;
+  const windowEnd = endedAt + 15_000;
+  return sessions.filter((session) => {
+    const usage = session.usage;
+    if (!usage) {
+      return false;
+    }
+    const ts = usage.lastActivity ?? usage.firstActivity ?? session.updatedAt ?? 0;
+    if (!ts) {
+      return false;
+    }
+    const key = String(session.key ?? "").toLowerCase();
+    const likelyTest =
+      key.includes(":testing") || key.includes(":test") || session.runKind === "test";
+    return likelyTest && ts >= windowStart && ts <= windowEnd;
+  });
+}
+
+type SessionUsageLogEntry = {
+  timestamp?: number;
+  role?: string;
+  provider?: string;
+  model?: string;
+  durationMs?: number;
+  tokens?: number;
+};
+
+async function loadModelCallsForWindow(
+  state: TestSuitesState,
+  sessions: SessionsUsageEntry[],
+  startedAt: number,
+  endedAt: number,
+): Promise<TestSuiteModelCall[]> {
+  if (!state.client) {
+    return [];
+  }
+  const active = selectActiveTestSessions(sessions, startedAt, endedAt);
+  if (active.length === 0) {
+    return [];
+  }
+  const all: TestSuiteModelCall[] = [];
+  for (const session of active) {
+    const key = String(session.key ?? "").trim();
+    if (!key) {
+      continue;
+    }
+    try {
+      const res = await state.client.request<{ logs?: SessionUsageLogEntry[] }>(
+        "sessions.usage.logs",
+        {
+          key,
+          limit: 600,
+        },
+      );
+      const logs = Array.isArray(res?.logs) ? res.logs : [];
+      for (const entry of logs) {
+        if ((entry.role ?? "") !== "assistant") {
+          continue;
+        }
+        if (!entry.provider && !entry.model) {
+          continue;
+        }
+        const ts =
+          typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+            ? entry.timestamp
+            : 0;
+        if (ts > 0 && (ts < startedAt - 60_000 || ts > endedAt + 60_000)) {
+          continue;
+        }
+        all.push({
+          sessionKey: key,
+          timestamp: ts,
+          provider: typeof entry.provider === "string" ? entry.provider : undefined,
+          model: typeof entry.model === "string" ? entry.model : undefined,
+          durationMs:
+            typeof entry.durationMs === "number" && Number.isFinite(entry.durationMs)
+              ? entry.durationMs
+              : undefined,
+          tokens:
+            typeof entry.tokens === "number" && Number.isFinite(entry.tokens)
+              ? entry.tokens
+              : undefined,
+        });
+      }
+    } catch {
+      // Best-effort telemetry: keep run UI functional even if logs endpoint fails.
+    }
+  }
+  return all.toSorted((a, b) => {
+    const ta = a.timestamp || 0;
+    const tb = b.timestamp || 0;
+    if (ta !== tb) {
+      return ta - tb;
+    }
+    return a.sessionKey.localeCompare(b.sessionKey);
+  });
 }
 
 type UsageSummary = {
@@ -428,11 +532,13 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
 
     const startedAt = snapshot.startedAt ?? Date.now();
     const endedAt = snapshot.endedAt ?? Date.now();
-    const windowMetrics = summarizeSessionsInWindow(usageAfter.sessions ?? [], startedAt, endedAt);
+    const sessions = usageAfter.sessions ?? [];
+    const windowMetrics = summarizeSessionsInWindow(sessions, startedAt, endedAt);
     const metrics =
       windowMetrics ?? usageDelta(summarizeUsage(usageAfter), summarizeUsage(usageBefore));
+    const modelCalls = await loadModelCallsForWindow(state, sessions, startedAt, endedAt);
 
-    const enriched: TestSuiteRunResult = { ...snapshot, metrics };
+    const enriched: TestSuiteRunResult = { ...snapshot, metrics, modelCalls };
 
     state.testSuitesActiveRun = enriched;
     state.testSuitesSelectedRunId = runId;

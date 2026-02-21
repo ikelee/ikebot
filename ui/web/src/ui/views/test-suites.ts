@@ -118,6 +118,8 @@ type ParsedModelCall = {
   model: string;
   reqNum?: number;
   startedAtLine: number;
+  timestamp?: number;
+  sessionKey?: string;
   durationMs?: number;
   waitMs?: number;
   inputTokens?: number;
@@ -427,8 +429,25 @@ function renderRunDetails(
     .join("\n");
   const output = stripAnsiAndControl(outputRaw);
 
-  const modelCalls = parseModelCalls(output);
-  const anyInflight = modelCalls.some((call) => !call.done);
+  const parsedCalls = parseModelCalls(output);
+  const telemetryCalls: ParsedModelCall[] = (selectedRun?.modelCalls ?? []).map((call, index) => ({
+    id: `call-${index + 1}`,
+    model: call.model
+      ? `${call.provider ? `${call.provider}/` : ""}${call.model}`
+      : (call.provider ?? "unknown"),
+    startedAtLine: index,
+    timestamp: call.timestamp,
+    sessionKey: call.sessionKey,
+    durationMs: call.durationMs,
+    waitMs: undefined,
+    reqNum: undefined,
+    inputTokens: undefined,
+    outputTokens: call.tokens,
+    done: true,
+    source: "req" as const,
+  }));
+  const modelCalls = telemetryCalls.length > 0 ? telemetryCalls : parsedCalls;
+  const anyInflight = telemetryCalls.length > 0 ? false : modelCalls.some((call) => !call.done);
   const liveInputTokens = modelCalls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0);
   const liveOutputTokens = modelCalls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0);
   const liveTotalTokens = liveInputTokens + liveOutputTokens;

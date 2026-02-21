@@ -667,6 +667,15 @@ export type TestSuiteUsageMetrics = {
   cloudTokens: number;
 };
 
+export type TestSuiteModelCall = {
+  sessionKey: string;
+  timestamp: number;
+  provider?: string;
+  model?: string;
+  durationMs?: number;
+  tokens?: number;
+};
+
 export type TestSuiteRunResult = {
   runId: string;
   suiteId: string;
@@ -687,6 +696,7 @@ export type TestSuiteRunResult = {
   error?: string;
   ts: number;
   metrics?: TestSuiteUsageMetrics;
+  modelCalls?: TestSuiteModelCall[];
 };
 
 export type TestSuiteEntry = {
