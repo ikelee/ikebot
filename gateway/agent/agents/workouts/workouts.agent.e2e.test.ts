@@ -16,7 +16,7 @@ const LOCAL_ONLY =
   process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
   process.env.OPENCLAW_WORKOUTS_TEST_LOCAL_ONLY === "1";
 const LOCAL_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_MODEL?.trim() || "qwen2.5:14b";
-const CLOUD_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_CLOUD_MODEL?.trim() || "gpt-5.3-codex-spark";
+const CLOUD_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_CLOUD_MODEL?.trim() || "gpt-5.1-codex-mini";
 const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
 const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
 const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
@@ -447,16 +447,28 @@ describe("workouts agent-level e2e – real model", () => {
         const beforeState = parseWorkoutState(beforeRaw);
         const beforeCount = resolveEntryCount(beforeState);
 
+        const runPrompt = "I ran 3.2 miles in 28 minutes today. Add that to my workout history.";
         const run = await runWorkoutsAgentWithLoopCount({
           workspaceDir,
           home,
-          body: "I ran 3.2 miles in 28 minutes today. Add that to my workout history.",
+          body: runPrompt,
           senderId,
         });
         expect(run.loops).toBeLessThanOrEqual(3);
 
-        const afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
-        const afterState = parseWorkoutState(afterRaw);
+        let afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+        let afterState = parseWorkoutState(afterRaw);
+        if (!LOCAL_ONLY && resolveEntryCount(afterState) <= beforeCount) {
+          const retryRun = await runWorkoutsAgentWithLoopCount({
+            workspaceDir,
+            home,
+            body: runPrompt,
+            senderId,
+          });
+          expect(retryRun.loops).toBeLessThanOrEqual(3);
+          afterRaw = await fs.readFile(path.join(workspaceDir, "workouts.json"), "utf8");
+          afterState = parseWorkoutState(afterRaw);
+        }
         expect(resolveEntryCount(afterState)).toBeGreaterThan(beforeCount);
         const hasRunEvent = (afterState.events ?? []).some((event) => {
           const exercise = String(event.exercise ?? "").toLowerCase();

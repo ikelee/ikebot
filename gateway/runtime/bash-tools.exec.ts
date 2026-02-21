@@ -655,6 +655,12 @@ function normalizeCalendarBounds(command: string): string {
   return replaceFlagValue(command, "--to", fixedTo);
 }
 
+function normalizeCalendarRangeFlags(command: string): string {
+  let normalized = command.replace(/(^|\s)--start(?=\s|=)/gi, "$1--from");
+  normalized = normalized.replace(/(^|\s)--end(?=\s|=)/gi, "$1--to");
+  return normalized;
+}
+
 function normalizeCalendarRrule(command: string): string {
   const rruleRaw = parseFlagValue(command, "--rrule");
   if (!rruleRaw) {
@@ -707,9 +713,16 @@ async function normalizeCalendarExecCommand(command: string, _agentId?: string, 
 
   // Normalize common model mistake: gog uses --rrule, not --recurrence.
   let normalized = command.replace(/(^|\s)--recurrence(?=\s|=)/gi, "$1--rrule");
+  normalized = normalizeCalendarRangeFlags(normalized);
   normalized = normalizeCalendarDateSubstitutions(normalized);
   normalized = normalizeCalendarRrule(normalized);
   normalized = normalizeCalendarBounds(normalized);
+  if (
+    /\bgog\s+calendar\s+delete\b/i.test(normalized) &&
+    !/(?:^|\s)--force(?:\s|=|$)/i.test(normalized)
+  ) {
+    normalized = `${normalized} --force`;
+  }
 
   const hasPlaceholder = /\b(?:user|you)@gmail\.com\b/i.test(normalized);
   const hasAccountFlag = /(?:^|\s)--account(?:\s|=)/i.test(normalized);

@@ -928,7 +928,7 @@ function renderAgentTesting(params: {
             ?disabled=${!params.useCloudModel}
             @input=${(e: Event) =>
               params.onCloudModelRefChange((e.target as HTMLInputElement).value)}
-            placeholder="openai-codex/gpt-5.3-codex-spark"
+            placeholder="openai-codex/gpt-5.1-codex-mini"
           />
         </label>
       </div>

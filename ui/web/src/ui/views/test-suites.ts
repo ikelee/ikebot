@@ -448,8 +448,9 @@ function renderRunDetails(
     done: true,
     source: "req" as const,
   }));
-  const modelCalls = telemetryCalls.length > 0 ? telemetryCalls : parsedCalls;
-  const anyInflight = telemetryCalls.length > 0 ? false : modelCalls.some((call) => !call.done);
+  // Prefer parsed live log calls (contains usage.in/usage.out) over coarse telemetry.
+  const modelCalls = parsedCalls.length > 0 ? parsedCalls : telemetryCalls;
+  const anyInflight = parsedCalls.length > 0 ? modelCalls.some((call) => !call.done) : false;
   const liveInputTokens = modelCalls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0);
   const liveOutputTokens = modelCalls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0);
   const liveTotalTokens = liveInputTokens + liveOutputTokens;
@@ -626,6 +627,46 @@ function renderRunDetails(
   `;
 }
 
+function renderRunHistory(
+  runHistory: TestSuiteRunResult[],
+  selectedRunId: string | null,
+  onSelectRun: (runId: string) => void,
+) {
+  return html`
+    <div class="card" style="background: var(--panel); border: 1px solid var(--border);">
+      <div class="card-title" style="margin-bottom: 8px;">Run History</div>
+      ${
+        runHistory.length === 0
+          ? html`
+              <div class="muted">No runs yet.</div>
+            `
+          : html`
+              <div style="display: grid; gap: 8px;">
+                ${runHistory.map((run) => {
+                  const selected = selectedRunId === run.runId;
+                  return html`
+                    <button
+                      class="secondary"
+                      style="text-align: left; ${selected ? "border-color: var(--accent);" : ""}"
+                      @click=${() => onSelectRun(run.runId)}
+                    >
+                      <div style="display: flex; justify-content: space-between; gap: 8px;">
+                        <span><strong>${run.suiteId}</strong> · ${run.status.toUpperCase()}</span>
+                        <span class="mono muted">${new Date(run.startedAt).toLocaleString()}</span>
+                      </div>
+                      <div class="muted" style="font-size: 12px; margin-top: 4px;">
+                        ${run.runId.slice(0, 10)} · ${formatMs(run.durationMs ?? 0)} · tokens ${formatTokens(run.metrics?.totalTokens ?? 0)} · calls ${formatTokens(run.metrics?.totalInvocations ?? 0)}
+                      </div>
+                    </button>
+                  `;
+                })}
+              </div>
+            `
+      }
+    </div>
+  `;
+}
+
 function renderOverview(
   suites: TestSuiteEntry[],
   props: {
@@ -796,7 +837,7 @@ export function renderTestSuites(props: {
   runHistory: TestSuiteRunResult[];
   selectedRunId: string | null;
   runEvents: TestSuiteRunEvent[];
-  viewTab: "overview" | "run";
+  viewTab: "overview" | "run" | "history";
   fileQueryBySuite: Record<string, string>;
   filesBySuite: Record<string, string[]>;
   filesLoadingBySuite: Record<string, boolean>;
@@ -807,7 +848,7 @@ export function renderTestSuites(props: {
   localOnly: boolean;
   onRefresh: () => void;
   onSelectRun: (runId: string) => void;
-  onSelectView: (tab: "overview" | "run") => void;
+  onSelectView: (tab: "overview" | "run" | "history") => void;
   onFileQueryChange: (suiteId: string, value: string) => void;
   onDiscoverFiles: (suiteId: string) => void;
   onToggleFileSelection: (suiteId: string, file: string, enabled: boolean) => void;
@@ -866,6 +907,13 @@ export function renderTestSuites(props: {
         >
           Test Run
         </button>
+        <button
+          class="chip"
+          style="cursor: pointer; ${props.viewTab === "history" ? "border-color: var(--accent);" : ""}"
+          @click=${() => props.onSelectView("history")}
+        >
+          Run History
+        </button>
       </div>
 
       ${props.error ? html`<div class="alert error">${props.error}</div>` : null}
@@ -882,22 +930,24 @@ export function renderTestSuites(props: {
               props.onRunSuite,
               Boolean(props.busySuiteId),
             )
-          : renderOverview(props.suites, {
-              busySuiteId: props.busySuiteId,
-              loading: props.loading,
-              fileQueryBySuite: props.fileQueryBySuite,
-              filesBySuite: props.filesBySuite,
-              filesLoadingBySuite: props.filesLoadingBySuite,
-              selectedFilesBySuite: props.selectedFilesBySuite,
-              singleFileBySuite: props.singleFileBySuite,
-              testNameBySuite: props.testNameBySuite,
-              onFileQueryChange: props.onFileQueryChange,
-              onDiscoverFiles: props.onDiscoverFiles,
-              onToggleFileSelection: props.onToggleFileSelection,
-              onSingleFileChange: props.onSingleFileChange,
-              onTestNameChange: props.onTestNameChange,
-              onRunSuite: props.onRunSuite,
-            })
+          : props.viewTab === "history"
+            ? renderRunHistory(props.runHistory, props.selectedRunId, props.onSelectRun)
+            : renderOverview(props.suites, {
+                busySuiteId: props.busySuiteId,
+                loading: props.loading,
+                fileQueryBySuite: props.fileQueryBySuite,
+                filesBySuite: props.filesBySuite,
+                filesLoadingBySuite: props.filesLoadingBySuite,
+                selectedFilesBySuite: props.selectedFilesBySuite,
+                singleFileBySuite: props.singleFileBySuite,
+                testNameBySuite: props.testNameBySuite,
+                onFileQueryChange: props.onFileQueryChange,
+                onDiscoverFiles: props.onDiscoverFiles,
+                onToggleFileSelection: props.onToggleFileSelection,
+                onSingleFileChange: props.onSingleFileChange,
+                onTestNameChange: props.onTestNameChange,
+                onRunSuite: props.onRunSuite,
+              })
       }
     </div>
   `;

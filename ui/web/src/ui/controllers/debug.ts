@@ -82,7 +82,7 @@ export type DebugState = {
   agentTestHistory: DebugAgentChatMessage[];
 };
 
-const DEFAULT_CLOUD_MODEL_REF = "openai-codex/gpt-5.3-codex-spark";
+const DEFAULT_CLOUD_MODEL_REF = "openai-codex/gpt-5.1-codex-mini";
 
 export async function loadDebug(state: DebugState) {
   if (!state.client || !state.connected) {

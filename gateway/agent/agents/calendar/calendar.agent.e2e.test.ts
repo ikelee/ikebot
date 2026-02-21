@@ -17,7 +17,7 @@ const LOCAL_ONLY =
   process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
   process.env.OPENCLAW_CALENDAR_TEST_LOCAL_ONLY === "1";
 const LOCAL_MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
-const CLOUD_MODEL = process.env.OPENCLAW_CALENDAR_TEST_CLOUD_MODEL?.trim() || "gpt-5.3-codex-spark";
+const CLOUD_MODEL = process.env.OPENCLAW_CALENDAR_TEST_CLOUD_MODEL?.trim() || "gpt-5.1-codex-mini";
 const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
 const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
 const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;

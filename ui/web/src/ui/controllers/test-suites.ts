@@ -23,7 +23,7 @@ type TestSuitesState = {
   testSuitesRunHistory: TestSuiteRunResult[];
   testSuitesSelectedRunId: string | null;
   testSuitesRunEvents: TestSuiteRunEvent[];
-  testSuitesViewTab: "overview" | "run";
+  testSuitesViewTab: "overview" | "run" | "history";
   testSuitesFileQueryBySuite: Record<string, string>;
   testSuitesFilesBySuite: Record<string, string[]>;
   testSuitesFilesLoadingBySuite: Record<string, boolean>;
@@ -380,6 +380,34 @@ function levelForSuiteId(state: TestSuitesState, suiteId: string): "unit" | "age
   return suite?.level ?? "unit";
 }
 
+function extractActiveTestLabel(output: string): string | null {
+  const lines = output.split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]?.trim() ?? "";
+    if (!line) {
+      continue;
+    }
+    const streamMatch = line.match(/(?:stdout|stderr)\s+\|\s+(.+?)\s+>\s+(.+?)\s+>\s+(.+)/i);
+    if (streamMatch) {
+      const file = streamMatch[1]?.trim();
+      const suite = streamMatch[2]?.trim();
+      const test = streamMatch[3]?.trim();
+      if (file && suite && test) {
+        return `${suite} > ${test}`;
+      }
+    }
+    const resultLineMatch = line.match(/^[✓❯×]\s+(.+?)\s+>\s+(.+?)\s+>\s+(.+)$/);
+    if (resultLineMatch) {
+      const suite = resultLineMatch[2]?.trim();
+      const test = resultLineMatch[3]?.trim();
+      if (suite && test) {
+        return `${suite} > ${test}`;
+      }
+    }
+  }
+  return null;
+}
+
 export async function loadTestSuites(state: TestSuitesState) {
   if (!state.client || !state.connected) {
     return;
@@ -477,6 +505,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
   state.testSuitesError = null;
   state.testSuitesStatus = `Preparing ${normalizedSuiteId}...`;
   state.testSuitesViewTab = "run";
+  state.testSuitesRunEvents = [];
 
   const range = buildRange(14);
 
@@ -527,6 +556,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     });
 
     let snapshot: TestSuiteRunResult | null = initialRun;
+    let lastActiveTestLabel: string | null = null;
     for (;;) {
       const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_000 });
       const run = (waitRes as { run?: TestSuiteRunResult } | null)?.run;
@@ -537,6 +567,19 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
       state.testSuitesActiveRun = run;
       state.testSuitesSelectedRunId = runId;
       mergeUpdatedRun(state, run);
+
+      const combinedOutput = [run.stdoutTail ?? "", run.stderrTail ?? ""]
+        .filter(Boolean)
+        .join("\n");
+      const activeTestLabel = extractActiveTestLabel(combinedOutput);
+      if (activeTestLabel && activeTestLabel !== lastActiveTestLabel) {
+        lastActiveTestLabel = activeTestLabel;
+        addRunEvent(state, {
+          runId,
+          level: "info",
+          message: `Executing ${activeTestLabel}`,
+        });
+      }
 
       const elapsedMs = Math.max(0, Date.now() - (run.startedAt ?? Date.now()));
       state.testSuitesStatus = `Running ${normalizedSuiteId}... ${Math.round(elapsedMs / 1000)}s elapsed`;

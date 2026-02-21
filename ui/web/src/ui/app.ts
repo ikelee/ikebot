@@ -301,7 +301,7 @@ export class OpenClawApp extends LitElement {
   @state() testSuitesRunHistory: import("./types.js").TestSuiteRunResult[] = [];
   @state() testSuitesSelectedRunId: string | null = null;
   @state() testSuitesRunEvents: import("./types.js").TestSuiteRunEvent[] = [];
-  @state() testSuitesViewTab: "overview" | "run" = "overview";
+  @state() testSuitesViewTab: "overview" | "run" | "history" = "overview";
   @state() testSuitesFileQueryBySuite: Record<string, string> = {};
   @state() testSuitesFilesBySuite: Record<string, string[]> = {};
   @state() testSuitesFilesLoadingBySuite: Record<string, boolean> = {};
@@ -358,7 +358,7 @@ export class OpenClawApp extends LitElement {
   @state() agentTestRunId: string | null = null;
   @state() agentTestTotalDurationMs: number | null = null;
   @state() agentTestUseCloudModel = false;
-  @state() agentTestCloudModelRef = "openai-codex/gpt-5.3-codex-spark";
+  @state() agentTestCloudModelRef = "openai-codex/gpt-5.1-codex-mini";
   @state() agentTestStatus: string | null = null;
   @state() agentTestError: string | null = null;
   @state() agentTestReply: string | null = null;

@@ -313,7 +313,7 @@ export function renderDebug(props: DebugProps) {
             ?disabled=${!props.agentTestUseCloudModel}
             @input=${(e: Event) =>
               props.onAgentTestCloudModelRefChange((e.target as HTMLInputElement).value)}
-            placeholder="openai-codex/gpt-5.3-codex-spark"
+            placeholder="openai-codex/gpt-5.1-codex-mini"
           />
         </label>
       </div>

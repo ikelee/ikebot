@@ -1066,10 +1066,16 @@ export async function runEmbeddedAttempt(
           )
             ? ((lastAssistant as { toolCalls?: unknown[] }).toolCalls?.length ?? 0)
             : 0;
+          const errorMessage =
+            typeof (lastAssistant as { errorMessage?: unknown } | undefined)?.errorMessage ===
+            "string"
+              ? ((lastAssistant as { errorMessage?: string }).errorMessage?.slice(0, 280) ??
+                "unknown")
+              : "unknown";
           log.warn(
             `[cloud-empty-output] provider=${params.provider}/${params.modelId} stopReason=${stopReason} ` +
               `contentBlocks=${contentCount} toolCalls=${toolCalls} usage.in=${usage?.input ?? "?"} ` +
-              `usage.out=${usage?.output ?? "?"}`,
+              `usage.out=${usage?.output ?? "?"} error=${errorMessage}`,
           );
         }
 

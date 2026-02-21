@@ -413,6 +413,37 @@ describe("exec calendar command normalization", () => {
     await fsp.rm(workspaceDir, { recursive: true, force: true });
   });
 
+  it("rewrites --start/--end to --from/--to for gog calendar events", async () => {
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
+    await fsp.writeFile(
+      path.join(workspaceDir, "calendar-settings.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          profile: { calendarId: "ikelee98@gmail.com", timezone: "America/Los_Angeles" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const tool = createExecTool({ cwd: workspaceDir });
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar events user@gmail.com --start 2026-02-27T00:00:00Z --end 2026-03-05T23:59:59Z",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("gog calendar events ikelee98@gmail.com");
+    expect(text).toContain("--from 2026-02-27T00:00:00Z");
+    expect(text).toContain("--to 2026-03-05T23:59:59Z");
+    expect(text).not.toContain("--start");
+    expect(text).not.toContain("--end");
+
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+  });
+
   it("rewrites --recurrence to --rrule and injects --account", async () => {
     const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "calendar-exec-"));
     await fsp.writeFile(
@@ -452,6 +483,16 @@ describe("exec calendar command normalization", () => {
     const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
     expect(text).toContain("--rrule RRULE:FREQ=WEEKLY");
     expect(text).not.toContain("--recurrence");
+  });
+
+  it("injects --force for gog calendar delete in non-interactive exec", async () => {
+    const tool = createExecTool();
+    const result = await tool.execute("call1", {
+      command: "echo gog calendar delete ikebotai@gmail.com abc123",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("gog calendar delete ikebotai@gmail.com abc123 --force");
   });
 
   it("normalizes --rrule values without RRULE prefix", async () => {
