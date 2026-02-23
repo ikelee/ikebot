@@ -7,6 +7,7 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../infra/config/config.js";
+import { onAgentEvent } from "../infra/agent-events.js";
 import { maybeRunAgentOnboarding } from "./onboarding/service.js";
 import { __resetOnboardingStateForTests, runAgentFlow } from "./run.js";
 
@@ -143,6 +144,98 @@ describe("runAgentFlow", () => {
     );
     expect(completeSimple).toHaveBeenCalledTimes(1);
     expect(runPreparedReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("does not emit user_input telemetry for heartbeat/infrastructure runs", async () => {
+    vi.mocked(completeSimple)
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"decision":"stay"}' }],
+        usage: { input: 10, output: 5 },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "heartbeat ok" }],
+        usage: { input: 12, output: 4 },
+      });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+    params.opts = { isHeartbeat: true, runId: "run-heartbeat-test" } as any;
+
+    const telemetryKinds: string[] = [];
+    const stop = onAgentEvent((evt) => {
+      if (evt.runId !== "run-heartbeat-test" || evt.stream !== "telemetry") {
+        return;
+      }
+      const kind = evt.data.kind;
+      if (typeof kind === "string") {
+        telemetryKinds.push(kind);
+      }
+    });
+
+    try {
+      const result = await runAgentFlow({
+        cleanedBody: "heartbeat tick",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+      expect(result).toEqual({ text: "heartbeat ok" });
+    } finally {
+      stop();
+    }
+
+    expect(telemetryKinds).not.toContain("user_input.start");
+    expect(telemetryKinds).not.toContain("user_input.end");
+  });
+
+  it("emits user_input and agent_loop telemetry for specialized runs", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "text", text: '{"decision":"calendar"}' }],
+      usage: { input: 9, output: 4 },
+    });
+
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+    params.opts = { runId: "run-agent-telemetry-test" } as any;
+
+    const telemetryKinds: string[] = [];
+    const stop = onAgentEvent((evt) => {
+      if (evt.runId !== "run-agent-telemetry-test" || evt.stream !== "telemetry") {
+        return;
+      }
+      const kind = evt.data.kind;
+      if (typeof kind === "string") {
+        telemetryKinds.push(kind);
+      }
+    });
+
+    try {
+      await runAgentFlow({
+        cleanedBody: "what's on my calendar today",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+    } finally {
+      stop();
+    }
+
+    expect(telemetryKinds).toContain("user_input.start");
+    expect(telemetryKinds).toContain("agent_loop.start");
+    expect(telemetryKinds).toContain("agent_loop.end");
+    expect(telemetryKinds).toContain("user_input.end");
   });
 
   it("uses per-agent model.primary for specialized calendar path", async () => {

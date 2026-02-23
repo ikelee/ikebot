@@ -134,8 +134,10 @@ import {
 import { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import {
   TestsDiscoverParamsSchema,
+  TestsHistoryParamsSchema,
   TestsRunParamsSchema,
   TestsSuitesParamsSchema,
+  TestsTelemetryParamsSchema,
   TestsWaitParamsSchema,
 } from "./tests.js";
 import {
@@ -190,8 +192,10 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   SessionsUsageParams: SessionsUsageParamsSchema,
   TestsSuitesParams: TestsSuitesParamsSchema,
   TestsDiscoverParams: TestsDiscoverParamsSchema,
+  TestsHistoryParams: TestsHistoryParamsSchema,
   TestsRunParams: TestsRunParamsSchema,
   TestsWaitParams: TestsWaitParamsSchema,
+  TestsTelemetryParams: TestsTelemetryParamsSchema,
   ConfigGetParams: ConfigGetParamsSchema,
   ConfigSetParams: ConfigSetParamsSchema,
   ConfigApplyParams: ConfigApplyParamsSchema,

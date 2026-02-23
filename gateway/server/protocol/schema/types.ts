@@ -127,8 +127,10 @@ import type {
 import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import type {
   TestsDiscoverParamsSchema,
+  TestsHistoryParamsSchema,
   TestsRunParamsSchema,
   TestsSuitesParamsSchema,
+  TestsTelemetryParamsSchema,
   TestsWaitParamsSchema,
 } from "./tests.js";
 import type {
@@ -179,8 +181,10 @@ export type SessionsCompactParams = Static<typeof SessionsCompactParamsSchema>;
 export type SessionsUsageParams = Static<typeof SessionsUsageParamsSchema>;
 export type TestsSuitesParams = Static<typeof TestsSuitesParamsSchema>;
 export type TestsDiscoverParams = Static<typeof TestsDiscoverParamsSchema>;
+export type TestsHistoryParams = Static<typeof TestsHistoryParamsSchema>;
 export type TestsRunParams = Static<typeof TestsRunParamsSchema>;
 export type TestsWaitParams = Static<typeof TestsWaitParamsSchema>;
+export type TestsTelemetryParams = Static<typeof TestsTelemetryParamsSchema>;
 export type ConfigGetParams = Static<typeof ConfigGetParamsSchema>;
 export type ConfigSetParams = Static<typeof ConfigSetParamsSchema>;
 export type ConfigApplyParams = Static<typeof ConfigApplyParamsSchema>;

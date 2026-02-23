@@ -14,7 +14,17 @@ import type { OpenClawConfig } from "../infra/config/config.js";
 import type { ModelAliasIndex } from "../models/model-selection.js";
 import type { runPreparedReply } from "./pipeline/reply/reply-building/get-reply-run.js";
 import type { ReplyPayload } from "./pipeline/types.js";
-import { emitAgentEvent } from "../infra/agent-events.js";
+import {
+  emitAgentEvent,
+  getAgentRunContext,
+  registerAgentRunContext,
+} from "../infra/agent-events.js";
+import {
+  beginUserInput,
+  endAgentLoop,
+  endUserInput,
+  ensureAgentLoop,
+} from "../infra/agent-telemetry.js";
 import { formatUtcTimestamp } from "../infra/format-time/format-datetime.js";
 import { logModelIo } from "../logging/model-io.js";
 import { resolveModelRefFromString, parseModelRef } from "../models/model-selection.js";
@@ -885,9 +895,34 @@ export async function runAgentFlow(
   const routingCfg = cfg?.agents?.defaults?.routing;
   const enabled = Boolean(routingCfg?.enabled);
   const classifierModelRaw = (routingCfg?.classifierModel ?? "").trim();
-
-  console.log(`[runAgentFlow] user input: ${cleanedBody.length} chars`);
-  logModelIo(log.info.bind(log), "user input", cleanedBody, true);
+  const runId = params.runPreparedReplyParams.opts?.runId ?? crypto.randomUUID();
+  const existingRunContext = getAgentRunContext(runId);
+  const isInfrastructureRun =
+    params.runPreparedReplyParams.opts?.isHeartbeat === true ||
+    existingRunContext?.isHeartbeat === true;
+  if (isInfrastructureRun) {
+    console.log(`[runAgentFlow] infrastructure input: ${cleanedBody.length} chars`);
+  } else {
+    console.log(`[runAgentFlow] user input: ${cleanedBody.length} chars`);
+    logModelIo(log.info.bind(log), "user input", cleanedBody, true);
+  }
+  const preparedReplyParamsWithRunId = {
+    ...params.runPreparedReplyParams,
+    opts: {
+      ...params.runPreparedReplyParams.opts,
+      runId,
+    },
+  };
+  const userInputId = isInfrastructureRun
+    ? undefined
+    : beginUserInput({
+        runId,
+        sessionKey,
+        bodyChars: cleanedBody.length,
+      });
+  registerAgentRunContext(runId, { sessionKey, ...(userInputId ? { userInputId } : {}) });
+  let userInputStatus: "ok" | "error" = "ok";
+  let userInputError: string | undefined;
 
   const directAgentId = (params.runPreparedReplyParams.agentId ?? "").trim().toLowerCase();
 
@@ -904,333 +939,366 @@ export async function runAgentFlow(
       sessionKey,
     });
 
-  const userScopeKey = params.userIdentifier ?? sessionKey;
-  const onboardingSessionKey = resolveOnboardingSessionKey(userScopeKey, sessionKey);
-  const holdSessionKey = onboardingSessionKey;
-  const holdUserKey = userScopeKey;
-  const activeOnboardingAgentId =
-    ACTIVE_ONBOARDING_BY_SESSION.get(onboardingSessionKey) ??
-    ACTIVE_ONBOARDING_BY_USER.get(userScopeKey);
+  try {
+    const userScopeKey = params.userIdentifier ?? sessionKey;
+    const onboardingSessionKey = resolveOnboardingSessionKey(userScopeKey, sessionKey);
+    const holdSessionKey = onboardingSessionKey;
+    const holdUserKey = userScopeKey;
+    const activeOnboardingAgentId =
+      ACTIVE_ONBOARDING_BY_SESSION.get(onboardingSessionKey) ??
+      ACTIVE_ONBOARDING_BY_USER.get(userScopeKey);
 
-  const runOnboardingStep = async (
-    agentId: string,
-  ): Promise<{ reply: ReplyPayload | ReplyPayload[] | undefined; complete: boolean }> => {
-    const reply = await maybeHandleOnboarding(agentId, cleanedBody);
-    if (!reply) {
-      return { reply: undefined, complete: true };
-    }
-    const completionProbe = await maybeHandleOnboarding(agentId, "");
-    return { reply, complete: completionProbe === undefined };
-  };
+    const runOnboardingStep = async (
+      agentId: string,
+    ): Promise<{ reply: ReplyPayload | ReplyPayload[] | undefined; complete: boolean }> => {
+      const reply = await maybeHandleOnboarding(agentId, cleanedBody);
+      if (!reply) {
+        return { reply: undefined, complete: true };
+      }
+      const completionProbe = await maybeHandleOnboarding(agentId, "");
+      return { reply, complete: completionProbe === undefined };
+    };
 
-  const trackOnboardingProgress = (agentId: string, complete: boolean): void => {
-    if (complete) {
-      ACTIVE_ONBOARDING_BY_SESSION.delete(onboardingSessionKey);
-      ACTIVE_ONBOARDING_BY_USER.delete(userScopeKey);
-      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
-      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
-      return;
-    }
-    ACTIVE_ONBOARDING_BY_SESSION.set(onboardingSessionKey, agentId);
-    ACTIVE_ONBOARDING_BY_USER.set(userScopeKey, agentId);
-    upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, "onboarding");
-    upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, "onboarding");
-  };
+    const trackOnboardingProgress = (agentId: string, complete: boolean): void => {
+      if (complete) {
+        ACTIVE_ONBOARDING_BY_SESSION.delete(onboardingSessionKey);
+        ACTIVE_ONBOARDING_BY_USER.delete(userScopeKey);
+        releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+        releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+        return;
+      }
+      ACTIVE_ONBOARDING_BY_SESSION.set(onboardingSessionKey, agentId);
+      ACTIVE_ONBOARDING_BY_USER.set(userScopeKey, agentId);
+      upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, "onboarding");
+      upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, "onboarding");
+    };
 
-  if (activeOnboardingAgentId) {
-    const { reply, complete } = await runOnboardingStep(activeOnboardingAgentId);
-    trackOnboardingProgress(activeOnboardingAgentId, complete);
-    if (reply) {
-      console.log(
-        `[runAgentFlow] active onboarding intercepted for agent=${activeOnboardingAgentId}`,
-      );
-      return reply;
-    }
-  }
+    const ensureSpecializedLoop = (agentId: string): string => {
+      if (!userInputId) {
+        return "";
+      }
+      const agentLoopId = ensureAgentLoop({
+        runId,
+        userInputId,
+        sessionKey: holdSessionKey,
+        agentId,
+      });
+      registerAgentRunContext(runId, {
+        sessionKey: holdSessionKey,
+        userInputId,
+        agentLoopId,
+        agentId,
+      });
+      return agentLoopId;
+    };
+    const endSpecializedLoop = (params: {
+      agentId: string;
+      status: "ok" | "error" | "aborted";
+      error?: string;
+    }): void => {
+      if (!userInputId) {
+        return;
+      }
+      endAgentLoop({
+        runId,
+        sessionKey: holdSessionKey,
+        agentId: params.agentId,
+        status: params.status,
+        error: params.error,
+      });
+    };
 
-  const topLevelOnboardingAgentId = resolveTopLevelOnboardingAgentId(routingBody);
-  if (topLevelOnboardingAgentId) {
-    const { reply: onboardingReply, complete } = await runOnboardingStep(topLevelOnboardingAgentId);
-    if (onboardingReply) {
-      trackOnboardingProgress(topLevelOnboardingAgentId, complete);
-      console.log(
-        `[runAgentFlow] top-level onboarding intercepted for agent=${topLevelOnboardingAgentId}`,
-      );
-      return onboardingReply;
-    }
-  }
-
-  if (!enabled && directAgentId && directAgentId !== "main") {
-    console.log(
-      `[runAgentFlow] routing disabled; bypassing classifier and using direct agent=${directAgentId}`,
-    );
-    if (directAgentId === "calendar") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("calendar");
+    const runDirectSpecialized = async (
+      agentId: "calendar" | "reminders" | "mail" | "workouts" | "finance" | "multi",
+      invoke: () => Promise<ReplyPayload | ReplyPayload[] | undefined>,
+    ): Promise<ReplyPayload | ReplyPayload[] | undefined> => {
+      ensureSpecializedLoop(agentId);
+      const { reply: onboardingReply, complete } = await runOnboardingStep(agentId);
       if (onboardingReply) {
-        trackOnboardingProgress("calendar", complete);
+        trackOnboardingProgress(agentId, complete);
+        endSpecializedLoop({ agentId, status: "ok" });
         return onboardingReply;
       }
-      return runCalendarReply({
-        ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
-        provider,
-        model,
-      });
-    }
-    if (directAgentId === "reminders") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("reminders");
-      if (onboardingReply) {
-        trackOnboardingProgress("reminders", complete);
-        return onboardingReply;
+      try {
+        const reply = await invoke();
+        endSpecializedLoop({ agentId, status: "ok" });
+        return reply;
+      } catch (err) {
+        endSpecializedLoop({
+          agentId,
+          status: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
       }
-      return runRemindersReply({
-        ...params.runPreparedReplyParams,
-        provider,
-        model,
-      });
-    }
-    if (directAgentId === "mail") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("mail");
-      if (onboardingReply) {
-        trackOnboardingProgress("mail", complete);
-        return onboardingReply;
-      }
-      return runMailReply({
-        ...params.runPreparedReplyParams,
-        provider,
-        model,
-      });
-    }
-    if (directAgentId === "workouts") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("workouts");
-      if (onboardingReply) {
-        trackOnboardingProgress("workouts", complete);
-        return onboardingReply;
-      }
-      return runWorkoutsReply({
-        ...params.runPreparedReplyParams,
-        provider,
-        model,
-      });
-    }
-    if (directAgentId === "finance") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("finance");
-      if (onboardingReply) {
-        trackOnboardingProgress("finance", complete);
-        return onboardingReply;
-      }
-      return runFinanceReply({
-        ...params.runPreparedReplyParams,
-        provider,
-        model,
-      });
-    }
-    if (directAgentId === "multi") {
-      const { reply: onboardingReply, complete } = await runOnboardingStep("multi");
-      if (onboardingReply) {
-        trackOnboardingProgress("multi", complete);
-        return onboardingReply;
-      }
-      return runMultiReply({
-        ...params.runPreparedReplyParams,
-        provider,
-        model,
-      });
-    }
-  }
+    };
 
-  const applyRouterHoldState = (
-    agentId: string,
-    reply: ReplyPayload | ReplyPayload[] | undefined,
-  ): ReplyPayload | ReplyPayload[] | undefined => {
-    const payloads = extractPayloads(reply);
-    if (payloads.length === 0) {
-      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
-      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
-      return reply;
-    }
-
-    let sawAcquire = false;
-    let sawRelease = false;
-    let acquireReason: string | undefined;
-    let sawFollowupPrompt = false;
-    const handoffAgents = new Set<string>();
-
-    for (const payload of payloads) {
-      if (!payload?.text) {
-        continue;
-      }
-      const directive = applyRouterHoldDirectivesToText(payload.text);
-      payload.text = directive.text;
-      sawAcquire = sawAcquire || directive.acquire;
-      sawRelease = sawRelease || directive.release;
-      for (const handoff of directive.handoffAgents) {
-        handoffAgents.add(handoff);
-      }
-      if (directive.acquireReason) {
-        acquireReason = directive.acquireReason;
-      }
-      sawFollowupPrompt = sawFollowupPrompt || isFollowUpPromptText(directive.text);
-    }
-
-    if (handoffAgents.size > 0) {
-      for (const handoff of handoffAgents) {
-        enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_SESSION, holdSessionKey, handoff);
-        enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_USER, holdUserKey, handoff);
-      }
-      console.log(
-        `[runAgentFlow] router handoff queued by agent=${agentId} -> ${Array.from(handoffAgents).join(",")}`,
-      );
-    }
-
-    if (sawRelease) {
-      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
-      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
-      console.log(`[runAgentFlow] router hold released by agent=${agentId}`);
-      const next = activateNextPendingHold(holdSessionKey, holdUserKey);
-      if (next) {
+    if (activeOnboardingAgentId) {
+      const { reply, complete } = await runOnboardingStep(activeOnboardingAgentId);
+      trackOnboardingProgress(activeOnboardingAgentId, complete);
+      if (reply) {
         console.log(
-          `[runAgentFlow] router handoff activated next holder=${next.agentId} reason=${next.reason ?? "handoff"}`,
+          `[runAgentFlow] active onboarding intercepted for agent=${activeOnboardingAgentId}`,
+        );
+        return reply;
+      }
+    }
+
+    const topLevelOnboardingAgentId = resolveTopLevelOnboardingAgentId(routingBody);
+    if (topLevelOnboardingAgentId) {
+      const { reply: onboardingReply, complete } =
+        await runOnboardingStep(topLevelOnboardingAgentId);
+      if (onboardingReply) {
+        trackOnboardingProgress(topLevelOnboardingAgentId, complete);
+        console.log(
+          `[runAgentFlow] top-level onboarding intercepted for agent=${topLevelOnboardingAgentId}`,
+        );
+        return onboardingReply;
+      }
+    }
+
+    if (!enabled && directAgentId && directAgentId !== "main") {
+      console.log(
+        `[runAgentFlow] routing disabled; bypassing classifier and using direct agent=${directAgentId}`,
+      );
+      if (directAgentId === "calendar") {
+        return await runDirectSpecialized("calendar", async () =>
+          runCalendarReply({
+            ...withCalendarDateHints(preparedReplyParamsWithRunId, cleanedBody),
+            provider,
+            model,
+          }),
         );
       }
+      if (directAgentId === "reminders") {
+        return await runDirectSpecialized("reminders", async () =>
+          runRemindersReply({
+            ...preparedReplyParamsWithRunId,
+            provider,
+            model,
+          }),
+        );
+      }
+      if (directAgentId === "mail") {
+        return await runDirectSpecialized("mail", async () =>
+          runMailReply({
+            ...preparedReplyParamsWithRunId,
+            provider,
+            model,
+          }),
+        );
+      }
+      if (directAgentId === "workouts") {
+        return await runDirectSpecialized("workouts", async () =>
+          runWorkoutsReply({
+            ...preparedReplyParamsWithRunId,
+            provider,
+            model,
+          }),
+        );
+      }
+      if (directAgentId === "finance") {
+        return await runDirectSpecialized("finance", async () =>
+          runFinanceReply({
+            ...preparedReplyParamsWithRunId,
+            provider,
+            model,
+          }),
+        );
+      }
+      if (directAgentId === "multi") {
+        return await runDirectSpecialized("multi", async () =>
+          runMultiReply({
+            ...preparedReplyParamsWithRunId,
+            provider,
+            model,
+          }),
+        );
+      }
+    }
+
+    const applyRouterHoldState = (
+      agentId: string,
+      reply: ReplyPayload | ReplyPayload[] | undefined,
+    ): ReplyPayload | ReplyPayload[] | undefined => {
+      const payloads = extractPayloads(reply);
+      if (payloads.length === 0) {
+        releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+        releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+        endSpecializedLoop({ agentId, status: "ok" });
+        return reply;
+      }
+
+      let sawAcquire = false;
+      let sawRelease = false;
+      let acquireReason: string | undefined;
+      let sawFollowupPrompt = false;
+      const handoffAgents = new Set<string>();
+
+      for (const payload of payloads) {
+        if (!payload?.text) {
+          continue;
+        }
+        const directive = applyRouterHoldDirectivesToText(payload.text);
+        payload.text = directive.text;
+        sawAcquire = sawAcquire || directive.acquire;
+        sawRelease = sawRelease || directive.release;
+        for (const handoff of directive.handoffAgents) {
+          handoffAgents.add(handoff);
+        }
+        if (directive.acquireReason) {
+          acquireReason = directive.acquireReason;
+        }
+        sawFollowupPrompt = sawFollowupPrompt || isFollowUpPromptText(directive.text);
+      }
+
+      if (handoffAgents.size > 0) {
+        for (const handoff of handoffAgents) {
+          enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_SESSION, holdSessionKey, handoff);
+          enqueuePendingHold(ROUTER_PENDING_HOLDS_BY_USER, holdUserKey, handoff);
+        }
+        console.log(
+          `[runAgentFlow] router handoff queued by agent=${agentId} -> ${Array.from(handoffAgents).join(",")}`,
+        );
+      }
+
+      if (sawRelease) {
+        releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+        releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+        endSpecializedLoop({ agentId, status: "ok" });
+        console.log(`[runAgentFlow] router hold released by agent=${agentId}`);
+        const next = activateNextPendingHold(holdSessionKey, holdUserKey);
+        if (next) {
+          console.log(
+            `[runAgentFlow] router handoff activated next holder=${next.agentId} reason=${next.reason ?? "handoff"}`,
+          );
+        }
+        return reply;
+      }
+
+      if (sawAcquire || sawFollowupPrompt) {
+        const reason = acquireReason ?? (sawFollowupPrompt ? "followup_prompt" : undefined);
+        upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, reason);
+        upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, reason);
+        console.log(
+          `[runAgentFlow] router hold acquired by agent=${agentId}${reason ? ` reason=${reason}` : ""}`,
+        );
+        return reply;
+      }
+
+      releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
+      releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
+      endSpecializedLoop({ agentId, status: "ok" });
       return reply;
-    }
+    };
 
-    if (sawAcquire || sawFollowupPrompt) {
-      const reason = acquireReason ?? (sawFollowupPrompt ? "followup_prompt" : undefined);
-      upsertRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId, reason);
-      upsertRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId, reason);
-      console.log(
-        `[runAgentFlow] router hold acquired by agent=${agentId}${reason ? ` reason=${reason}` : ""}`,
-      );
-      return reply;
-    }
+    // ─── STEP 1: Invoke Router Agent ─────────────────────────────────────────
+    const modelResolver: RouterAgentModelResolver = async () => {
+      if (!enabled || !classifierModelRaw) {
+        return undefined;
+      }
+      const modelRef = parseModelRef(classifierModelRaw, defaultProvider);
+      if (!modelRef) {
+        return undefined;
+      }
+      const agentDir = resolveOpenClawAgentDir();
+      const resolved = resolveModel(modelRef.provider, modelRef.model, agentDir, cfg);
+      if (!resolved.model) {
+        return undefined;
+      }
+      return resolved.model;
+    };
 
-    releaseRouterHold(ROUTER_HOLDS_BY_SESSION, holdSessionKey, agentId);
-    releaseRouterHold(ROUTER_HOLDS_BY_USER, holdUserKey, agentId);
-    return reply;
-  };
+    const specializedTiers = [
+      "calendar",
+      "reminders",
+      "mail",
+      "workouts",
+      "finance",
+      "multi",
+    ] as const;
+    let hold = currentRouterHold(holdSessionKey, holdUserKey);
+    if (!hold) {
+      hold = activateNextPendingHold(holdSessionKey, holdUserKey);
+      if (hold) {
+        console.log(
+          `[runAgentFlow] router pending handoff activated holder=${hold.agentId} reason=${hold.reason ?? "handoff"}`,
+        );
+      }
+    }
+    let routerDecision: string = "stay";
+    let tier:
+      | "simple"
+      | "calendar"
+      | "reminders"
+      | "mail"
+      | "workouts"
+      | "finance"
+      | "multi"
+      | "complex";
+    let requestedAgents: string[] = [];
+    let classifierInvoked = false;
 
-  // ─── STEP 1: Invoke Router Agent ─────────────────────────────────────────
-  const modelResolver: RouterAgentModelResolver = async () => {
-    if (!enabled || !classifierModelRaw) {
-      return undefined;
-    }
-    const modelRef = parseModelRef(classifierModelRaw, defaultProvider);
-    if (!modelRef) {
-      return undefined;
-    }
-    const agentDir = resolveOpenClawAgentDir();
-    const resolved = resolveModel(modelRef.provider, modelRef.model, agentDir, cfg);
-    if (!resolved.model) {
-      return undefined;
-    }
-    return resolved.model;
-  };
-
-  const specializedTiers = [
-    "calendar",
-    "reminders",
-    "mail",
-    "workouts",
-    "finance",
-    "multi",
-  ] as const;
-  let hold = currentRouterHold(holdSessionKey, holdUserKey);
-  if (!hold) {
-    hold = activateNextPendingHold(holdSessionKey, holdUserKey);
     if (hold) {
+      tier = hold.agentId as typeof tier;
       console.log(
-        `[runAgentFlow] router pending handoff activated holder=${hold.agentId} reason=${hold.reason ?? "handoff"}`,
+        `[runAgentFlow] router hold override: tier=${tier} reason=${hold.reason ?? "unspecified"} (classifier bypassed)`,
       );
-    }
-  }
-  let routerDecision: string = "stay";
-  let tier:
-    | "simple"
-    | "calendar"
-    | "reminders"
-    | "mail"
-    | "workouts"
-    | "finance"
-    | "multi"
-    | "complex";
-  let requestedAgents: string[] = [];
-  let classifierInvoked = false;
-
-  if (hold) {
-    tier = hold.agentId as typeof tier;
-    console.log(
-      `[runAgentFlow] router hold override: tier=${tier} reason=${hold.reason ?? "unspecified"} (classifier bypassed)`,
-    );
-  } else {
-    classifierInvoked = true;
-    const routerAgent = new RouterAgent(modelResolver);
-    const routerOutput = await executeAgent(
-      routerAgent,
-      {
-        userIdentifier: params.userIdentifier ?? sessionKey,
-        message: routingBody,
-        context: { sessionKey },
-      },
-      { recordTrace: true },
-    );
-    const routedDecision = routerOutput.decision ?? "stay";
-    routerDecision = routedDecision;
-    requestedAgents = (routerOutput.agents ?? []).map((a) => a.trim().toLowerCase());
-
-    tier =
-      routedDecision === "stay"
-        ? "simple"
-        : specializedTiers.includes(routedDecision as (typeof specializedTiers)[number])
-          ? (routedDecision as (typeof specializedTiers)[number])
-          : "complex";
-    const activeSpecialized =
-      ACTIVE_SPECIALIZED_AGENT_BY_SESSION.get(onboardingSessionKey) ??
-      ACTIVE_SPECIALIZED_AGENT_BY_USER.get(userScopeKey);
-    const confirmationLike =
-      routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
-    if (
-      tier === "simple" &&
-      confirmationLike &&
-      activeSpecialized &&
-      Date.now() - activeSpecialized.at <= SPECIALIZED_FOLLOW_UP_WINDOW_MS
-    ) {
-      tier = activeSpecialized.agentId as typeof tier;
-      console.log(
-        `[runAgentFlow] follow-up continuity override: decision=stay -> ${activeSpecialized.agentId}`,
+    } else {
+      classifierInvoked = true;
+      const routerAgent = new RouterAgent(modelResolver);
+      const routerOutput = await executeAgent(
+        routerAgent,
+        {
+          userIdentifier: params.userIdentifier ?? sessionKey,
+          message: routingBody,
+          context: { sessionKey },
+        },
+        { recordTrace: true },
       );
-    }
-  }
-  const runId = crypto.randomUUID();
+      const routedDecision = routerOutput.decision ?? "stay";
+      routerDecision = routedDecision;
+      requestedAgents = (routerOutput.agents ?? []).map((a) => a.trim().toLowerCase());
 
-  if (classifierInvoked) {
-    console.log(`[runAgentFlow] Router model call 1: decision=${routerDecision} tier=${tier}`);
-  } else {
-    console.log(`[runAgentFlow] Router classifier skipped (hold active): tier=${tier}`);
-  }
-
-  // Resolve provider/model for this turn.
-  // Priority:
-  // 1) simple tier uses classifier model (if configured)
-  // 2) specialized tiers use per-agent model.primary (if configured)
-  // 3) otherwise keep caller/session model
-  let effectiveProvider = provider;
-  let effectiveModel = model;
-  if (tier === "simple" && enabled && classifierModelRaw) {
-    const resolved = resolveModelRefFromString({
-      raw: classifierModelRaw,
-      defaultProvider,
-      aliasIndex,
-    });
-    if (resolved?.ref) {
-      effectiveProvider = resolved.ref.provider;
-      effectiveModel = resolved.ref.model;
+      tier =
+        routedDecision === "stay"
+          ? "simple"
+          : specializedTiers.includes(routedDecision as (typeof specializedTiers)[number])
+            ? (routedDecision as (typeof specializedTiers)[number])
+            : "complex";
+      const activeSpecialized =
+        ACTIVE_SPECIALIZED_AGENT_BY_SESSION.get(onboardingSessionKey) ??
+        ACTIVE_SPECIALIZED_AGENT_BY_USER.get(userScopeKey);
+      const confirmationLike =
+        routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
+      if (
+        tier === "simple" &&
+        confirmationLike &&
+        activeSpecialized &&
+        Date.now() - activeSpecialized.at <= SPECIALIZED_FOLLOW_UP_WINDOW_MS
+      ) {
+        tier = activeSpecialized.agentId as typeof tier;
+        console.log(
+          `[runAgentFlow] follow-up continuity override: decision=stay -> ${activeSpecialized.agentId}`,
+        );
+      }
     }
-  } else if (tier !== "complex") {
-    const agentPrimary = resolveAgentModelPrimary(cfg, tier);
-    if (agentPrimary) {
+    if (classifierInvoked) {
+      console.log(`[runAgentFlow] Router model call 1: decision=${routerDecision} tier=${tier}`);
+    } else {
+      console.log(`[runAgentFlow] Router classifier skipped (hold active): tier=${tier}`);
+    }
+
+    // Resolve provider/model for this turn.
+    // Priority:
+    // 1) simple tier uses classifier model (if configured)
+    // 2) specialized tiers use per-agent model.primary (if configured)
+    // 3) otherwise keep caller/session model
+    let effectiveProvider = provider;
+    let effectiveModel = model;
+    if (tier === "simple" && enabled && classifierModelRaw) {
       const resolved = resolveModelRefFromString({
-        raw: agentPrimary,
+        raw: classifierModelRaw,
         defaultProvider,
         aliasIndex,
       });
@@ -1238,208 +1306,253 @@ export async function runAgentFlow(
         effectiveProvider = resolved.ref.provider;
         effectiveModel = resolved.ref.model;
       }
-    }
-  }
-
-  emitAgentEvent({
-    runId,
-    stream: "routing",
-    data: {
-      decision: tier === "simple" ? routerDecision : tier,
-      tier,
-      sessionKey,
-      provider: effectiveProvider,
-      model: effectiveModel,
-      overridden: tier === "simple" && effectiveProvider !== provider,
-      bodyPreview: cleanedBody.slice(0, 80),
-    },
-  });
-
-  // ─── STEP 2a: Simple path → Invoke SimpleResponderAgent ──────────────────
-  if (tier === "simple") {
-    const agentDir = resolveOpenClawAgentDir();
-    const modelResolved = resolveModel(effectiveProvider, effectiveModel, agentDir, cfg);
-    if (!modelResolved.model) {
-      throw new Error(
-        modelResolved.error ??
-          `Simple path: model not found: ${effectiveProvider}/${effectiveModel}`,
-      );
+    } else if (tier !== "complex") {
+      const agentPrimary = resolveAgentModelPrimary(cfg, tier);
+      if (agentPrimary) {
+        const resolved = resolveModelRefFromString({
+          raw: agentPrimary,
+          defaultProvider,
+          aliasIndex,
+        });
+        if (resolved?.ref) {
+          effectiveProvider = resolved.ref.provider;
+          effectiveModel = resolved.ref.model;
+        }
+      }
     }
 
-    const simpleAgent = new SimpleResponderAgent();
-    const simpleOutput = await executeAgent(
-      simpleAgent,
-      {
-        userIdentifier: params.userIdentifier ?? sessionKey,
-        message: routingBody,
-        context: {
-          userTimezone: "UTC",
-          sessionKey,
-          config: cfg,
-          model: {
-            provider: effectiveProvider,
-            modelId: effectiveModel,
-            resolved: modelResolved.model,
+    emitAgentEvent({
+      runId,
+      stream: "routing",
+      data: {
+        decision: tier === "simple" ? routerDecision : tier,
+        tier,
+        sessionKey,
+        provider: effectiveProvider,
+        model: effectiveModel,
+        overridden: tier === "simple" && effectiveProvider !== provider,
+        bodyPreview: cleanedBody.slice(0, 80),
+      },
+    });
+
+    // ─── STEP 2a: Simple path → Invoke SimpleResponderAgent ──────────────────
+    if (tier === "simple") {
+      const agentDir = resolveOpenClawAgentDir();
+      const modelResolved = resolveModel(effectiveProvider, effectiveModel, agentDir, cfg);
+      if (!modelResolved.model) {
+        throw new Error(
+          modelResolved.error ??
+            `Simple path: model not found: ${effectiveProvider}/${effectiveModel}`,
+        );
+      }
+
+      const simpleAgent = new SimpleResponderAgent();
+      const simpleOutput = await executeAgent(
+        simpleAgent,
+        {
+          userIdentifier: params.userIdentifier ?? sessionKey,
+          message: routingBody,
+          context: {
+            userTimezone: "UTC",
+            sessionKey,
+            config: cfg,
+            model: {
+              provider: effectiveProvider,
+              modelId: effectiveModel,
+              resolved: modelResolved.model,
+            },
           },
         },
-      },
-      { recordTrace: true },
-    );
-
-    const responseText = simpleOutput.response ?? "";
-    const outLen = responseText.length;
-    const usageStr =
-      simpleOutput.tokenUsage &&
-      (simpleOutput.tokenUsage.input !== undefined || simpleOutput.tokenUsage.output !== undefined)
-        ? ` input=${simpleOutput.tokenUsage.input ?? "?"} output=${simpleOutput.tokenUsage.output ?? "?"}`
-        : "";
-    console.log(
-      `[runAgentFlow] SimpleResponder model call 2: ${effectiveProvider}/${effectiveModel} response=${outLen} chars${usageStr}`,
-    );
-
-    return {
-      text: responseText,
-    };
-  }
-
-  if (
-    tier === "calendar" ||
-    tier === "reminders" ||
-    tier === "mail" ||
-    tier === "workouts" ||
-    tier === "finance"
-  ) {
-    const active = { agentId: tier, at: Date.now() };
-    ACTIVE_SPECIALIZED_AGENT_BY_SESSION.set(onboardingSessionKey, active);
-    ACTIVE_SPECIALIZED_AGENT_BY_USER.set(userScopeKey, active);
-  }
-
-  // ─── STEP 2b: Specialized agent paths ────────────────────────────────────
-  if (tier === "calendar") {
-    console.log("[runAgentFlow] calendar path: invoking runCalendarReply");
-    const { reply: onboardingReply, complete } = await runOnboardingStep("calendar");
-    if (onboardingReply) {
-      trackOnboardingProgress("calendar", complete);
-      return onboardingReply;
-    }
-    const confirmationLike =
-      routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
-    const confirmationHoldReason = (hold?.reason ?? "").toLowerCase();
-    const shouldFastPathConfirmation =
-      hold?.agentId === "calendar" &&
-      confirmationLike &&
-      (confirmationHoldReason.includes("confirm") || confirmationHoldReason === "followup_prompt");
-    const calendarParams = shouldFastPathConfirmation
-      ? withCalendarConfirmationFastPathHint(params.runPreparedReplyParams, cleanedBody)
-      : params.runPreparedReplyParams;
-    const reply = await runCalendarReply({
-      ...withCalendarDateHints(calendarParams, cleanedBody),
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-    return applyRouterHoldState("calendar", reply);
-  }
-  if (tier === "reminders") {
-    console.log("[runAgentFlow] reminders path: invoking runRemindersReply");
-    const { reply: onboardingReply, complete } = await runOnboardingStep("reminders");
-    if (onboardingReply) {
-      trackOnboardingProgress("reminders", complete);
-      return onboardingReply;
-    }
-    const reply = await runRemindersReply({
-      ...params.runPreparedReplyParams,
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-    return applyRouterHoldState("reminders", reply);
-  }
-  if (tier === "mail") {
-    console.log("[runAgentFlow] mail path: invoking runMailReply");
-    const { reply: onboardingReply, complete } = await runOnboardingStep("mail");
-    if (onboardingReply) {
-      trackOnboardingProgress("mail", complete);
-      return onboardingReply;
-    }
-    const reply = await runMailReply({
-      ...params.runPreparedReplyParams,
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-    return applyRouterHoldState("mail", reply);
-  }
-  if (tier === "workouts") {
-    console.log("[runAgentFlow] workouts path: invoking runWorkoutsReply");
-    const { reply: onboardingReply, complete } = await runOnboardingStep("workouts");
-    if (onboardingReply) {
-      trackOnboardingProgress("workouts", complete);
-      return onboardingReply;
-    }
-    const reply = await runWorkoutsReply({
-      ...params.runPreparedReplyParams,
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-    return applyRouterHoldState("workouts", reply);
-  }
-  if (tier === "finance") {
-    console.log("[runAgentFlow] finance path: invoking runFinanceReply");
-    const { reply: onboardingReply, complete } = await runOnboardingStep("finance");
-    if (onboardingReply) {
-      trackOnboardingProgress("finance", complete);
-      return onboardingReply;
-    }
-    const reply = await runFinanceReply({
-      ...params.runPreparedReplyParams,
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-    return applyRouterHoldState("finance", reply);
-  }
-  if (tier === "multi") {
-    const { reply: onboardingReply, complete } = await runOnboardingStep("multi");
-    if (onboardingReply) {
-      trackOnboardingProgress("multi", complete);
-      return onboardingReply;
-    }
-    const multiConfig = resolveAgentConfig(cfg ?? {}, "multi");
-    const allowAgents = multiConfig?.subagents?.allowAgents ?? [];
-    const allowSet = new Set(allowAgents.map((a) => a.trim().toLowerCase()).filter(Boolean));
-    const allowAny = allowSet.has("*");
-    const allAllowed =
-      allowAny || (requestedAgents.length > 0 && requestedAgents.every((a) => allowSet.has(a)));
-    const orchestrateAgents = allAllowed
-      ? requestedAgents.length > 0
-        ? requestedAgents
-        : Array.from(allowSet).filter((a) => a !== "*")
-      : undefined;
-    if (!orchestrateAgents?.length && requestedAgents.length > 0) {
-      console.log(
-        `[runAgentFlow] multi requested agents ${requestedAgents.join(",")} not all in allowlist; falling back to escalate`,
+        { recordTrace: true },
       );
-      return runComplexReply({
-        ...params.runPreparedReplyParams,
+
+      const responseText = simpleOutput.response ?? "";
+      const outLen = responseText.length;
+      const usageStr =
+        simpleOutput.tokenUsage &&
+        (simpleOutput.tokenUsage.input !== undefined ||
+          simpleOutput.tokenUsage.output !== undefined)
+          ? ` input=${simpleOutput.tokenUsage.input ?? "?"} output=${simpleOutput.tokenUsage.output ?? "?"}`
+          : "";
+      console.log(
+        `[runAgentFlow] SimpleResponder model call 2: ${effectiveProvider}/${effectiveModel} response=${outLen} chars${usageStr}`,
+      );
+
+      return {
+        text: responseText,
+      };
+    }
+
+    if (
+      tier === "calendar" ||
+      tier === "reminders" ||
+      tier === "mail" ||
+      tier === "workouts" ||
+      tier === "finance"
+    ) {
+      const active = { agentId: tier, at: Date.now() };
+      ACTIVE_SPECIALIZED_AGENT_BY_SESSION.set(onboardingSessionKey, active);
+      ACTIVE_SPECIALIZED_AGENT_BY_USER.set(userScopeKey, active);
+    }
+
+    // ─── STEP 2b: Specialized agent paths ────────────────────────────────────
+    if (tier === "calendar") {
+      ensureSpecializedLoop("calendar");
+      console.log("[runAgentFlow] calendar path: invoking runCalendarReply");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("calendar");
+      if (onboardingReply) {
+        trackOnboardingProgress("calendar", complete);
+        return onboardingReply;
+      }
+      const confirmationLike =
+        routingBody.length <= 40 && CONFIRMATION_FOLLOW_UP_RE.test(routingBody);
+      const confirmationHoldReason = (hold?.reason ?? "").toLowerCase();
+      const shouldFastPathConfirmation =
+        hold?.agentId === "calendar" &&
+        confirmationLike &&
+        (confirmationHoldReason.includes("confirm") ||
+          confirmationHoldReason === "followup_prompt");
+      const calendarParams = shouldFastPathConfirmation
+        ? withCalendarConfirmationFastPathHint(preparedReplyParamsWithRunId, cleanedBody)
+        : preparedReplyParamsWithRunId;
+      const reply = await runCalendarReply({
+        ...withCalendarDateHints(calendarParams, cleanedBody),
         provider: effectiveProvider,
         model: effectiveModel,
       });
+      return applyRouterHoldState("calendar", reply);
     }
+    if (tier === "reminders") {
+      ensureSpecializedLoop("reminders");
+      console.log("[runAgentFlow] reminders path: invoking runRemindersReply");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("reminders");
+      if (onboardingReply) {
+        trackOnboardingProgress("reminders", complete);
+        return onboardingReply;
+      }
+      const reply = await runRemindersReply({
+        ...preparedReplyParamsWithRunId,
+        provider: effectiveProvider,
+        model: effectiveModel,
+      });
+      return applyRouterHoldState("reminders", reply);
+    }
+    if (tier === "mail") {
+      ensureSpecializedLoop("mail");
+      console.log("[runAgentFlow] mail path: invoking runMailReply");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("mail");
+      if (onboardingReply) {
+        trackOnboardingProgress("mail", complete);
+        return onboardingReply;
+      }
+      const reply = await runMailReply({
+        ...preparedReplyParamsWithRunId,
+        provider: effectiveProvider,
+        model: effectiveModel,
+      });
+      return applyRouterHoldState("mail", reply);
+    }
+    if (tier === "workouts") {
+      ensureSpecializedLoop("workouts");
+      console.log("[runAgentFlow] workouts path: invoking runWorkoutsReply");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("workouts");
+      if (onboardingReply) {
+        trackOnboardingProgress("workouts", complete);
+        return onboardingReply;
+      }
+      const reply = await runWorkoutsReply({
+        ...preparedReplyParamsWithRunId,
+        provider: effectiveProvider,
+        model: effectiveModel,
+      });
+      return applyRouterHoldState("workouts", reply);
+    }
+    if (tier === "finance") {
+      ensureSpecializedLoop("finance");
+      console.log("[runAgentFlow] finance path: invoking runFinanceReply");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("finance");
+      if (onboardingReply) {
+        trackOnboardingProgress("finance", complete);
+        return onboardingReply;
+      }
+      const reply = await runFinanceReply({
+        ...preparedReplyParamsWithRunId,
+        provider: effectiveProvider,
+        model: effectiveModel,
+      });
+      return applyRouterHoldState("finance", reply);
+    }
+    if (tier === "multi") {
+      ensureSpecializedLoop("multi");
+      const { reply: onboardingReply, complete } = await runOnboardingStep("multi");
+      if (onboardingReply) {
+        trackOnboardingProgress("multi", complete);
+        return onboardingReply;
+      }
+      const multiConfig = resolveAgentConfig(cfg ?? {}, "multi");
+      const allowAgents = multiConfig?.subagents?.allowAgents ?? [];
+      const allowSet = new Set(allowAgents.map((a) => a.trim().toLowerCase()).filter(Boolean));
+      const allowAny = allowSet.has("*");
+      const allAllowed =
+        allowAny || (requestedAgents.length > 0 && requestedAgents.every((a) => allowSet.has(a)));
+      const orchestrateAgents = allAllowed
+        ? requestedAgents.length > 0
+          ? requestedAgents
+          : Array.from(allowSet).filter((a) => a !== "*")
+        : undefined;
+      if (!orchestrateAgents?.length && requestedAgents.length > 0) {
+        console.log(
+          `[runAgentFlow] multi requested agents ${requestedAgents.join(",")} not all in allowlist; falling back to escalate`,
+        );
+        return await runComplexReply({
+          ...preparedReplyParamsWithRunId,
+          provider: effectiveProvider,
+          model: effectiveModel,
+        });
+      }
+      console.log(
+        `[runAgentFlow] multi path: invoking runMultiReply orchestrateAgents=${orchestrateAgents?.join(",") ?? "default"}`,
+      );
+      return await runMultiReply({
+        ...preparedReplyParamsWithRunId,
+        provider: effectiveProvider,
+        model: effectiveModel,
+        orchestrateAgents,
+      });
+    }
+
+    // ─── STEP 2c: Complex path → Invoke Complex agent ────────────────────────
     console.log(
-      `[runAgentFlow] multi path: invoking runMultiReply orchestrateAgents=${orchestrateAgents?.join(",") ?? "default"}`,
+      `[runAgentFlow] complex path: invoking runComplexReply (agent=${params.runPreparedReplyParams.agentId})`,
     );
-    return runMultiReply({
-      ...params.runPreparedReplyParams,
+    return await runComplexReply({
+      ...withCalendarDateHints(preparedReplyParamsWithRunId, cleanedBody),
       provider: effectiveProvider,
       model: effectiveModel,
-      orchestrateAgents,
     });
+  } catch (err) {
+    userInputStatus = "error";
+    userInputError = err instanceof Error ? err.message : String(err);
+    const activeAgentId =
+      getAgentRunContext(runId)?.agentId ??
+      (params.runPreparedReplyParams.agentId ?? "").trim().toLowerCase();
+    if (userInputId && activeAgentId && activeAgentId !== "main") {
+      endAgentLoop({
+        runId,
+        sessionKey,
+        agentId: activeAgentId,
+        status: "error",
+        error: userInputError,
+      });
+    }
+    throw err;
+  } finally {
+    if (userInputId) {
+      endUserInput({
+        runId,
+        status: userInputStatus,
+        error: userInputError,
+      });
+    }
   }
-
-  // ─── STEP 2c: Complex path → Invoke Complex agent ────────────────────────
-  console.log(
-    `[runAgentFlow] complex path: invoking runComplexReply (agent=${params.runPreparedReplyParams.agentId})`,
-  );
-  return runComplexReply({
-    ...withCalendarDateHints(params.runPreparedReplyParams, cleanedBody),
-    provider: effectiveProvider,
-    model: effectiveModel,
-  });
 }

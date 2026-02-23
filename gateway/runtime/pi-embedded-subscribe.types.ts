@@ -8,6 +8,15 @@ export type ToolResultFormat = "markdown" | "plain";
 export type SubscribeEmbeddedPiSessionParams = {
   session: AgentSession;
   runId: string;
+  sessionKey?: string;
+  userInputId?: string;
+  agentLoopId?: string;
+  toolLoopId?: string;
+  agentId?: string;
+  provider?: string;
+  modelId?: string;
+  attemptIndex?: number;
+  attemptType?: "primary" | "retry" | "fallback";
   hookRunner?: HookRunner;
   verboseLevel?: VerboseLevel;
   reasoningMode?: ReasoningLevel;

@@ -185,10 +185,14 @@ import {
   SessionsUsageParamsSchema,
   type TestsDiscoverParams,
   TestsDiscoverParamsSchema,
+  type TestsHistoryParams,
+  TestsHistoryParamsSchema,
   type TestsRunParams,
   TestsRunParamsSchema,
   type TestsSuitesParams,
   TestsSuitesParamsSchema,
+  type TestsTelemetryParams,
+  TestsTelemetryParamsSchema,
   type TestsWaitParams,
   TestsWaitParamsSchema,
   type ShutdownEvent,
@@ -318,8 +322,12 @@ export const validateSessionsUsageParams =
 export const validateTestsSuitesParams = ajv.compile<TestsSuitesParams>(TestsSuitesParamsSchema);
 export const validateTestsDiscoverParams =
   ajv.compile<TestsDiscoverParams>(TestsDiscoverParamsSchema);
+export const validateTestsHistoryParams = ajv.compile<TestsHistoryParams>(TestsHistoryParamsSchema);
 export const validateTestsRunParams = ajv.compile<TestsRunParams>(TestsRunParamsSchema);
 export const validateTestsWaitParams = ajv.compile<TestsWaitParams>(TestsWaitParamsSchema);
+export const validateTestsTelemetryParams = ajv.compile<TestsTelemetryParams>(
+  TestsTelemetryParamsSchema,
+);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = ajv.compile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -464,8 +472,10 @@ export {
   SessionsUsageParamsSchema,
   TestsSuitesParamsSchema,
   TestsDiscoverParamsSchema,
+  TestsHistoryParamsSchema,
   TestsRunParamsSchema,
   TestsWaitParamsSchema,
+  TestsTelemetryParamsSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -614,8 +624,10 @@ export type {
   SessionsUsageParams,
   TestsSuitesParams,
   TestsDiscoverParams,
+  TestsHistoryParams,
   TestsRunParams,
   TestsWaitParams,
+  TestsTelemetryParams,
   CronJob,
   CronListParams,
   CronStatusParams,

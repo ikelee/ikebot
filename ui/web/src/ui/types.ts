@@ -676,6 +676,58 @@ export type TestSuiteModelCall = {
   tokens?: number;
 };
 
+export type TestTelemetrySource = "live" | "test" | "unknown";
+
+export type TestTelemetryEvent = {
+  runId: string;
+  ts: number;
+  kind: string;
+  source: TestTelemetrySource;
+  data: Record<string, unknown>;
+  sessionKey?: string;
+};
+
+export type TestTelemetryMetrics = {
+  events: number;
+  userInputs: number;
+  agentLoops: number;
+  toolLoops: number;
+  modelCalls: number;
+  okCount: number;
+  errorCount: number;
+  avgModelLatencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  bySource: {
+    live: number;
+    test: number;
+    unknown: number;
+  };
+};
+
+export type TestTelemetryModelCall = {
+  runId: string;
+  source: TestTelemetrySource;
+  sessionKey?: string;
+  userInputId?: string;
+  agentLoopId?: string;
+  toolLoopId?: string;
+  modelCallId: string;
+  provider?: string;
+  model?: string;
+  status?: "ok" | "error";
+  attemptIndex?: number;
+  attemptType?: string;
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  finishReason?: string;
+  toolCallsRequested?: number;
+  error?: string;
+};
+
 export type TestSuiteRunResult = {
   runId: string;
   suiteId: string;
@@ -697,6 +749,8 @@ export type TestSuiteRunResult = {
   ts: number;
   metrics?: TestSuiteUsageMetrics;
   modelCalls?: TestSuiteModelCall[];
+  telemetryMetrics?: TestTelemetryMetrics;
+  telemetryModelCalls?: TestTelemetryModelCall[];
 };
 
 export type TestSuiteEntry = {

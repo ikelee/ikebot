@@ -1,7 +1,11 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   clearAgentRunContext,
   emitAgentEvent,
+  flushTelemetryWritesForTest,
   getAgentRunContext,
   onAgentEvent,
   registerAgentRunContext,
@@ -60,5 +64,35 @@ describe("agent-events sequencing", () => {
     stop();
 
     expect(phases).toEqual(["start", "end"]);
+  });
+
+  test("appends telemetry events to telemetry.jsonl", async () => {
+    const prevStateDir = process.env.OPENCLAW_STATE_DIR;
+    const tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-telemetry-"));
+    process.env.OPENCLAW_STATE_DIR = tempStateDir;
+    try {
+      emitAgentEvent({
+        runId: "run-telemetry-file",
+        stream: "telemetry",
+        data: { kind: "model_call.end", probe: true },
+      });
+      await flushTelemetryWritesForTest();
+      const telemetryPath = path.join(tempStateDir, "logs", "telemetry.jsonl");
+      const content = await fs.readFile(telemetryPath, "utf8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      expect(lines.length).toBeGreaterThan(0);
+      const parsed = JSON.parse(lines[lines.length - 1] ?? "{}");
+      expect(parsed.stream).toBe("telemetry");
+      expect(parsed.source).toBe("test");
+      expect(parsed.runId).toBe("run-telemetry-file");
+      expect(parsed.data?.kind).toBe("model_call.end");
+    } finally {
+      if (prevStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = prevStateDir;
+      }
+      await fs.rm(tempStateDir, { recursive: true, force: true });
+    }
   });
 });

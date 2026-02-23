@@ -1,5 +1,11 @@
 import { html } from "lit";
-import type { TestSuiteEntry, TestSuiteRunEvent, TestSuiteRunResult } from "../types.ts";
+import type {
+  TestSuiteEntry,
+  TestSuiteRunEvent,
+  TestSuiteRunResult,
+  TestTelemetryModelCall,
+  TestTelemetryMetrics,
+} from "../types.ts";
 
 function formatTokens(n: number): string {
   if (!Number.isFinite(n)) {
@@ -103,6 +109,29 @@ function modelExecutionLabel(
   return "No model calls yet";
 }
 
+function effectiveExecutionMetrics(run: TestSuiteRunResult | null): {
+  localInvocations?: number;
+  cloudInvocations?: number;
+  totalInvocations?: number;
+} | null {
+  if (!run) {
+    return null;
+  }
+  const metrics = run.metrics ?? null;
+  if ((metrics?.totalInvocations ?? 0) > 0) {
+    return metrics;
+  }
+  const telemetryCalls = run.telemetryMetrics?.modelCalls ?? 0;
+  if (telemetryCalls > 0) {
+    return {
+      localInvocations: telemetryCalls,
+      cloudInvocations: 0,
+      totalInvocations: telemetryCalls,
+    };
+  }
+  return metrics;
+}
+
 function eventTone(level: TestSuiteRunEvent["level"]): string {
   if (level === "ok") {
     return "var(--success)";
@@ -111,6 +140,26 @@ function eventTone(level: TestSuiteRunEvent["level"]): string {
     return "var(--danger)";
   }
   return "var(--text-muted)";
+}
+
+function emptyTelemetryMetrics(): TestTelemetryMetrics {
+  return {
+    events: 0,
+    userInputs: 0,
+    agentLoops: 0,
+    toolLoops: 0,
+    modelCalls: 0,
+    okCount: 0,
+    errorCount: 0,
+    avgModelLatencyMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    bySource: {
+      live: 0,
+      test: 0,
+      unknown: 0,
+    },
+  };
 }
 
 type ParsedModelCall = {
@@ -415,6 +464,34 @@ function parseModelCalls(output: string): ParsedModelCall[] {
   return calls.toSorted((a, b) => a.startedAtLine - b.startedAtLine);
 }
 
+function renderTelemetryModelCall(call: TestTelemetryModelCall) {
+  const providerModel = call.model
+    ? `${call.provider ? `${call.provider}/` : ""}${call.model}`
+    : (call.provider ?? "unknown");
+  const statusLabel =
+    call.status === "ok"
+      ? `done ${formatMs(call.durationMs ?? 0)}`
+      : call.status === "error"
+        ? "error"
+        : "done";
+  return html`
+    <details style="border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--panel);">
+      <summary style="list-style: none; display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; cursor: pointer;">
+        <span class="chip">${call.modelCallId.slice(0, 8)}</span>
+        <span class="mono" style="font-size: 12px;">router -> ${providerModel}</span>
+        <span class="mono muted" style="font-size: 11px;">in ${formatTokens(call.inputTokens ?? 0)} · out ${formatTokens(call.outputTokens ?? 0)}</span>
+        <span class="chip" style="border-color: ${call.status === "error" ? "var(--danger)" : "var(--success)"};">${statusLabel}</span>
+      </summary>
+      <div style="display: grid; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+        <div class="mono muted" style="font-size: 11px;">User Message: ${call.userInputId ?? "unknown"}</div>
+        <div class="mono muted" style="font-size: 11px;">Agent Loop: ${call.agentLoopId ?? "unknown"}</div>
+        <div class="mono muted" style="font-size: 11px;">Tool Loop: ${call.toolLoopId ?? "unknown"}${call.attemptIndex ? ` · attempt ${call.attemptIndex}${call.attemptType ? ` (${call.attemptType})` : ""}` : ""}</div>
+        <div class="mono muted" style="font-size: 11px;">Model Call: ${call.modelCallId}${call.finishReason ? ` · finish=${call.finishReason}` : ""}${call.toolCallsRequested != null ? ` · toolCalls=${call.toolCallsRequested}` : ""}</div>
+      </div>
+    </details>
+  `;
+}
+
 function renderRunDetails(
   selectedRun: TestSuiteRunResult | null,
   runEvents: TestSuiteRunEvent[],
@@ -450,6 +527,7 @@ function renderRunDetails(
   }));
   // Prefer parsed live log calls (contains usage.in/usage.out) over coarse telemetry.
   const modelCalls = parsedCalls.length > 0 ? parsedCalls : telemetryCalls;
+  const telemetry = selectedRun?.telemetryMetrics ?? emptyTelemetryMetrics();
   const anyInflight = parsedCalls.length > 0 ? modelCalls.some((call) => !call.done) : false;
   const liveInputTokens = modelCalls.reduce((sum, call) => sum + (call.inputTokens ?? 0), 0);
   const liveOutputTokens = modelCalls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0);
@@ -461,24 +539,45 @@ function renderRunDetails(
       ? completedCalls.reduce((sum, call) => sum + (call.durationMs ?? 0), 0) /
         completedCalls.length
       : 0;
+  const telemetryModelCalls = selectedRun?.telemetryModelCalls ?? [];
+  const telemetryTokenTotal = telemetry.inputTokens + telemetry.outputTokens;
+  const telemetryInvocationCount = telemetry.modelCalls;
+  const telemetryAvgLatencyMs = telemetry.avgModelLatencyMs;
   const displayTotalTokens =
-    liveTotalTokens > 0 ? liveTotalTokens : (selectedRun?.metrics?.totalTokens ?? 0);
+    liveTotalTokens > 0
+      ? liveTotalTokens
+      : telemetryTokenTotal > 0
+        ? telemetryTokenTotal
+        : (selectedRun?.metrics?.totalTokens ?? 0);
   const displayLocalTokens =
     liveTotalTokens > 0 ? liveTotalTokens : (selectedRun?.metrics?.localTokens ?? 0);
   const displayCloudTokens = liveTotalTokens > 0 ? 0 : (selectedRun?.metrics?.cloudTokens ?? 0);
   const displayInvocations =
-    liveInvocationCount > 0 ? liveInvocationCount : (selectedRun?.metrics?.totalInvocations ?? 0);
+    liveInvocationCount > 0
+      ? liveInvocationCount
+      : telemetryInvocationCount > 0
+        ? telemetryInvocationCount
+        : (selectedRun?.metrics?.totalInvocations ?? 0);
   const displayLocalInvocations =
     liveInvocationCount > 0 ? liveInvocationCount : (selectedRun?.metrics?.localInvocations ?? 0);
   const displayCloudInvocations =
     liveInvocationCount > 0 ? 0 : (selectedRun?.metrics?.cloudInvocations ?? 0);
   const displayAvgLatency =
-    liveAvgLatencyMs > 0 ? liveAvgLatencyMs : (selectedRun?.metrics?.avgLatencyMs ?? 0);
+    liveAvgLatencyMs > 0
+      ? liveAvgLatencyMs
+      : telemetryAvgLatencyMs > 0
+        ? telemetryAvgLatencyMs
+        : (selectedRun?.metrics?.avgLatencyMs ?? 0);
   const displayExecutionMetrics = {
     localInvocations: displayLocalInvocations,
     cloudInvocations: displayCloudInvocations,
     totalInvocations: displayInvocations,
   };
+  const displayDurationMs =
+    selectedRun?.status === "running"
+      ? Math.max(0, Date.now() - (selectedRun.startedAt || Date.now()))
+      : (selectedRun?.durationMs ??
+        Math.max(0, (selectedRun?.endedAt ?? 0) - (selectedRun?.startedAt ?? 0)));
 
   return html`
     <div class="card" style="background: var(--panel); border: 1px solid var(--border);">
@@ -503,7 +602,7 @@ function renderRunDetails(
                 </div>
                 <div class="metric-card">
                   <div class="muted" style="font-size: 11px;">Duration</div>
-                  <div class="metric-value">${formatMs(selectedRun.durationMs ?? 0)}</div>
+                  <div class="metric-value">${formatMs(displayDurationMs)}</div>
                   <div class="muted" style="font-size: 11px;">scope ${formatRunScope(selectedRun)}</div>
                 </div>
                 <div class="metric-card">
@@ -520,35 +619,73 @@ function renderRunDetails(
               <div style="margin-top: 8px;">
                 <span class="chip">${modelExecutionLabel(displayExecutionMetrics)}</span>
               </div>
+              <div class="card" style="background: var(--bg); border: 1px solid var(--border); margin-top: 10px;">
+                <div class="card-title" style="font-size: 12px;">Telemetry Aggregation (This Run)</div>
+                <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px;">
+                  <div class="metric-card">
+                    <div class="muted" style="font-size: 11px;">Events</div>
+                    <div class="metric-value">${formatTokens(telemetry.events)}</div>
+                    <div class="muted" style="font-size: 11px;">ok ${formatTokens(telemetry.okCount)} · err ${formatTokens(telemetry.errorCount)}</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="muted" style="font-size: 11px;">Loop Starts</div>
+                    <div class="metric-value">${formatTokens(telemetry.userInputs + telemetry.agentLoops + telemetry.toolLoops)}</div>
+                    <div class="muted" style="font-size: 11px;">u ${formatTokens(telemetry.userInputs)} · a ${formatTokens(telemetry.agentLoops)} · t ${formatTokens(telemetry.toolLoops)}</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="muted" style="font-size: 11px;">Model Calls</div>
+                    <div class="metric-value">${formatTokens(telemetry.modelCalls)}</div>
+                    <div class="muted" style="font-size: 11px;">avg ${formatMs(telemetry.avgModelLatencyMs)}</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="muted" style="font-size: 11px;">Telemetry Tokens</div>
+                    <div class="metric-value">${formatTokens(telemetry.inputTokens + telemetry.outputTokens)}</div>
+                    <div class="muted" style="font-size: 11px;">in ${formatTokens(telemetry.inputTokens)} · out ${formatTokens(telemetry.outputTokens)}</div>
+                  </div>
+                </div>
+                <div class="muted" style="font-size: 11px; margin-top: 8px;">
+                  source live ${formatTokens(telemetry.bySource.live)} · test ${formatTokens(telemetry.bySource.test)} · unknown ${formatTokens(telemetry.bySource.unknown)}
+                </div>
+              </div>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
                 <div class="card" style="background: var(--bg); border: 1px solid var(--border);">
                   <div class="card-title" style="font-size: 12px;">Model Routing View (Live)</div>
-                  <div class="muted" style="font-size: 12px; margin-top: 4px;">router -> model calls parsed from live log output.</div>
+                  <div class="muted" style="font-size: 12px; margin-top: 4px;">Click a row to inspect user input -> agent loop -> tool loop -> model call.</div>
                   <div style="margin-top: 8px; display: grid; gap: 6px;">
                     ${
-                      modelCalls.length === 0
+                      telemetryModelCalls.length === 0 && modelCalls.length === 0
                         ? html`
                             <div class="muted">No model calls detected in output yet.</div>
                           `
-                        : modelCalls.map(
-                            (call) => html`
-                            <div style="display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;">
-                              <span class="chip">${call.id}</span>
-                              <span class="mono" style="font-size: 12px;">router -> ${call.model}</span>
-                              <span class="mono muted" style="font-size: 11px;">in ${formatTokens(call.inputTokens ?? 0)} · out ${formatTokens(call.outputTokens ?? 0)}</span>
-                              <span class="chip" style="border-color: ${call.done ? "var(--success)" : "var(--accent)"};">
-                                ${
-                                  call.done
-                                    ? `done ${formatMs(call.durationMs ?? 0)}`
-                                    : call.waitMs
-                                      ? `waiting ${formatMs(call.waitMs)}`
-                                      : "waiting"
-                                }
-                              </span>
-                            </div>
-                          `,
-                          )
+                        : telemetryModelCalls.length > 0
+                          ? telemetryModelCalls.map((call) => renderTelemetryModelCall(call))
+                          : modelCalls.map(
+                              (call) => html`
+                                <details style="border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--panel);">
+                                  <summary style="list-style: none; display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; cursor: pointer;">
+                                    <span class="chip">${call.id}</span>
+                                    <span class="mono" style="font-size: 12px;">router -> ${call.model}</span>
+                                    <span class="mono muted" style="font-size: 11px;">in ${formatTokens(call.inputTokens ?? 0)} · out ${formatTokens(call.outputTokens ?? 0)}</span>
+                                    <span class="chip" style="border-color: ${call.done ? "var(--success)" : "var(--accent)"};">
+                                      ${
+                                        call.done
+                                          ? `done ${formatMs(call.durationMs ?? 0)}`
+                                          : call.waitMs
+                                            ? `waiting ${formatMs(call.waitMs)}`
+                                            : "waiting"
+                                      }
+                                    </span>
+                                  </summary>
+                                  <div style="display: grid; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+                                    <div class="mono muted" style="font-size: 11px;">User Message: unknown (parsed from stdout/stderr)</div>
+                                    <div class="mono muted" style="font-size: 11px;">Agent Loop: unknown (parsed from stdout/stderr)</div>
+                                    <div class="mono muted" style="font-size: 11px;">Tool Loop: unknown (parsed from stdout/stderr)</div>
+                                    <div class="mono muted" style="font-size: 11px;">Model Call: ${call.id}${call.reqNum !== undefined ? ` · req#${call.reqNum}` : ""}${call.sessionKey ? ` · session=${call.sessionKey}` : ""}</div>
+                                  </div>
+                                </details>
+                              `,
+                            )
                     }
                   </div>
                   ${
@@ -655,7 +792,7 @@ function renderRunHistory(
                         <span class="mono muted">${new Date(run.startedAt).toLocaleString()}</span>
                       </div>
                       <div class="muted" style="font-size: 12px; margin-top: 4px;">
-                        ${run.runId.slice(0, 10)} · ${formatMs(run.durationMs ?? 0)} · tokens ${formatTokens(run.metrics?.totalTokens ?? 0)} · calls ${formatTokens(run.metrics?.totalInvocations ?? 0)}
+                        ${run.runId.slice(0, 10)} · ${formatMs(run.durationMs ?? 0)} · tokens ${formatTokens(run.metrics?.totalTokens ?? 0)} · calls ${formatTokens((run.metrics?.totalInvocations ?? 0) > 0 ? (run.metrics?.totalInvocations ?? 0) : (run.telemetryMetrics?.modelCalls ?? 0))} · telemetry events ${formatTokens(run.telemetryMetrics?.events ?? 0)} · telemetry calls ${formatTokens(run.telemetryMetrics?.modelCalls ?? 0)}
                       </div>
                     </button>
                   `;
@@ -713,7 +850,7 @@ function renderOverview(
                   <strong>${suite.name}</strong>
                   <span class="chip">${levelChip(suite.level)}</span>
                   <span class="chip">${runStatusChip(run)}</span>
-                  <span class="chip">${modelExecutionLabel(run?.metrics ?? null)}</span>
+                  <span class="chip">${modelExecutionLabel(effectiveExecutionMetrics(run ?? null))}</span>
                 </div>
                 <div class="muted" style="font-size: 12px;">${suite.description}</div>
                 <div class="mono muted" style="font-size: 11px;">${suite.command}</div>
@@ -811,8 +948,8 @@ function renderOverview(
               </div>
               <div class="metric-card">
                 <div class="muted" style="font-size: 11px;">Model Calls</div>
-                <div class="metric-value">${formatTokens(metrics?.totalInvocations ?? 0)}</div>
-                <div class="muted" style="font-size: 11px;">L ${formatTokens(metrics?.localInvocations ?? 0)} · C ${formatTokens(metrics?.cloudInvocations ?? 0)}</div>
+                <div class="metric-value">${formatTokens((metrics?.totalInvocations ?? 0) > 0 ? (metrics?.totalInvocations ?? 0) : (run?.telemetryMetrics?.modelCalls ?? 0))}</div>
+                <div class="muted" style="font-size: 11px;">L ${formatTokens((metrics?.localInvocations ?? 0) > 0 ? (metrics?.localInvocations ?? 0) : (run?.telemetryMetrics?.modelCalls ?? 0))} · C ${formatTokens(metrics?.cloudInvocations ?? 0)}</div>
               </div>
               <div class="metric-card">
                 <div class="muted" style="font-size: 11px;">Avg Latency</div>

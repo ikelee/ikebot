@@ -1,16 +1,19 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, readdir } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
+import { resolveStateDir } from "../../infra/config/paths.js";
 import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
 import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
   validateTestsDiscoverParams,
+  validateTestsHistoryParams,
   validateTestsRunParams,
   validateTestsSuitesParams,
+  validateTestsTelemetryParams,
   validateTestsWaitParams,
 } from "../protocol/index.js";
 
@@ -52,6 +55,24 @@ const TEST_RUN_TTL_MS = 24 * 60 * 60_000;
 const TEST_RUN_TAIL_CHARS = 250_000;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const TEST_DISCOVER_DEFAULT_LIMIT = 80;
+const TESTS_TELEMETRY_DEFAULT_LIMIT = 1200;
+const TESTS_TELEMETRY_MAX_LIMIT = 5000;
+const TESTS_TELEMETRY_DEFAULT_MAX_BYTES = 1_500_000;
+const TESTS_TELEMETRY_MAX_BYTES = 5_000_000;
+const TESTS_HISTORY_DEFAULT_LIMIT = 120;
+const TESTS_HISTORY_MAX_LIMIT = 500;
+
+type TelemetrySource = "live" | "test" | "unknown";
+
+type TelemetryEntry = {
+  runId: string;
+  suiteRunId?: string;
+  ts: number;
+  kind: string;
+  source: TelemetrySource;
+  data: Record<string, unknown>;
+  sessionKey?: string;
+};
 
 const TEST_SUITES: readonly TestSuiteDefinition[] = [
   {
@@ -109,6 +130,84 @@ function buildRunCommand(params: {
 const runById = new Map<string, TestRunSnapshot>();
 const lastRunBySuite = new Map<string, TestRunSnapshot>();
 const waitersByRunId = new Map<string, Array<(entry: TestRunSnapshot) => void>>();
+let testsHistoryHydrated = false;
+let runHistoryWriteChain: Promise<void> = Promise.resolve();
+
+function resolveRunsHistoryPath(): string {
+  return path.join(resolveStateDir(process.env), "logs", "test-runs.jsonl");
+}
+
+async function loadPersistedRunHistory(
+  limit = TESTS_HISTORY_MAX_LIMIT,
+): Promise<TestRunSnapshot[]> {
+  const historyPath = resolveRunsHistoryPath();
+  const content = await readFile(historyPath, "utf8").catch(() => "");
+  if (!content) {
+    return [];
+  }
+  const runs: TestRunSnapshot[] = [];
+  for (const line of content.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(line) as TestRunSnapshot;
+      if (
+        typeof parsed.runId === "string" &&
+        typeof parsed.suiteId === "string" &&
+        typeof parsed.status === "string" &&
+        typeof parsed.startedAt === "number" &&
+        Array.isArray(parsed.command) &&
+        typeof parsed.cwd === "string" &&
+        typeof parsed.ts === "number"
+      ) {
+        runs.push(parsed);
+      }
+    } catch {
+      // Ignore malformed entries and continue.
+    }
+  }
+  const dedup = new Map<string, TestRunSnapshot>();
+  for (const run of runs) {
+    const existing = dedup.get(run.runId);
+    if (!existing || (run.ts ?? 0) >= (existing.ts ?? 0)) {
+      dedup.set(run.runId, run);
+    }
+  }
+  return [...dedup.values()]
+    .toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+    .slice(0, Math.max(1, Math.min(limit, TESTS_HISTORY_MAX_LIMIT)));
+}
+
+function appendPersistedRunHistory(run: TestRunSnapshot): void {
+  runHistoryWriteChain = runHistoryWriteChain.then(async () => {
+    try {
+      const historyPath = resolveRunsHistoryPath();
+      await mkdir(path.dirname(historyPath), { recursive: true });
+      await appendFile(historyPath, `${JSON.stringify(run)}\n`, "utf8");
+    } catch {
+      // Best-effort persistence.
+    }
+  });
+}
+
+async function ensureTestsHistoryHydrated(): Promise<void> {
+  if (testsHistoryHydrated) {
+    return;
+  }
+  testsHistoryHydrated = true;
+  const persisted = await loadPersistedRunHistory(TESTS_HISTORY_MAX_LIMIT);
+  for (const run of persisted) {
+    if (!runById.has(run.runId)) {
+      runById.set(run.runId, run);
+    }
+    const last = lastRunBySuite.get(run.suiteId);
+    if (!last || (run.ts ?? 0) >= (last.ts ?? 0)) {
+      lastRunBySuite.set(run.suiteId, run);
+    }
+  }
+  pruneRuns();
+}
 
 function pruneRuns(now = Date.now()) {
   for (const [runId, entry] of runById) {
@@ -176,6 +275,7 @@ function updateRun(runId: string, patch: Partial<TestRunSnapshot>) {
 function finalizeRun(run: TestRunSnapshot) {
   runById.set(run.runId, run);
   lastRunBySuite.set(run.suiteId, run);
+  appendPersistedRunHistory(run);
   const waiters = waitersByRunId.get(run.runId);
   if (waiters && waiters.length > 0) {
     waitersByRunId.delete(run.runId);
@@ -237,6 +337,131 @@ function toSuitePayload(suite: TestSuiteDefinition) {
     command: suite.command.join(" "),
     lastRun: lastRunBySuite.get(suite.id) ?? null,
   };
+}
+
+function resolveTelemetryPath(): string {
+  return path.join(resolveStateDir(process.env), "logs", "telemetry.jsonl");
+}
+
+function normalizeTelemetrySource(value: unknown): TelemetrySource {
+  if (value === "live" || value === "test") {
+    return value;
+  }
+  return "unknown";
+}
+
+function parseTelemetryEntry(line: string): TelemetryEntry | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const evt = parsed as {
+    stream?: unknown;
+    runId?: unknown;
+    testRunId?: unknown;
+    ts?: unknown;
+    source?: unknown;
+    sessionKey?: unknown;
+    data?: unknown;
+  };
+  if (evt.stream !== "telemetry") {
+    return null;
+  }
+  if (typeof evt.runId !== "string" || evt.runId.trim().length === 0) {
+    return null;
+  }
+  if (typeof evt.ts !== "number" || !Number.isFinite(evt.ts)) {
+    return null;
+  }
+  const data = evt.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  const kind = (data as { kind?: unknown }).kind;
+  if (typeof kind !== "string" || kind.trim().length === 0) {
+    return null;
+  }
+  return {
+    runId: evt.runId,
+    suiteRunId:
+      typeof evt.testRunId === "string" && evt.testRunId.trim().length > 0
+        ? evt.testRunId
+        : typeof (data as { suiteRunId?: unknown }).suiteRunId === "string" &&
+            (data as { suiteRunId?: string }).suiteRunId?.trim()
+          ? (data as { suiteRunId?: string }).suiteRunId
+          : undefined,
+    ts: Math.max(0, Math.floor(evt.ts)),
+    kind,
+    source: normalizeTelemetrySource(evt.source),
+    sessionKey: typeof evt.sessionKey === "string" ? evt.sessionKey : undefined,
+    data: data as Record<string, unknown>,
+  };
+}
+
+async function loadTelemetryEntries(params: {
+  runIds?: string[];
+  sinceTs?: number;
+  untilTs?: number;
+  limit: number;
+  maxBytes: number;
+}): Promise<TelemetryEntry[]> {
+  const telemetryPath = resolveTelemetryPath();
+  const content = await readFile(telemetryPath, "utf8").catch(() => "");
+  if (!content) {
+    return [];
+  }
+  const sliced =
+    content.length > params.maxBytes ? content.slice(content.length - params.maxBytes) : content;
+  const lines = sliced.split("\n");
+  const runIdSet =
+    Array.isArray(params.runIds) && params.runIds.length > 0 ? new Set(params.runIds) : null;
+  const sinceTs =
+    typeof params.sinceTs === "number" && Number.isFinite(params.sinceTs)
+      ? Math.max(0, Math.floor(params.sinceTs))
+      : undefined;
+  const untilTs =
+    typeof params.untilTs === "number" && Number.isFinite(params.untilTs)
+      ? Math.max(0, Math.floor(params.untilTs))
+      : undefined;
+
+  const events: TelemetryEntry[] = [];
+  for (const line of lines) {
+    if (!line.trim()) {
+      continue;
+    }
+    const parsed = parseTelemetryEntry(line);
+    if (!parsed) {
+      continue;
+    }
+    if (runIdSet && !runIdSet.has(parsed.runId)) {
+      if (!parsed.suiteRunId || !runIdSet.has(parsed.suiteRunId)) {
+        continue;
+      }
+    }
+    if (sinceTs !== undefined && parsed.ts < sinceTs) {
+      continue;
+    }
+    if (untilTs !== undefined && parsed.ts > untilTs) {
+      continue;
+    }
+    events.push(parsed);
+  }
+
+  const ordered = events.toSorted((a, b) => {
+    if (a.ts !== b.ts) {
+      return a.ts - b.ts;
+    }
+    return a.runId.localeCompare(b.runId);
+  });
+  if (ordered.length <= params.limit) {
+    return ordered;
+  }
+  return ordered.slice(ordered.length - params.limit);
 }
 
 function shouldIncludeFileByLevel(file: string, level: SuiteLevel): boolean {
@@ -383,6 +608,7 @@ async function runCommandStreaming(params: {
       OPENCLAW_TEST_MODEL_MODE: localOnly ? "local" : "cloud",
       OPENCLAW_LOG_FULL_MODEL_IO: "1",
       OPENCLAW_TEST_EMIT_MODEL_LOGS: "1",
+      OPENCLAW_TEST_RUN_ID: runId,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -500,6 +726,7 @@ export const testsHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    await ensureTestsHistoryHydrated();
     pruneRuns();
     respond(
       true,
@@ -541,7 +768,40 @@ export const testsHandlers: GatewayRequestHandlers = {
     respond(true, { level, files }, undefined);
   },
 
+  "tests.history": async ({ respond, params }) => {
+    if (!validateTestsHistoryParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid tests.history params: ${formatValidationErrors(validateTestsHistoryParams.errors)}`,
+        ),
+      );
+      return;
+    }
+
+    await ensureTestsHistoryHydrated();
+    pruneRuns();
+
+    const suiteIdRaw = (params as { suiteId?: unknown }).suiteId;
+    const suiteId = typeof suiteIdRaw === "string" ? suiteIdRaw.trim() : "";
+    const limitRaw = (params as { limit?: unknown }).limit;
+    const limit =
+      typeof limitRaw === "number" && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.min(Math.floor(limitRaw), TESTS_HISTORY_MAX_LIMIT))
+        : TESTS_HISTORY_DEFAULT_LIMIT;
+
+    const filtered = [...runById.values()]
+      .filter((run) => (suiteId ? run.suiteId === suiteId : true))
+      .toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+      .slice(0, limit);
+
+    respond(true, { runs: filtered }, undefined);
+  },
+
   "tests.run": async ({ respond, params }) => {
+    await ensureTestsHistoryHydrated();
     if (!validateTestsRunParams(params)) {
       respond(
         false,
@@ -633,6 +893,7 @@ export const testsHandlers: GatewayRequestHandlers = {
   },
 
   "tests.wait": async ({ respond, params }) => {
+    await ensureTestsHistoryHydrated();
     if (!validateTestsWaitParams(params)) {
       respond(
         false,
@@ -661,4 +922,60 @@ export const testsHandlers: GatewayRequestHandlers = {
 
     respond(true, { run: snapshot }, undefined);
   },
+
+  "tests.telemetry": async ({ respond, params }) => {
+    if (!validateTestsTelemetryParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid tests.telemetry params: ${formatValidationErrors(validateTestsTelemetryParams.errors)}`,
+        ),
+      );
+      return;
+    }
+
+    const raw = params as {
+      runIds?: unknown;
+      sinceTs?: unknown;
+      untilTs?: unknown;
+      limit?: unknown;
+      maxBytes?: unknown;
+    };
+    const runIds = Array.isArray(raw.runIds)
+      ? raw.runIds
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          .map((value) => value.trim())
+      : undefined;
+    const sinceTs =
+      typeof raw.sinceTs === "number" && Number.isFinite(raw.sinceTs) ? raw.sinceTs : undefined;
+    const untilTs =
+      typeof raw.untilTs === "number" && Number.isFinite(raw.untilTs) ? raw.untilTs : undefined;
+    const limit =
+      typeof raw.limit === "number" && Number.isFinite(raw.limit)
+        ? Math.max(1, Math.min(Math.floor(raw.limit), TESTS_TELEMETRY_MAX_LIMIT))
+        : TESTS_TELEMETRY_DEFAULT_LIMIT;
+    const maxBytes =
+      typeof raw.maxBytes === "number" && Number.isFinite(raw.maxBytes)
+        ? Math.max(1, Math.min(Math.floor(raw.maxBytes), TESTS_TELEMETRY_MAX_BYTES))
+        : TESTS_TELEMETRY_DEFAULT_MAX_BYTES;
+
+    const events = await loadTelemetryEntries({
+      runIds,
+      sinceTs,
+      untilTs,
+      limit,
+      maxBytes,
+    });
+    respond(true, { events }, undefined);
+  },
 };
+
+export function __resetTestsHistoryForTests() {
+  testsHistoryHydrated = false;
+  runById.clear();
+  lastRunBySuite.clear();
+  waitersByRunId.clear();
+  runHistoryWriteChain = Promise.resolve();
+}

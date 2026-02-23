@@ -676,6 +676,21 @@ function normalizeCalendarRrule(command: string): string {
   return replaceFlagValue(command, "--rrule", `RRULE:${normalizedRaw}`);
 }
 
+function stripUnsupportedCalendarQueryFlag(command: string): string {
+  if (!/\bgog\s+calendar\b/i.test(command)) {
+    return command;
+  }
+  // --query is supported for `gog calendar events` lookups, not mutations.
+  if (/\bgog\s+calendar\s+events\b/i.test(command)) {
+    return command;
+  }
+  const withoutQuery = command
+    .replace(/(?:^|\s)--query(?:\s+('([^']*)'|"([^"]*)"|(\S+)))?/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return withoutQuery;
+}
+
 async function resolveCalendarIdForExec(workdir?: string): Promise<string | null> {
   const candidates = new Set<string>();
   const trimmedWorkdir = workdir?.trim();
@@ -716,6 +731,7 @@ async function normalizeCalendarExecCommand(command: string, _agentId?: string, 
   normalized = normalizeCalendarRangeFlags(normalized);
   normalized = normalizeCalendarDateSubstitutions(normalized);
   normalized = normalizeCalendarRrule(normalized);
+  normalized = stripUnsupportedCalendarQueryFlag(normalized);
   normalized = normalizeCalendarBounds(normalized);
   if (
     /\bgog\s+calendar\s+delete\b/i.test(normalized) &&

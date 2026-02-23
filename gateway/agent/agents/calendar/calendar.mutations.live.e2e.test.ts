@@ -12,7 +12,9 @@ const MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
 const CALENDAR_TEST_ACCOUNT =
   process.env.OPENCLAW_CALENDAR_TEST_ACCOUNT?.trim() || "ikebotai@gmail.com";
 const CALENDAR_TEST_ID = process.env.OPENCLAW_CALENDAR_TEST_ID?.trim() || CALENDAR_TEST_ACCOUNT;
-const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST === "1";
+// Live writes are enabled by default for the sandbox calendar account.
+// Set OPENCLAW_CALENDAR_LIVE_WRITE_TEST=0 to force-disable.
+const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST !== "0";
 const AUTH_HOME =
   process.env.OPENCLAW_CALENDAR_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEMPLATES_DIR = path.join(

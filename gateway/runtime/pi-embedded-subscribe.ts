@@ -8,6 +8,7 @@ import { parseReplyDirectives } from "../agent/pipeline/reply/reply-building/rep
 import { createStreamingDirectiveAccumulator } from "../agent/pipeline/reply/utilities/streaming-directives.js";
 import { formatToolAggregate } from "../agent/pipeline/tool-meta.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { recordModelCall } from "../infra/agent-telemetry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { buildCodeSpanIndex, createInlineCodeState } from "../markdown/code-spans.js";
 import { EmbeddedBlockChunker } from "./pi-embedded-block-chunker.js";
@@ -247,6 +248,23 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       usage.total ??
       (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
     usageTotals.total += usageTotal;
+
+    if (params.userInputId && params.agentLoopId && params.toolLoopId) {
+      recordModelCall({
+        runId: params.runId,
+        userInputId: params.userInputId,
+        agentLoopId: params.agentLoopId,
+        toolLoopId: params.toolLoopId,
+        sessionKey: params.sessionKey,
+        agentId: params.agentId ?? "unknown",
+        provider: params.provider ?? "unknown",
+        model: params.modelId ?? "unknown",
+        attemptIndex: params.attemptIndex ?? 1,
+        attemptType: params.attemptType ?? "primary",
+        usage,
+        status: "ok",
+      });
+    }
   };
   const getUsageTotals = () => {
     const hasUsage =

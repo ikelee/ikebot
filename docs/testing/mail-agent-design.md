@@ -218,7 +218,118 @@ Live tests (opt-in):
 
 - real `gog` account with safe label/filter, no destructive actions.
 
-## 9) Phased Implementation
+## 9) Phase 0 Local Backfill Workflow (Thunderbird -> Mail Store)
+
+Purpose:
+
+- Bootstrap the entire historical mailbox from local Thunderbird data before live Gmail webhook ingest.
+- Extract text from documents/images and gate semantic indexing by importance.
+- Preserve everything in deterministic stores; only skip noisy content from semantic index.
+
+Execution model:
+
+- Run as a deterministic batch job from `scripts/`.
+- Idempotent and resumable with checkpoints.
+- No LLM required for correctness during Phase 0.
+
+Proposed script layout:
+
+- `scripts/mail/backfill-discover.ts`
+  - Scans Thunderbird profile/export roots.
+  - Detects `mbox` files, `maildir` folders (`cur/new`), and standalone `.eml`.
+- `scripts/mail/backfill-run.ts`
+  - Main orchestrator for parse -> normalize -> classify -> write outputs.
+- `scripts/mail/attachment-extract.ts`
+  - Extracts document/image text and metadata.
+- `scripts/mail/index-rebuild.ts`
+  - Rebuilds `mail-index.json` and qmd docs from `mail-events.jsonl`.
+- `scripts/mail/verify-backfill.ts`
+  - Reports counts, failures, dedupe ratio, and confidence checks.
+
+Inputs:
+
+- Thunderbird profile roots (`~/Library/Thunderbird/Profiles/**`).
+- Optional exported archives (`mbox`, `eml`) for explicit backfill runs.
+
+Outputs:
+
+- `mail-events.jsonl` (append-only, all messages/events)
+- `mail-index.json` (deterministic materialized index; includes important + non-important metadata)
+- `mail-checkpoint.json` (per-source cursors, last run watermark, counters)
+- `mail-jobs.json` (pending/failed extraction jobs, retries)
+- qmd docs/chunks for semantic retrieval (important content only)
+
+Backfill stages:
+
+1. Discover sources
+   - Enumerate mailbox inputs and create stable source IDs.
+   - Record per-source fingerprint (`path`, `mtime`, `size`, optional hash).
+2. Parse messages
+   - Read RFC822 content and normalize core fields (`messageId`, `threadId`, sender, recipients, subject, dates, labels/folder).
+   - Capture attachment metadata (`filename`, MIME, size, attachmentId, contentHash).
+3. Dedupe and upsert
+   - Primary key: RFC `Message-ID`.
+   - Fallback key: deterministic content hash when `Message-ID` missing.
+   - Preserve provenance across accounts/folders (hotmail + gmail duplicates collapse into one logical record with multiple sources).
+4. Extract attachment content
+   - Document-first extraction:
+     - PDFs: `pdftotext` (Poppler) first; OCR fallback for scanned docs.
+     - Office docs: extract text via deterministic parsers/tooling.
+     - Plain text/CSV/JSON/XML: direct text parse.
+   - Image extraction:
+     - OCR via `tesseract`.
+   - Persist extracted text + metadata linked by `messageId`, `attachmentId`, `contentHash`.
+5. Importance classification (high recall)
+   - Goal: keep anything remotely important.
+   - `important=true` when any strong signal appears:
+     - finance/legal/travel/account/security keywords
+     - receipt/invoice/order/ticket/tracking entities
+     - has attachments (default keep unless very strong newsletter signal)
+     - sender/domain allowlist
+   - `not_important=true` only on strong combined promo/newsletter signals:
+     - `List-Unsubscribe`, bulk sender patterns, promo subject patterns, no high-value entities, no meaningful attachments.
+   - Uncertain cases default to `important=true`.
+   - Always store classification reason codes (for review and tuning).
+6. Write storage layers
+   - Always append event row to `mail-events.jsonl`.
+   - Always upsert compact deterministic record in `mail-index.json`.
+   - Only write qmd semantic documents for:
+     - important messages
+     - extracted attachment text linked to important messages.
+7. Checkpoint and resume
+   - Persist per-source cursor after each batch.
+   - Resume safely after interruption without duplicate output rows/chunks.
+
+Tooling and dependencies (Phase 0 baseline):
+
+- Runtime/orchestration:
+  - TypeScript scripts in `scripts/mail/*` run via Bun.
+- Message parsing:
+  - Robust RFC822 parser for headers/body/attachments.
+- Document/image extraction:
+  - `pdftotext` (Poppler) for text PDFs.
+  - `tesseract` for OCR fallback and image OCR.
+  - Lightweight deterministic text extractors for common doc/text formats.
+- Index/memory:
+  - `mail-index.json` for deterministic queries.
+  - qmd memory backend for semantic retrieval.
+
+Operational controls:
+
+- Batch size controls for message parse and extraction workers.
+- Max attachment bytes per file/job with skip + reason logging.
+- Retry policy for extraction failures with dead-letter records in `mail-jobs.json`.
+- Dry-run mode for classification tuning without writing qmd chunks.
+
+Acceptance criteria for Phase 0:
+
+- Backfill can process full local mailbox and resume safely after interruption.
+- Every parsed message appears in `mail-events.jsonl` and `mail-index.json`.
+- Attachment text extraction works for PDFs/images with explicit success/failure markers.
+- Importance gate keeps high-value mail while suppressing obvious newsletter/promo noise from semantic index.
+- Retrieval can answer key historical queries with evidence fields.
+
+## 10) Phased Implementation
 
 Phase 1:
 
@@ -239,13 +350,13 @@ Phase 4:
 
 - Add advanced reranking and stricter budget controls for very large stores.
 
-## 10) Assumptions
+## 11) Assumptions
 
 - Primary initial target is one Gmail account per mail agent workspace.
 - Cross-account retrieval can be added by namespacing indexes per account.
 - Accuracy first: never claim an email exists unless found in index or fresh `gog` query.
 
-## 11) Operational Constraints for 58k+
+## 12) Operational Constraints for 58k+
 
 - Indexing mode:
   - Incremental updates continuously.

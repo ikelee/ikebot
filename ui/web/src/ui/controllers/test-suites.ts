@@ -5,6 +5,9 @@ import type {
   TestSuiteModelCall,
   TestSuiteDiscoverResult,
   TestSuiteEntry,
+  TestTelemetryEvent,
+  TestTelemetryModelCall,
+  TestTelemetryMetrics,
   TestSuiteRunEvent,
   TestSuiteRunResult,
   TestSuiteUsageMetrics,
@@ -84,7 +87,7 @@ function summarizeSessionsInWindow(
 ): TestSuiteUsageMetrics | null {
   const windowStart = startedAt - 5_000;
   const windowEnd = endedAt + 15_000;
-  const active = sessions.filter((session) => {
+  let active = sessions.filter((session) => {
     const usage = session.usage;
     if (!usage) {
       return false;
@@ -98,6 +101,30 @@ function summarizeSessionsInWindow(
       key.includes(":testing") || key.includes(":test") || session.runKind === "test";
     return likelyTest && ts >= windowStart && ts <= windowEnd;
   });
+
+  if (active.length === 0) {
+    const broadWindow = sessions
+      .filter((session) => {
+        const usage = session.usage;
+        if (!usage) {
+          return false;
+        }
+        const ts = usage.lastActivity ?? usage.firstActivity ?? session.updatedAt ?? 0;
+        if (!ts) {
+          return false;
+        }
+        return ts >= windowStart && ts <= windowEnd;
+      })
+      .toSorted((a, b) => {
+        const ta = a.usage?.lastActivity ?? a.usage?.firstActivity ?? a.updatedAt ?? 0;
+        const tb = b.usage?.lastActivity ?? b.usage?.firstActivity ?? b.updatedAt ?? 0;
+        return tb - ta;
+      });
+    const withModelUsage = broadWindow.filter(
+      (session) => (session.usage?.modelUsage?.length ?? 0) > 0,
+    );
+    active = (withModelUsage.length > 0 ? withModelUsage : broadWindow).slice(0, 12);
+  }
 
   if (active.length === 0) {
     return null;
@@ -218,6 +245,10 @@ type SessionUsageLogEntry = {
   tokens?: number;
 };
 
+type TestsTelemetryResult = {
+  events?: TestTelemetryEvent[];
+};
+
 async function loadModelCallsForWindow(
   state: TestSuitesState,
   sessions: SessionsUsageEntry[],
@@ -286,6 +317,235 @@ async function loadModelCallsForWindow(
       return ta - tb;
     }
     return a.sessionKey.localeCompare(b.sessionKey);
+  });
+}
+
+async function loadTelemetryForWindow(
+  state: TestSuitesState,
+  params: { runId?: string; startedAt: number; endedAt: number },
+): Promise<TestTelemetryEvent[]> {
+  if (!state.client) {
+    return [];
+  }
+  const sinceTs = Math.max(0, params.startedAt - 60_000);
+  const untilTs = Math.max(sinceTs, params.endedAt + 60_000);
+  try {
+    const res = await state.client.request<TestsTelemetryResult>("tests.telemetry", {
+      runIds: params.runId ? [params.runId] : undefined,
+      sinceTs,
+      untilTs,
+      limit: 5000,
+      maxBytes: 2_500_000,
+    });
+    let events = Array.isArray(res?.events) ? res.events : [];
+    if (events.length === 0 && params.runId) {
+      const fallback = await state.client.request<TestsTelemetryResult>("tests.telemetry", {
+        sinceTs,
+        untilTs,
+        limit: 5000,
+        maxBytes: 2_500_000,
+      });
+      events = Array.isArray(fallback?.events) ? fallback.events : [];
+    }
+    return events.filter((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return false;
+      }
+      const ts = (entry as { ts?: unknown }).ts;
+      const kind = (entry as { kind?: unknown }).kind;
+      return typeof ts === "number" && Number.isFinite(ts) && typeof kind === "string";
+    });
+  } catch {
+    return [];
+  }
+}
+
+function summarizeTelemetry(events: TestTelemetryEvent[]): TestTelemetryMetrics {
+  let userInputs = 0;
+  let agentLoops = 0;
+  let toolLoops = 0;
+  let modelCalls = 0;
+  let okCount = 0;
+  let errorCount = 0;
+  let modelLatencySum = 0;
+  let modelLatencyCount = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let live = 0;
+  let test = 0;
+  let unknown = 0;
+
+  for (const event of events) {
+    if (event.source === "live") {
+      live += 1;
+    } else if (event.source === "test") {
+      test += 1;
+    } else {
+      unknown += 1;
+    }
+    if (event.kind === "user_input.start") {
+      userInputs += 1;
+    } else if (event.kind === "agent_loop.start") {
+      agentLoops += 1;
+    } else if (event.kind === "tool_loop.start") {
+      toolLoops += 1;
+    } else if (event.kind === "model_call.end") {
+      modelCalls += 1;
+      const usage = (event.data?.usage ?? null) as {
+        input?: unknown;
+        output?: unknown;
+      } | null;
+      const input =
+        typeof usage?.input === "number" && Number.isFinite(usage.input) ? usage.input : 0;
+      const output =
+        typeof usage?.output === "number" && Number.isFinite(usage.output) ? usage.output : 0;
+      inputTokens += input;
+      outputTokens += output;
+      const durationMs = event.data?.durationMs;
+      if (typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0) {
+        modelLatencySum += durationMs;
+        modelLatencyCount += 1;
+      }
+    }
+
+    const status = event.data?.status;
+    if (status === "ok") {
+      okCount += 1;
+    } else if (status === "error") {
+      errorCount += 1;
+    }
+  }
+
+  return {
+    events: events.length,
+    userInputs,
+    agentLoops,
+    toolLoops,
+    modelCalls,
+    okCount,
+    errorCount,
+    avgModelLatencyMs: modelLatencyCount > 0 ? modelLatencySum / modelLatencyCount : 0,
+    inputTokens,
+    outputTokens,
+    bySource: {
+      live,
+      test,
+      unknown,
+    },
+  };
+}
+
+function buildTelemetryModelCalls(events: TestTelemetryEvent[]): TestTelemetryModelCall[] {
+  const startById = new Map<string, TestTelemetryEvent>();
+  const calls: TestTelemetryModelCall[] = [];
+
+  for (const event of events) {
+    if (event.kind === "model_call.start") {
+      const id = typeof event.data?.modelCallId === "string" ? event.data.modelCallId : "";
+      if (id) {
+        startById.set(id, event);
+      }
+      continue;
+    }
+    if (event.kind !== "model_call.end") {
+      continue;
+    }
+    const endId = typeof event.data?.modelCallId === "string" ? event.data.modelCallId : "";
+    if (!endId) {
+      continue;
+    }
+    const start = startById.get(endId);
+    const usage = (event.data?.usage ?? null) as { input?: unknown; output?: unknown } | null;
+    calls.push({
+      runId: event.runId,
+      source: event.source,
+      sessionKey: event.sessionKey,
+      userInputId:
+        typeof event.data?.userInputId === "string"
+          ? event.data.userInputId
+          : typeof start?.data?.userInputId === "string"
+            ? start.data.userInputId
+            : undefined,
+      agentLoopId:
+        typeof event.data?.agentLoopId === "string"
+          ? event.data.agentLoopId
+          : typeof start?.data?.agentLoopId === "string"
+            ? start.data.agentLoopId
+            : undefined,
+      toolLoopId:
+        typeof event.data?.toolLoopId === "string"
+          ? event.data.toolLoopId
+          : typeof start?.data?.toolLoopId === "string"
+            ? start.data.toolLoopId
+            : undefined,
+      modelCallId: endId,
+      provider:
+        typeof event.data?.provider === "string"
+          ? event.data.provider
+          : typeof start?.data?.provider === "string"
+            ? start.data.provider
+            : undefined,
+      model:
+        typeof event.data?.model === "string"
+          ? event.data.model
+          : typeof start?.data?.model === "string"
+            ? start.data.model
+            : undefined,
+      status:
+        event.data?.status === "ok" || event.data?.status === "error"
+          ? event.data.status
+          : undefined,
+      attemptIndex:
+        typeof event.data?.attemptIndex === "number" && Number.isFinite(event.data.attemptIndex)
+          ? event.data.attemptIndex
+          : typeof start?.data?.attemptIndex === "number" &&
+              Number.isFinite(start.data.attemptIndex)
+            ? start.data.attemptIndex
+            : undefined,
+      attemptType:
+        typeof event.data?.attemptType === "string"
+          ? event.data.attemptType
+          : typeof start?.data?.attemptType === "string"
+            ? start.data.attemptType
+            : undefined,
+      startedAt:
+        typeof event.data?.startedAt === "number" && Number.isFinite(event.data.startedAt)
+          ? event.data.startedAt
+          : typeof start?.data?.startedAt === "number" && Number.isFinite(start.data.startedAt)
+            ? start.data.startedAt
+            : undefined,
+      endedAt:
+        typeof event.data?.endedAt === "number" && Number.isFinite(event.data.endedAt)
+          ? event.data.endedAt
+          : undefined,
+      durationMs:
+        typeof event.data?.durationMs === "number" && Number.isFinite(event.data.durationMs)
+          ? event.data.durationMs
+          : undefined,
+      inputTokens:
+        typeof usage?.input === "number" && Number.isFinite(usage.input) ? usage.input : undefined,
+      outputTokens:
+        typeof usage?.output === "number" && Number.isFinite(usage.output)
+          ? usage.output
+          : undefined,
+      finishReason:
+        typeof event.data?.finishReason === "string" ? event.data.finishReason : undefined,
+      toolCallsRequested:
+        typeof event.data?.toolCallsRequested === "number" &&
+        Number.isFinite(event.data.toolCallsRequested)
+          ? event.data.toolCallsRequested
+          : undefined,
+      error: typeof event.data?.error === "string" ? event.data.error : undefined,
+    });
+  }
+
+  return calls.toSorted((a, b) => {
+    const ta = a.startedAt ?? 0;
+    const tb = b.startedAt ?? 0;
+    if (ta !== tb) {
+      return ta - tb;
+    }
+    return a.modelCallId.localeCompare(b.modelCallId);
   });
 }
 
@@ -408,6 +668,35 @@ function extractActiveTestLabel(output: string): string | null {
   return null;
 }
 
+function extractExecutedTestLabels(output: string): string[] {
+  const labels = new Set<string>();
+  const lines = output.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      continue;
+    }
+    const streamMatch = line.match(/(?:stdout|stderr)\s+\|\s+(.+?)\s+>\s+(.+?)\s+>\s+(.+)/i);
+    if (streamMatch) {
+      const suite = streamMatch[2]?.trim();
+      const test = streamMatch[3]?.trim();
+      if (suite && test) {
+        labels.add(`${suite} > ${test}`);
+      }
+      continue;
+    }
+    const resultLineMatch = line.match(/^[✓❯×]\s+(.+?)\s+>\s+(.+?)\s+>\s+(.+)$/);
+    if (resultLineMatch) {
+      const suite = resultLineMatch[2]?.trim();
+      const test = resultLineMatch[3]?.trim();
+      if (suite && test) {
+        labels.add(`${suite} > ${test}`);
+      }
+    }
+  }
+  return [...labels];
+}
+
 export async function loadTestSuites(state: TestSuitesState) {
   if (!state.client || !state.connected) {
     return;
@@ -418,9 +707,19 @@ export async function loadTestSuites(state: TestSuitesState) {
   state.testSuitesLoading = true;
   state.testSuitesError = null;
   try {
-    const res = await state.client.request("tests.suites", {});
+    const [res, historyRes] = await Promise.all([
+      state.client.request("tests.suites", {}),
+      state.client.request<{ runs?: TestSuiteRunResult[] }>("tests.history", { limit: 40 }),
+    ]);
     const suites = (res as TestSuitesResult | null)?.suites ?? [];
+    const history = (historyRes?.runs ?? []).filter(
+      (run) => run && typeof run.runId === "string" && run.runId.trim().length > 0,
+    );
     state.testSuites = suites;
+    state.testSuitesRunHistory = history;
+    if (!state.testSuitesSelectedRunId && history.length > 0) {
+      state.testSuitesSelectedRunId = history[0]?.runId ?? null;
+    }
   } catch (err) {
     state.testSuitesError = String(err);
   } finally {
@@ -557,6 +856,7 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
 
     let snapshot: TestSuiteRunResult | null = initialRun;
     let lastActiveTestLabel: string | null = null;
+    const seenTestLabels = new Set<string>();
     for (;;) {
       const waitRes = await state.client.request("tests.wait", { runId, timeoutMs: 1_000 });
       const run = (waitRes as { run?: TestSuiteRunResult } | null)?.run;
@@ -564,9 +864,6 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
         throw new Error(`tests.wait returned no run payload for ${runId}`);
       }
       snapshot = run;
-      state.testSuitesActiveRun = run;
-      state.testSuitesSelectedRunId = runId;
-      mergeUpdatedRun(state, run);
 
       const combinedOutput = [run.stdoutTail ?? "", run.stderrTail ?? ""]
         .filter(Boolean)
@@ -580,6 +877,36 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
           message: `Executing ${activeTestLabel}`,
         });
       }
+      for (const label of extractExecutedTestLabels(combinedOutput)) {
+        if (seenTestLabels.has(label)) {
+          continue;
+        }
+        seenTestLabels.add(label);
+        addRunEvent(state, {
+          runId,
+          level: "info",
+          message: `Test ${label}`,
+        });
+      }
+
+      const liveStartedAt = run.startedAt ?? Date.now();
+      const liveEndedAt = run.status === "running" ? Date.now() : (run.endedAt ?? Date.now());
+      const liveTelemetryEvents = await loadTelemetryForWindow(state, {
+        runId,
+        startedAt: liveStartedAt,
+        endedAt: liveEndedAt,
+      });
+      const liveTelemetryMetrics = summarizeTelemetry(liveTelemetryEvents);
+      const liveTelemetryModelCalls = buildTelemetryModelCalls(liveTelemetryEvents);
+      const liveRun: TestSuiteRunResult = {
+        ...run,
+        telemetryMetrics: liveTelemetryMetrics,
+        telemetryModelCalls: liveTelemetryModelCalls,
+      };
+      snapshot = liveRun;
+      state.testSuitesActiveRun = liveRun;
+      state.testSuitesSelectedRunId = runId;
+      mergeUpdatedRun(state, liveRun);
 
       const elapsedMs = Math.max(0, Date.now() - (run.startedAt ?? Date.now()));
       state.testSuitesStatus = `Running ${normalizedSuiteId}... ${Math.round(elapsedMs / 1000)}s elapsed`;
@@ -610,8 +937,16 @@ export async function runTestSuite(state: TestSuitesState, suiteId: string) {
     const metrics =
       windowMetrics ?? usageDelta(summarizeUsage(usageAfter), summarizeUsage(usageBefore));
     const modelCalls = await loadModelCallsForWindow(state, sessions, startedAt, endedAt);
-
-    const enriched: TestSuiteRunResult = { ...snapshot, metrics, modelCalls };
+    const telemetryEvents = await loadTelemetryForWindow(state, { runId, startedAt, endedAt });
+    const telemetryMetrics = summarizeTelemetry(telemetryEvents);
+    const telemetryModelCalls = buildTelemetryModelCalls(telemetryEvents);
+    const enriched: TestSuiteRunResult = {
+      ...snapshot,
+      metrics,
+      modelCalls,
+      telemetryMetrics,
+      telemetryModelCalls,
+    };
 
     state.testSuitesActiveRun = enriched;
     state.testSuitesSelectedRunId = runId;

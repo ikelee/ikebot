@@ -36,3 +36,22 @@ export const TestsWaitParamsSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+export const TestsTelemetryParamsSchema = Type.Object(
+  {
+    runIds: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, maxItems: 100 })),
+    sinceTs: Type.Optional(Type.Integer({ minimum: 0 })),
+    untilTs: Type.Optional(Type.Integer({ minimum: 0 })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+    maxBytes: Type.Optional(Type.Integer({ minimum: 1, maximum: 5_000_000 })),
+  },
+  { additionalProperties: false },
+);
+
+export const TestsHistoryParamsSchema = Type.Object(
+  {
+    suiteId: Type.Optional(NonEmptyString),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  },
+  { additionalProperties: false },
+);

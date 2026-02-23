@@ -76,6 +76,8 @@ const READ_METHODS = new Set([
   "chat.history",
   "tests.suites",
   "tests.discover",
+  "tests.history",
+  "tests.telemetry",
 ]);
 const WRITE_METHODS = new Set([
   "send",

@@ -495,6 +495,18 @@ describe("exec calendar command normalization", () => {
     expect(text).toContain("gog calendar delete ikebotai@gmail.com abc123 --force");
   });
 
+  it("strips unsupported --query from non-events calendar mutations", async () => {
+    const tool = createExecTool();
+    const result = await tool.execute("call1", {
+      command:
+        "echo gog calendar delete ikebotai@gmail.com abc123 --query 'Ani fundraiser' --force",
+    });
+
+    const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
+    expect(text).toContain("gog calendar delete ikebotai@gmail.com abc123 --force");
+    expect(text).not.toContain("--query");
+  });
+
   it("normalizes --rrule values without RRULE prefix", async () => {
     const tool = createExecTool();
     const result = await tool.execute("call1", {

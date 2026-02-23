@@ -12,6 +12,8 @@ import { resolveTelegramInlineButtonsScope } from "../../../entrypoints/telegram
 import { resolveTelegramReactionLevel } from "../../../entrypoints/telegram/reaction-level.js";
 import { getGlobalHookRunner } from "../../../extensibility/plugins/hook-runner-global.js";
 import { isLogFullModelIoEnabled, shouldLogVerbose } from "../../../globals.js";
+import { getAgentRunContext } from "../../../infra/agent-events.js";
+import { beginToolLoop, endToolLoop } from "../../../infra/agent-telemetry.js";
 import { resolveChannelCapabilities } from "../../../infra/config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { isSubagentSessionKey, normalizeAgentId } from "../../../infra/routing/session-key.js";
@@ -226,6 +228,18 @@ export async function runEmbeddedAttempt(
 
   await fs.mkdir(resolvedWorkspace, { recursive: true });
 
+  const runContext = getAgentRunContext(params.runId);
+  const telemetryUserInputId = runContext?.userInputId;
+  const telemetryAgentLoopId = runContext?.agentLoopId;
+  let telemetryToolLoopId: string | undefined;
+  let telemetryAttemptIndex = 1;
+  let telemetryAttemptType: "primary" | "retry" | "fallback" = "primary";
+  let telemetryToolLoopStatus: "ok" | "error" | "timeout" | "aborted" | "retry" = "error";
+  let telemetryToolCallCount = 0;
+  let telemetryAttemptUsage:
+    | { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number }
+    | undefined;
+
   const sandboxSessionKey = params.sessionKey?.trim() || params.sessionId;
   const sandbox = await resolveSandboxContext({
     config: params.config,
@@ -311,6 +325,18 @@ export async function runEmbeddedAttempt(
       sessionKey: params.sessionKey ?? params.sessionId,
       config: params.config,
     });
+    if (telemetryUserInputId && telemetryAgentLoopId) {
+      const toolLoop = beginToolLoop({
+        runId: params.runId,
+        userInputId: telemetryUserInputId,
+        agentLoopId: telemetryAgentLoopId,
+        sessionKey: params.sessionKey ?? params.sessionId,
+        agentId: sessionAgentId,
+      });
+      telemetryToolLoopId = toolLoop.toolLoopId;
+      telemetryAttemptIndex = toolLoop.attemptIndex;
+      telemetryAttemptType = toolLoop.attemptType;
+    }
     const agentConfig = params.config
       ? resolveAgentConfig(params.config, params.agentId ?? sessionAgentId)
       : undefined;
@@ -776,6 +802,15 @@ export async function runEmbeddedAttempt(
       const subscription = subscribeEmbeddedPiSession({
         session: activeSession,
         runId: params.runId,
+        sessionKey: params.sessionKey,
+        userInputId: telemetryUserInputId,
+        agentLoopId: telemetryAgentLoopId,
+        toolLoopId: telemetryToolLoopId,
+        agentId: sessionAgentId,
+        provider: params.provider,
+        modelId: params.modelId,
+        attemptIndex: telemetryAttemptIndex,
+        attemptType: telemetryAttemptType,
         hookRunner: getGlobalHookRunner() ?? undefined,
         verboseLevel: params.verboseLevel,
         reasoningMode: params.reasoningLevel ?? "off",
@@ -1123,6 +1158,18 @@ export async function runEmbeddedAttempt(
         )
         .map((entry) => ({ toolName: entry.toolName, meta: entry.meta }));
 
+      telemetryToolCallCount = getToolExecutions().length;
+      telemetryAttemptUsage = getUsageTotals();
+      if (timedOut) {
+        telemetryToolLoopStatus = "timeout";
+      } else if (aborted) {
+        telemetryToolLoopStatus = "aborted";
+      } else if (promptError) {
+        telemetryToolLoopStatus = "error";
+      } else {
+        telemetryToolLoopStatus = "ok";
+      }
+
       return {
         aborted,
         timedOut,
@@ -1153,6 +1200,16 @@ export async function runEmbeddedAttempt(
       await sessionLock.release();
     }
   } finally {
+    if (telemetryToolLoopId) {
+      endToolLoop({
+        runId: params.runId,
+        toolLoopId: telemetryToolLoopId,
+        sessionKey: params.sessionKey,
+        status: telemetryToolLoopStatus,
+        usage: telemetryAttemptUsage,
+        toolCallCount: telemetryToolCallCount,
+      });
+    }
     restoreSkillEnv?.();
     process.chdir(prevCwd);
   }
