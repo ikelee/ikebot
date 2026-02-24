@@ -56,6 +56,7 @@ const READ_METHODS = new Set([
   "status",
   "usage.status",
   "usage.cost",
+  "usage.telemetry",
   "tts.status",
   "tts.providers",
   "models.list",

@@ -327,6 +327,7 @@ export function endToolLoop(params: {
   status: "ok" | "error" | "timeout" | "aborted" | "retry";
   usage?: UsageLike;
   toolCallCount?: number;
+  toolNames?: string[];
   error?: string;
 }): void {
   const state = toolLoopById.get(params.toolLoopId);
@@ -363,6 +364,7 @@ export function endToolLoop(params: {
       durationMs: Math.max(0, endedAt - state.startedAt),
       modelCallCount: state.modelCallCount,
       toolCallCount: params.toolCallCount ?? 0,
+      toolNames: params.toolNames,
       usageTotals: {
         ...state.usage,
       },

@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import path from "node:path";
 import type { SessionEntry, SessionSystemPromptReport } from "../../infra/config/sessions/types.js";
 import type {
   CostUsageSummary,
   SessionCostSummary,
   SessionDailyLatency,
+  SessionDailyMessageCounts,
   SessionDailyModelUsage,
   SessionMessageCounts,
   SessionLatencyStats,
@@ -12,6 +14,7 @@ import type {
 } from "../../infra/session-cost-usage.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../infra/config/config.js";
+import { resolveStateDir } from "../../infra/config/paths.js";
 import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -25,6 +28,11 @@ import {
   discoverAllSessions,
   type DiscoveredSession,
 } from "../../infra/session-cost-usage.js";
+import {
+  estimateUsageCost,
+  resolveModelCostConfig,
+  type ModelCostConfig,
+} from "../../utils/usage-format.js";
 import {
   ErrorCodes,
   errorShape,
@@ -203,6 +211,7 @@ export const __test = {
 export type SessionUsageEntry = {
   key: string;
   label?: string;
+  sessionSource?: "test" | "live";
   sessionId?: string;
   updatedAt?: number;
   agentId?: string;
@@ -255,6 +264,773 @@ export type SessionsUsageResult = {
   aggregates: SessionsUsageAggregates;
 };
 
+const formatDayKeyUtc = (ts: number): string => new Date(ts).toISOString().slice(0, 10);
+
+const TELEMETRY_FALLBACK_MODEL_COSTS: Record<string, ModelCostConfig> = {
+  "gpt-5.2-codex": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.1-codex": { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5-codex": { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5.1-codex-mini": { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
+  "gpt-5.1-codex-max": { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0 },
+};
+
+const resolveTelemetryModelCost = (params: {
+  provider?: string;
+  model?: string;
+  config: ReturnType<typeof loadConfig>;
+}): ModelCostConfig | undefined => {
+  const configured = resolveModelCostConfig(params);
+  if (configured) {
+    return configured;
+  }
+  const model = params.model?.trim();
+  if (!model) {
+    return undefined;
+  }
+  return TELEMETRY_FALLBACK_MODEL_COSTS[model];
+};
+
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return value;
+};
+
+const normalizeTelemetrySource = (value: unknown): "live" | "test" => {
+  if (value === "test") {
+    return "test";
+  }
+  return "live";
+};
+
+const parseTelemetryUsage = (
+  raw: unknown,
+): {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  totalCost: number;
+  inputCost: number;
+  outputCost: number;
+  cacheReadCost: number;
+  cacheWriteCost: number;
+  hasCost: boolean;
+} | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const input = toFiniteNumber(record.input) ?? 0;
+  const output = toFiniteNumber(record.output) ?? 0;
+  const cacheRead = toFiniteNumber(record.cacheRead) ?? 0;
+  const cacheWrite = toFiniteNumber(record.cacheWrite) ?? 0;
+  const totalTokens =
+    toFiniteNumber(record.total) ??
+    toFiniteNumber(record.totalTokens) ??
+    input + output + cacheRead + cacheWrite;
+  const costRaw =
+    record.cost && typeof record.cost === "object"
+      ? (record.cost as Record<string, unknown>)
+      : null;
+  const totalCost = toFiniteNumber(costRaw?.total) ?? 0;
+  const inputCost = toFiniteNumber(costRaw?.input) ?? 0;
+  const outputCost = toFiniteNumber(costRaw?.output) ?? 0;
+  const cacheReadCost = toFiniteNumber(costRaw?.cacheRead) ?? 0;
+  const cacheWriteCost = toFiniteNumber(costRaw?.cacheWrite) ?? 0;
+  const hasCost =
+    typeof costRaw?.total === "number" ||
+    typeof costRaw?.input === "number" ||
+    typeof costRaw?.output === "number" ||
+    typeof costRaw?.cacheRead === "number" ||
+    typeof costRaw?.cacheWrite === "number";
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+    totalCost,
+    inputCost,
+    outputCost,
+    cacheReadCost,
+    cacheWriteCost,
+    hasCost,
+  };
+};
+
+const computeLatencyStatsFromValues = (values: number[]): SessionLatencyStats | undefined => {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const sorted = values.toSorted((a, b) => a - b);
+  const count = sorted.length;
+  const sum = sorted.reduce((acc, value) => acc + value, 0);
+  const p95Index = Math.max(0, Math.ceil(count * 0.95) - 1);
+  return {
+    count,
+    avgMs: sum / count,
+    p95Ms: sorted[p95Index] ?? sorted[count - 1],
+    minMs: sorted[0] ?? 0,
+    maxMs: sorted[count - 1] ?? 0,
+  };
+};
+
+type TelemetrySessionAccumulator = {
+  key: string;
+  label?: string;
+  sessionSource: "test" | "live";
+  sessionId?: string;
+  updatedAt: number;
+  agentId?: string;
+  channel?: string;
+  chatType?: string;
+  origin?: SessionUsageEntry["origin"];
+  modelProvider?: string;
+  model?: string;
+  usage: SessionCostSummary;
+  toolUsageMap: Map<string, number>;
+  modelUsageMap: Map<string, SessionModelUsage>;
+  dailyMap: Map<string, { tokens: number; cost: number }>;
+  dailyMessageMap: Map<string, SessionDailyMessageCounts>;
+  dailyLatencyMap: Map<string, number[]>;
+  dailyModelUsageMap: Map<string, SessionDailyModelUsage>;
+  latencyValues: number[];
+  modelToolCallsByLoop: Set<string>;
+};
+
+const emptyTotals = (): CostUsageSummary["totals"] => ({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  totalCost: 0,
+  inputCost: 0,
+  outputCost: 0,
+  cacheReadCost: 0,
+  cacheWriteCost: 0,
+  missingCostEntries: 0,
+});
+
+async function loadTelemetryUsageSummary(params: {
+  startMs: number;
+  endMs: number;
+  limit: number;
+}): Promise<SessionsUsageResult> {
+  const config = loadConfig();
+  const { store } = loadCombinedSessionStoreForGateway(config);
+  const telemetryPath = path.join(resolveStateDir(process.env), "logs", "telemetry.jsonl");
+  const content = await fs.promises.readFile(telemetryPath, "utf8").catch(() => "");
+  const sessionsMap = new Map<string, TelemetrySessionAccumulator>();
+
+  const getSessionAccumulator = (
+    sessionKeyRaw: string,
+    sourceRaw: unknown,
+  ): TelemetrySessionAccumulator => {
+    const sessionKey = sessionKeyRaw.trim() || "unknown";
+    const existing = sessionsMap.get(sessionKey);
+    if (existing) {
+      if (normalizeTelemetrySource(sourceRaw) === "test") {
+        existing.sessionSource = "test";
+      }
+      return existing;
+    }
+
+    const parsed = parseAgentSessionKey(sessionKey);
+    const rest = parsed?.rest ?? sessionKey;
+    const channel = rest.split(":").filter(Boolean)[0];
+    const storeEntry = store[sessionKey];
+    const sessionId = storeEntry?.sessionId;
+
+    const usage: SessionCostSummary = {
+      sessionId,
+      firstActivity: undefined,
+      lastActivity: undefined,
+      durationMs: undefined,
+      activityDates: [],
+      dailyBreakdown: [],
+      dailyMessageCounts: [],
+      dailyLatency: undefined,
+      dailyModelUsage: undefined,
+      messageCounts: {
+        total: 0,
+        user: 0,
+        assistant: 0,
+        toolCalls: 0,
+        toolResults: 0,
+        errors: 0,
+      },
+      toolUsage: undefined,
+      modelUsage: undefined,
+      latency: undefined,
+      ...emptyTotals(),
+    };
+
+    const created: TelemetrySessionAccumulator = {
+      key: sessionKey,
+      label: storeEntry?.label,
+      sessionSource: normalizeTelemetrySource(sourceRaw),
+      sessionId,
+      updatedAt: storeEntry?.updatedAt ?? 0,
+      agentId: parsed?.agentId,
+      channel: storeEntry?.channel ?? storeEntry?.origin?.provider ?? channel,
+      chatType: storeEntry?.chatType ?? storeEntry?.origin?.chatType,
+      origin: storeEntry?.origin,
+      modelProvider: undefined,
+      model: undefined,
+      usage,
+      toolUsageMap: new Map<string, number>(),
+      modelUsageMap: new Map<string, SessionModelUsage>(),
+      dailyMap: new Map<string, { tokens: number; cost: number }>(),
+      dailyMessageMap: new Map<string, SessionDailyMessageCounts>(),
+      dailyLatencyMap: new Map<string, number[]>(),
+      dailyModelUsageMap: new Map<string, SessionDailyModelUsage>(),
+      latencyValues: [],
+      modelToolCallsByLoop: new Set<string>(),
+    };
+    sessionsMap.set(sessionKey, created);
+    return created;
+  };
+
+  const lines = content.split("\n");
+  for (const line of lines) {
+    if (!line.trim()) {
+      continue;
+    }
+    let parsedLine: Record<string, unknown>;
+    try {
+      parsedLine = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (parsedLine.stream !== "telemetry") {
+      continue;
+    }
+    const ts = toFiniteNumber(parsedLine.ts);
+    if (ts === undefined || ts < params.startMs || ts > params.endMs) {
+      continue;
+    }
+    const data =
+      parsedLine.data && typeof parsedLine.data === "object" && !Array.isArray(parsedLine.data)
+        ? (parsedLine.data as Record<string, unknown>)
+        : null;
+    const kind = typeof data?.kind === "string" ? data.kind : null;
+    if (!kind) {
+      continue;
+    }
+    const dataRecord = data as Record<string, unknown>;
+    const sessionKey =
+      (typeof parsedLine.sessionKey === "string" ? parsedLine.sessionKey : undefined) ??
+      (typeof dataRecord.sessionKey === "string" ? dataRecord.sessionKey : undefined) ??
+      (typeof parsedLine.runId === "string" ? `run:${parsedLine.runId}` : undefined);
+    if (!sessionKey) {
+      continue;
+    }
+
+    const acc = getSessionAccumulator(sessionKey, parsedLine.source);
+    acc.updatedAt = Math.max(acc.updatedAt, ts);
+    acc.usage.firstActivity =
+      acc.usage.firstActivity === undefined ? ts : Math.min(acc.usage.firstActivity, ts);
+    acc.usage.lastActivity =
+      acc.usage.lastActivity === undefined ? ts : Math.max(acc.usage.lastActivity, ts);
+    const dayKey = formatDayKeyUtc(ts);
+    const activityDates = new Set(acc.usage.activityDates ?? []);
+    activityDates.add(dayKey);
+    acc.usage.activityDates = Array.from(activityDates).toSorted();
+
+    const dailyMessages = acc.dailyMessageMap.get(dayKey) ?? {
+      date: dayKey,
+      total: 0,
+      user: 0,
+      assistant: 0,
+      toolCalls: 0,
+      toolResults: 0,
+      errors: 0,
+    };
+
+    if (kind === "user_input.start") {
+      acc.usage.messageCounts!.user += 1;
+      acc.usage.messageCounts!.total += 1;
+      dailyMessages.user += 1;
+      dailyMessages.total += 1;
+    }
+
+    if (kind === "user_input.end") {
+      const durationMs = toFiniteNumber(dataRecord.durationMs);
+      if (durationMs !== undefined && durationMs >= 0) {
+        acc.latencyValues.push(durationMs);
+        const dayLatencies = acc.dailyLatencyMap.get(dayKey) ?? [];
+        dayLatencies.push(durationMs);
+        acc.dailyLatencyMap.set(dayKey, dayLatencies);
+      }
+      if (dataRecord.status === "error") {
+        acc.usage.messageCounts!.errors += 1;
+        dailyMessages.errors += 1;
+      }
+    }
+
+    if (kind === "tool_loop.end") {
+      const toolCallCount = Math.max(0, Math.floor(toFiniteNumber(dataRecord.toolCallCount) ?? 0));
+      const toolNames = Array.isArray(dataRecord.toolNames)
+        ? dataRecord.toolNames
+            .map((name) => (typeof name === "string" ? name.trim() : ""))
+            .filter((name) => name.length > 0)
+        : [];
+      for (const toolName of toolNames) {
+        acc.toolUsageMap.set(toolName, (acc.toolUsageMap.get(toolName) ?? 0) + 1);
+      }
+      const toolLoopId =
+        typeof dataRecord.toolLoopId === "string" ? dataRecord.toolLoopId : undefined;
+      // Prefer model_call.end.toolCallsRequested (requested tool calls, matches transcript tool_use).
+      // Fallback to tool_loop.end.toolCallCount only when no per-model counts were observed.
+      if (!toolLoopId || !acc.modelToolCallsByLoop.has(toolLoopId)) {
+        acc.usage.messageCounts!.toolCalls += toolCallCount;
+        dailyMessages.toolCalls += toolCallCount;
+      }
+      const status = typeof dataRecord.status === "string" ? dataRecord.status : "ok";
+      if (status !== "ok" && status !== "retry") {
+        acc.usage.messageCounts!.errors += 1;
+        dailyMessages.errors += 1;
+      }
+    }
+
+    if (kind === "model_call.end") {
+      acc.usage.messageCounts!.assistant += 1;
+      acc.usage.messageCounts!.total += 1;
+      dailyMessages.assistant += 1;
+      dailyMessages.total += 1;
+
+      const toolCallsRequested = Math.max(
+        0,
+        Math.floor(toFiniteNumber(dataRecord.toolCallsRequested) ?? 0),
+      );
+      if (toolCallsRequested > 0) {
+        acc.usage.messageCounts!.toolCalls += toolCallsRequested;
+        dailyMessages.toolCalls += toolCallsRequested;
+        const toolLoopId =
+          typeof dataRecord.toolLoopId === "string" ? dataRecord.toolLoopId : undefined;
+        if (toolLoopId) {
+          acc.modelToolCallsByLoop.add(toolLoopId);
+        }
+      }
+
+      const usage = parseTelemetryUsage(dataRecord.usage);
+      const provider = typeof dataRecord.provider === "string" ? dataRecord.provider : undefined;
+      const model = typeof dataRecord.model === "string" ? dataRecord.model : undefined;
+      if (usage && !usage.hasCost) {
+        const costCfg = resolveTelemetryModelCost({ provider, model, config });
+        const estimatedTotal = estimateUsageCost({
+          usage: {
+            input: usage.input,
+            output: usage.output,
+            cacheRead: usage.cacheRead,
+            cacheWrite: usage.cacheWrite,
+          },
+          cost: costCfg,
+        });
+        if (estimatedTotal !== undefined) {
+          usage.totalCost = estimatedTotal;
+          usage.inputCost = (usage.input * (costCfg?.input ?? 0)) / 1_000_000 || 0;
+          usage.outputCost = (usage.output * (costCfg?.output ?? 0)) / 1_000_000 || 0;
+          usage.cacheReadCost = (usage.cacheRead * (costCfg?.cacheRead ?? 0)) / 1_000_000 || 0;
+          usage.cacheWriteCost = (usage.cacheWrite * (costCfg?.cacheWrite ?? 0)) / 1_000_000 || 0;
+          usage.hasCost = true;
+        }
+      }
+      if (provider && !acc.modelProvider) {
+        acc.modelProvider = provider;
+      }
+      if (model && !acc.model) {
+        acc.model = model;
+      }
+      const modelKey = `${provider ?? "unknown"}::${model ?? "unknown"}`;
+      const modelUsage =
+        acc.modelUsageMap.get(modelKey) ??
+        ({
+          provider,
+          model,
+          count: 0,
+          totals: emptyTotals(),
+        } as SessionModelUsage);
+      modelUsage.count += 1;
+
+      if (usage) {
+        acc.usage.input += usage.input;
+        acc.usage.output += usage.output;
+        acc.usage.cacheRead += usage.cacheRead;
+        acc.usage.cacheWrite += usage.cacheWrite;
+        acc.usage.totalTokens += usage.totalTokens;
+        acc.usage.totalCost += usage.totalCost;
+        acc.usage.inputCost += usage.inputCost;
+        acc.usage.outputCost += usage.outputCost;
+        acc.usage.cacheReadCost += usage.cacheReadCost;
+        acc.usage.cacheWriteCost += usage.cacheWriteCost;
+        if (!usage.hasCost) {
+          acc.usage.missingCostEntries += 1;
+        }
+
+        modelUsage.totals.input += usage.input;
+        modelUsage.totals.output += usage.output;
+        modelUsage.totals.cacheRead += usage.cacheRead;
+        modelUsage.totals.cacheWrite += usage.cacheWrite;
+        modelUsage.totals.totalTokens += usage.totalTokens;
+        modelUsage.totals.totalCost += usage.totalCost;
+        modelUsage.totals.inputCost += usage.inputCost;
+        modelUsage.totals.outputCost += usage.outputCost;
+        modelUsage.totals.cacheReadCost += usage.cacheReadCost;
+        modelUsage.totals.cacheWriteCost += usage.cacheWriteCost;
+        if (!usage.hasCost) {
+          modelUsage.totals.missingCostEntries += 1;
+        }
+
+        const dailyUsage = acc.dailyMap.get(dayKey) ?? { tokens: 0, cost: 0 };
+        dailyUsage.tokens += usage.totalTokens;
+        dailyUsage.cost += usage.totalCost;
+        acc.dailyMap.set(dayKey, dailyUsage);
+
+        const modelDailyKey = `${dayKey}::${provider ?? "unknown"}::${model ?? "unknown"}`;
+        const modelDaily =
+          acc.dailyModelUsageMap.get(modelDailyKey) ??
+          ({
+            date: dayKey,
+            provider,
+            model,
+            tokens: 0,
+            cost: 0,
+            count: 0,
+          } as SessionDailyModelUsage);
+        modelDaily.tokens += usage.totalTokens;
+        modelDaily.cost += usage.totalCost;
+        modelDaily.count += 1;
+        acc.dailyModelUsageMap.set(modelDailyKey, modelDaily);
+      } else {
+        acc.usage.missingCostEntries += 1;
+        modelUsage.totals.missingCostEntries += 1;
+      }
+
+      if (dataRecord.status === "error") {
+        acc.usage.messageCounts!.errors += 1;
+        dailyMessages.errors += 1;
+      }
+      acc.modelUsageMap.set(modelKey, modelUsage);
+    }
+
+    acc.dailyMessageMap.set(dayKey, dailyMessages);
+  }
+
+  const sessions = Array.from(sessionsMap.values())
+    .map((acc) => {
+      acc.usage.durationMs =
+        acc.usage.firstActivity !== undefined && acc.usage.lastActivity !== undefined
+          ? Math.max(0, acc.usage.lastActivity - acc.usage.firstActivity)
+          : undefined;
+      acc.usage.dailyBreakdown = Array.from(acc.dailyMap.entries())
+        .map(([date, data]) => ({ date, tokens: data.tokens, cost: data.cost }))
+        .toSorted((a, b) => a.date.localeCompare(b.date));
+      acc.usage.dailyMessageCounts = Array.from(acc.dailyMessageMap.values()).toSorted((a, b) =>
+        a.date.localeCompare(b.date),
+      );
+      acc.usage.dailyModelUsage = Array.from(acc.dailyModelUsageMap.values()).toSorted((a, b) =>
+        a.date.localeCompare(b.date),
+      );
+      acc.usage.modelUsage = Array.from(acc.modelUsageMap.values()).toSorted((a, b) => {
+        const costDiff = b.totals.totalCost - a.totals.totalCost;
+        if (costDiff !== 0) {
+          return costDiff;
+        }
+        return b.totals.totalTokens - a.totals.totalTokens;
+      });
+      const latency = computeLatencyStatsFromValues(acc.latencyValues);
+      acc.usage.latency = latency;
+      acc.usage.dailyLatency = Array.from(acc.dailyLatencyMap.entries())
+        .map(([date, values]) => {
+          const stats = computeLatencyStatsFromValues(values);
+          if (!stats) {
+            return null;
+          }
+          return { date, ...stats };
+        })
+        .filter((entry): entry is SessionDailyLatency => Boolean(entry))
+        .toSorted((a, b) => a.date.localeCompare(b.date));
+      const namedTools = Array.from(acc.toolUsageMap.entries())
+        .map(([name, count]) => ({ name, count }))
+        .toSorted((a, b) => b.count - a.count);
+      const namedToolCalls = namedTools.reduce((sum, entry) => sum + entry.count, 0);
+      const observedToolCalls = acc.usage.messageCounts?.toolCalls ?? 0;
+      const unnamedToolCalls = Math.max(0, observedToolCalls - namedToolCalls);
+      const allTools =
+        unnamedToolCalls > 0
+          ? [...namedTools, { name: "(unnamed)", count: unnamedToolCalls }]
+          : namedTools;
+      acc.usage.toolUsage = {
+        totalCalls: observedToolCalls,
+        uniqueTools: allTools.length,
+        tools: allTools,
+      };
+
+      return {
+        key: acc.key,
+        label: acc.label,
+        sessionSource: acc.sessionSource,
+        sessionId: acc.sessionId,
+        updatedAt: acc.updatedAt,
+        agentId: acc.agentId,
+        channel: acc.channel,
+        chatType: acc.chatType,
+        origin: acc.origin,
+        modelProvider: acc.modelProvider,
+        model: acc.model,
+        usage: acc.usage,
+      } as SessionUsageEntry;
+    })
+    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    .slice(0, Math.max(1, params.limit));
+
+  const totals = emptyTotals();
+  const aggregatesMessages: SessionMessageCounts = {
+    total: 0,
+    user: 0,
+    assistant: 0,
+    toolCalls: 0,
+    toolResults: 0,
+    errors: 0,
+  };
+  const toolMap = new Map<string, number>();
+  const byModelMap = new Map<string, SessionModelUsage>();
+  const byProviderMap = new Map<string, SessionModelUsage>();
+  const byAgentMap = new Map<string, CostUsageSummary["totals"]>();
+  const byChannelMap = new Map<string, CostUsageSummary["totals"]>();
+  const dailyMap = new Map<
+    string,
+    {
+      date: string;
+      tokens: number;
+      cost: number;
+      messages: number;
+      toolCalls: number;
+      errors: number;
+    }
+  >();
+  const latencyValues: number[] = [];
+  const dailyLatencyMap = new Map<string, number[]>();
+  const modelDailyMap = new Map<string, SessionDailyModelUsage>();
+
+  for (const session of sessions) {
+    const usage = session.usage;
+    if (!usage) {
+      continue;
+    }
+    totals.input += usage.input;
+    totals.output += usage.output;
+    totals.cacheRead += usage.cacheRead;
+    totals.cacheWrite += usage.cacheWrite;
+    totals.totalTokens += usage.totalTokens;
+    totals.totalCost += usage.totalCost;
+    totals.inputCost += usage.inputCost;
+    totals.outputCost += usage.outputCost;
+    totals.cacheReadCost += usage.cacheReadCost;
+    totals.cacheWriteCost += usage.cacheWriteCost;
+    totals.missingCostEntries += usage.missingCostEntries;
+
+    if (usage.messageCounts) {
+      aggregatesMessages.total += usage.messageCounts.total;
+      aggregatesMessages.user += usage.messageCounts.user;
+      aggregatesMessages.assistant += usage.messageCounts.assistant;
+      aggregatesMessages.toolCalls += usage.messageCounts.toolCalls;
+      aggregatesMessages.toolResults += usage.messageCounts.toolResults;
+      aggregatesMessages.errors += usage.messageCounts.errors;
+    }
+    if (usage.latency?.count) {
+      latencyValues.push(...new Array(usage.latency.count).fill(usage.latency.avgMs));
+    }
+    for (const daily of usage.dailyLatency ?? []) {
+      const values = dailyLatencyMap.get(daily.date) ?? [];
+      values.push(...new Array(daily.count).fill(daily.avgMs));
+      dailyLatencyMap.set(daily.date, values);
+    }
+    for (const daily of usage.dailyBreakdown ?? []) {
+      const item = dailyMap.get(daily.date) ?? {
+        date: daily.date,
+        tokens: 0,
+        cost: 0,
+        messages: 0,
+        toolCalls: 0,
+        errors: 0,
+      };
+      item.tokens += daily.tokens;
+      item.cost += daily.cost;
+      dailyMap.set(daily.date, item);
+    }
+    for (const daily of usage.dailyMessageCounts ?? []) {
+      const item = dailyMap.get(daily.date) ?? {
+        date: daily.date,
+        tokens: 0,
+        cost: 0,
+        messages: 0,
+        toolCalls: 0,
+        errors: 0,
+      };
+      item.messages += daily.total;
+      item.toolCalls += daily.toolCalls;
+      item.errors += daily.errors;
+      dailyMap.set(daily.date, item);
+    }
+    for (const daily of usage.dailyModelUsage ?? []) {
+      const key = `${daily.date}::${daily.provider ?? "unknown"}::${daily.model ?? "unknown"}`;
+      const existing =
+        modelDailyMap.get(key) ??
+        ({
+          date: daily.date,
+          provider: daily.provider,
+          model: daily.model,
+          tokens: 0,
+          cost: 0,
+          count: 0,
+        } as SessionDailyModelUsage);
+      existing.tokens += daily.tokens;
+      existing.cost += daily.cost;
+      existing.count += daily.count;
+      modelDailyMap.set(key, existing);
+    }
+
+    if (usage.toolUsage) {
+      for (const tool of usage.toolUsage.tools) {
+        toolMap.set(tool.name, (toolMap.get(tool.name) ?? 0) + tool.count);
+      }
+    }
+
+    for (const modelUsage of usage.modelUsage ?? []) {
+      const modelKey = `${modelUsage.provider ?? "unknown"}::${modelUsage.model ?? "unknown"}`;
+      const modelExisting =
+        byModelMap.get(modelKey) ??
+        ({
+          provider: modelUsage.provider,
+          model: modelUsage.model,
+          count: 0,
+          totals: emptyTotals(),
+        } as SessionModelUsage);
+      modelExisting.count += modelUsage.count;
+      modelExisting.totals.input += modelUsage.totals.input;
+      modelExisting.totals.output += modelUsage.totals.output;
+      modelExisting.totals.cacheRead += modelUsage.totals.cacheRead;
+      modelExisting.totals.cacheWrite += modelUsage.totals.cacheWrite;
+      modelExisting.totals.totalTokens += modelUsage.totals.totalTokens;
+      modelExisting.totals.totalCost += modelUsage.totals.totalCost;
+      modelExisting.totals.inputCost += modelUsage.totals.inputCost;
+      modelExisting.totals.outputCost += modelUsage.totals.outputCost;
+      modelExisting.totals.cacheReadCost += modelUsage.totals.cacheReadCost;
+      modelExisting.totals.cacheWriteCost += modelUsage.totals.cacheWriteCost;
+      modelExisting.totals.missingCostEntries += modelUsage.totals.missingCostEntries;
+      byModelMap.set(modelKey, modelExisting);
+
+      const providerKey = modelUsage.provider ?? "unknown";
+      const providerExisting =
+        byProviderMap.get(providerKey) ??
+        ({
+          provider: modelUsage.provider,
+          model: undefined,
+          count: 0,
+          totals: emptyTotals(),
+        } as SessionModelUsage);
+      providerExisting.count += modelUsage.count;
+      providerExisting.totals.input += modelUsage.totals.input;
+      providerExisting.totals.output += modelUsage.totals.output;
+      providerExisting.totals.cacheRead += modelUsage.totals.cacheRead;
+      providerExisting.totals.cacheWrite += modelUsage.totals.cacheWrite;
+      providerExisting.totals.totalTokens += modelUsage.totals.totalTokens;
+      providerExisting.totals.totalCost += modelUsage.totals.totalCost;
+      providerExisting.totals.inputCost += modelUsage.totals.inputCost;
+      providerExisting.totals.outputCost += modelUsage.totals.outputCost;
+      providerExisting.totals.cacheReadCost += modelUsage.totals.cacheReadCost;
+      providerExisting.totals.cacheWriteCost += modelUsage.totals.cacheWriteCost;
+      providerExisting.totals.missingCostEntries += modelUsage.totals.missingCostEntries;
+      byProviderMap.set(providerKey, providerExisting);
+    }
+
+    if (session.agentId) {
+      const entry = byAgentMap.get(session.agentId) ?? emptyTotals();
+      entry.input += usage.input;
+      entry.output += usage.output;
+      entry.cacheRead += usage.cacheRead;
+      entry.cacheWrite += usage.cacheWrite;
+      entry.totalTokens += usage.totalTokens;
+      entry.totalCost += usage.totalCost;
+      entry.inputCost += usage.inputCost;
+      entry.outputCost += usage.outputCost;
+      entry.cacheReadCost += usage.cacheReadCost;
+      entry.cacheWriteCost += usage.cacheWriteCost;
+      entry.missingCostEntries += usage.missingCostEntries;
+      byAgentMap.set(session.agentId, entry);
+    }
+    if (session.channel) {
+      const entry = byChannelMap.get(session.channel) ?? emptyTotals();
+      entry.input += usage.input;
+      entry.output += usage.output;
+      entry.cacheRead += usage.cacheRead;
+      entry.cacheWrite += usage.cacheWrite;
+      entry.totalTokens += usage.totalTokens;
+      entry.totalCost += usage.totalCost;
+      entry.inputCost += usage.inputCost;
+      entry.outputCost += usage.outputCost;
+      entry.cacheReadCost += usage.cacheReadCost;
+      entry.cacheWriteCost += usage.cacheWriteCost;
+      entry.missingCostEntries += usage.missingCostEntries;
+      byChannelMap.set(session.channel, entry);
+    }
+  }
+
+  const startDate = new Date(params.startMs).toISOString().slice(0, 10);
+  const endDate = new Date(params.endMs).toISOString().slice(0, 10);
+
+  return {
+    updatedAt: Date.now(),
+    startDate,
+    endDate,
+    sessions,
+    totals,
+    aggregates: {
+      messages: aggregatesMessages,
+      tools: {
+        totalCalls: Array.from(toolMap.values()).reduce((sum, count) => sum + count, 0),
+        uniqueTools: toolMap.size,
+        tools: Array.from(toolMap.entries())
+          .map(([name, count]) => ({ name, count }))
+          .toSorted((a, b) => b.count - a.count),
+      },
+      byModel: Array.from(byModelMap.values()).toSorted(
+        (a, b) => b.totals.totalCost - a.totals.totalCost,
+      ),
+      byProvider: Array.from(byProviderMap.values()).toSorted(
+        (a, b) => b.totals.totalCost - a.totals.totalCost,
+      ),
+      byAgent: Array.from(byAgentMap.entries())
+        .map(([agentId, usageTotals]) => ({ agentId, totals: usageTotals }))
+        .toSorted((a, b) => b.totals.totalCost - a.totals.totalCost),
+      byChannel: Array.from(byChannelMap.entries())
+        .map(([channel, usageTotals]) => ({ channel, totals: usageTotals }))
+        .toSorted((a, b) => b.totals.totalCost - a.totals.totalCost),
+      latency: computeLatencyStatsFromValues(latencyValues),
+      dailyLatency: Array.from(dailyLatencyMap.entries())
+        .map(([date, values]) => {
+          const stats = computeLatencyStatsFromValues(values);
+          if (!stats) {
+            return null;
+          }
+          return { date, ...stats };
+        })
+        .filter((entry): entry is SessionDailyLatency => Boolean(entry))
+        .toSorted((a, b) => a.date.localeCompare(b.date)),
+      modelDaily: Array.from(modelDailyMap.values()).toSorted((a, b) =>
+        a.date.localeCompare(b.date),
+      ),
+      daily: Array.from(dailyMap.values()).toSorted((a, b) => a.date.localeCompare(b.date)),
+    },
+  };
+}
+
 export const usageHandlers: GatewayRequestHandlers = {
   "usage.status": async ({ respond }) => {
     const summary = await loadProviderUsageSummary();
@@ -268,6 +1044,27 @@ export const usageHandlers: GatewayRequestHandlers = {
       days: params?.days,
     });
     const summary = await loadCostUsageSummaryCached({ startMs, endMs, config });
+    respond(true, summary, undefined);
+  },
+  "usage.telemetry": async ({ respond, params }) => {
+    if (!validateSessionsUsageParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid usage.telemetry params: ${formatValidationErrors(validateSessionsUsageParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const p = params;
+    const { startMs, endMs } = parseDateRange({
+      startDate: p.startDate,
+      endDate: p.endDate,
+    });
+    const limit = typeof p.limit === "number" && Number.isFinite(p.limit) ? p.limit : 1000;
+    const summary = await loadTelemetryUsageSummary({ startMs, endMs, limit });
     respond(true, summary, undefined);
   },
   "sessions.usage": async ({ respond, params }) => {

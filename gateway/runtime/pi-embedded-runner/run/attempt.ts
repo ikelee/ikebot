@@ -236,6 +236,7 @@ export async function runEmbeddedAttempt(
   let telemetryAttemptType: "primary" | "retry" | "fallback" = "primary";
   let telemetryToolLoopStatus: "ok" | "error" | "timeout" | "aborted" | "retry" = "error";
   let telemetryToolCallCount = 0;
+  let telemetryToolNames: string[] = [];
   let telemetryAttemptUsage:
     | { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number }
     | undefined;
@@ -1159,6 +1160,7 @@ export async function runEmbeddedAttempt(
         .map((entry) => ({ toolName: entry.toolName, meta: entry.meta }));
 
       telemetryToolCallCount = getToolExecutions().length;
+      telemetryToolNames = toolMetasNormalized.map((entry) => entry.toolName);
       telemetryAttemptUsage = getUsageTotals();
       if (timedOut) {
         telemetryToolLoopStatus = "timeout";
@@ -1208,6 +1210,7 @@ export async function runEmbeddedAttempt(
         status: telemetryToolLoopStatus,
         usage: telemetryAttemptUsage,
         toolCallCount: telemetryToolCallCount,
+        toolNames: telemetryToolNames,
       });
     }
     restoreSkillEnv?.();

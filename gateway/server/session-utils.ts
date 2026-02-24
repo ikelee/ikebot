@@ -568,6 +568,14 @@ export function listSessionsFromStore(params: {
       ? Math.max(1, Math.floor(opts.activeMinutes))
       : undefined;
 
+  function resolveSessionSourceTag(key: string): "test" | "live" {
+    const lower = key.toLowerCase();
+    if (lower.includes(":testing") || lower.includes(":test")) {
+      return "test";
+    }
+    return "live";
+  }
+
   let sessions = Object.entries(store)
     .filter(([key]) => {
       if (isCronRunSessionKey(key)) {
@@ -643,6 +651,7 @@ export function listSessionsFromStore(params: {
         key,
         entry,
         kind: classifySessionKey(key, entry),
+        sessionSource: resolveSessionSourceTag(key),
         label: entry?.label,
         displayName,
         channel,
