@@ -146,6 +146,35 @@ describe("runAgentFlow", () => {
     expect(runPreparedReplyMock).not.toHaveBeenCalled();
   });
 
+  it("bypasses router and directly handles authorized reset commands", async () => {
+    const cfg = createMockConfig();
+    const params = createMinimalRunPreparedReplyParams();
+    params.cfg = cfg;
+    params.resetTriggered = true;
+    params.command = { isAuthorizedSender: true } as any;
+    runPreparedReplyMock.mockResolvedValue({
+      text: "✅ New session started · model: ollama/llama-3.2-3b",
+    });
+
+    const result = await runAgentFlow({
+      cleanedBody: "/new",
+      sessionKey: "main",
+      provider: "ollama",
+      model: "llama-3.2-3b",
+      defaultProvider: "ollama",
+      defaultModel: "llama-3.2-3b",
+      aliasIndex: {},
+      cfg,
+      runPreparedReplyParams: params,
+    });
+
+    expect(result).toEqual({
+      text: "✅ New session started · model: ollama/llama-3.2-3b",
+    });
+    expect(runPreparedReplyMock).toHaveBeenCalledTimes(1);
+    expect(completeSimple).not.toHaveBeenCalled();
+  });
+
   it("does not emit user_input telemetry for heartbeat/infrastructure runs", async () => {
     vi.mocked(completeSimple)
       .mockResolvedValueOnce({

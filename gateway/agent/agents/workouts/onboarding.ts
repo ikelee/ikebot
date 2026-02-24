@@ -7,6 +7,7 @@ import { parseModelRef } from "../../../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
 import { resolveAgentModelPrimary } from "../../../runtime/agent-scope.js";
 import { resolveModel } from "../../../runtime/pi-embedded-runner/model.js";
+import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
 import { memoFilenameForIdentifier, parseWorkoutState, type WorkoutState } from "./state.js";
 
 type CoachingStyle = "supportive" | "assertive" | "aggressive";
@@ -160,6 +161,11 @@ async function extractPatchWithModel(
   if (!resolvedModel.model) {
     return {};
   }
+  const apiKey = await resolveCompleteSimpleApiKey({
+    model: resolvedModel.model,
+    cfg: context.cfg,
+    agentDir: resolveOpenClawAgentDir(),
+  });
 
   const systemPrompt = `Extract a single workouts onboarding field from user text.
 Field: ${field}
@@ -178,17 +184,12 @@ If the field is missing/unclear, return {}.`;
         messages: [{ role: "user", content: body, timestamp: Date.now() }],
       },
       {
-        apiKey: "no-api-key-needed",
+        apiKey,
         temperature: 0,
         maxTokens: 180,
       },
     );
-    const text = Array.isArray(response.content)
-      ? response.content
-          .filter((item) => item.type === "text")
-          .map((item) => item.text)
-          .join("")
-      : "";
+    const text = extractCompletionText(response);
     const parsed = extractJsonObject(text);
     if (!parsed) {
       return {};

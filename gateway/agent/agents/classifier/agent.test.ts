@@ -6,11 +6,19 @@
 import { completeSimple } from "@mariozechner/pi-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeAgent } from "../../core/agent-executor.js";
+import { resolveCompleteSimpleApiKey } from "../llm-auth.js";
 import { RouterAgent } from "./agent.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
   completeSimple: vi.fn(),
 }));
+vi.mock("../llm-auth.js", async () => {
+  const actual = await vi.importActual<typeof import("../llm-auth.js")>("../llm-auth.js");
+  return {
+    ...actual,
+    resolveCompleteSimpleApiKey: vi.fn(async () => "test-api-key"),
+  };
+});
 
 const createMockModel = () =>
   ({
@@ -22,6 +30,7 @@ const createMockModel = () =>
 describe("RouterAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveCompleteSimpleApiKey).mockResolvedValue("test-api-key");
   });
 
   it("returns stay for basic commands without model", async () => {
@@ -83,6 +92,29 @@ describe("RouterAgent", () => {
     );
 
     expect(output.decision).toBe("stay");
+    expect(completeSimple).toHaveBeenCalledTimes(1);
+    expect(resolveCompleteSimpleApiKey).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(completeSimple).mock.calls[0]?.[2]).toMatchObject({
+      apiKey: "test-api-key",
+    });
+  });
+
+  it("parses output_text content blocks used by codex/openai responses", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [{ type: "output_text", text: '{"decision":"calendar"}' }],
+      usage: { input: 10, output: 5 },
+    } as any);
+
+    const modelResolver = vi.fn().mockResolvedValue(createMockModel());
+    const agent = new RouterAgent(modelResolver);
+
+    const output = await executeAgent(
+      agent,
+      { userIdentifier: "user", message: "what is on my calendar?" },
+      { recordTrace: false },
+    );
+
+    expect(output.decision).toBe("calendar");
     expect(completeSimple).toHaveBeenCalledTimes(1);
   });
 
@@ -177,5 +209,65 @@ describe("RouterAgent", () => {
     );
 
     expect(output.decision).toBe("escalate");
+  });
+
+  it("falls back to deterministic calendar routing when model output is empty", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [],
+      usage: { input: 10, output: 0 },
+      stopReason: "error",
+      errorMessage: "transient upstream issue",
+    } as any);
+
+    const modelResolver = vi.fn().mockResolvedValue(createMockModel());
+    const agent = new RouterAgent(modelResolver);
+
+    const output = await executeAgent(
+      agent,
+      { userIdentifier: "user", message: "Add Sam smith concert tomorrow at 7pm" },
+      { recordTrace: false },
+    );
+
+    expect(output.decision).toBe("calendar");
+  });
+
+  it("falls back to deterministic calendar routing for calendar queries when model output is empty", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [],
+      usage: { input: 10, output: 0 },
+      stopReason: "error",
+      errorMessage: "transient upstream issue",
+    } as any);
+
+    const modelResolver = vi.fn().mockResolvedValue(createMockModel());
+    const agent = new RouterAgent(modelResolver);
+
+    const output = await executeAgent(
+      agent,
+      { userIdentifier: "user", message: "what is on my calendar tomorrow?" },
+      { recordTrace: false },
+    );
+
+    expect(output.decision).toBe("calendar");
+  });
+
+  it("falls back to deterministic calendar routing for implicit time scheduling when model output is empty", async () => {
+    vi.mocked(completeSimple).mockResolvedValue({
+      content: [],
+      usage: { input: 10, output: 0 },
+      stopReason: "error",
+      errorMessage: "transient upstream issue",
+    } as any);
+
+    const modelResolver = vi.fn().mockResolvedValue(createMockModel());
+    const agent = new RouterAgent(modelResolver);
+
+    const output = await executeAgent(
+      agent,
+      { userIdentifier: "user", message: "Sam smith concert tomorrow 7pm" },
+      { recordTrace: false },
+    );
+
+    expect(output.decision).toBe("calendar");
   });
 });

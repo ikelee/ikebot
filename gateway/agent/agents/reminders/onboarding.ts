@@ -7,6 +7,7 @@ import { parseModelRef } from "../../../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
 import { resolveAgentModelPrimary } from "../../../runtime/agent-scope.js";
 import { resolveModel } from "../../../runtime/pi-embedded-runner/model.js";
+import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
 
 type RemindersField = "timezone" | "defaultSnoozeMin";
 type RemindersState = {
@@ -123,6 +124,11 @@ async function extractField(
   if (!resolved.model) {
     return null;
   }
+  const apiKey = await resolveCompleteSimpleApiKey({
+    model: resolved.model,
+    cfg: context.cfg,
+    agentDir: resolveOpenClawAgentDir(),
+  });
   const systemPrompt = `Extract only ${field} from user text. Return strict JSON only.
 If field=${field}:
 - timezone => {"timezone":"America/Los_Angeles"}
@@ -135,14 +141,9 @@ If unknown return {}.`;
         systemPrompt,
         messages: [{ role: "user", content: body, timestamp: Date.now() }],
       },
-      { apiKey: "no-api-key-needed", temperature: 0, maxTokens: 120 },
+      { apiKey, temperature: 0, maxTokens: 120 },
     );
-    const text = Array.isArray(response.content)
-      ? response.content
-          .filter((item) => item.type === "text")
-          .map((item) => item.text)
-          .join("")
-      : "";
+    const text = extractCompletionText(response);
     const json = extractJsonObject(text);
     if (!json) {
       return null;

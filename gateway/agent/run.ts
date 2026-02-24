@@ -944,6 +944,17 @@ export async function runAgentFlow(
     const onboardingSessionKey = resolveOnboardingSessionKey(userScopeKey, sessionKey);
     const holdSessionKey = onboardingSessionKey;
     const holdUserKey = userScopeKey;
+    const isAuthorizedResetCommand =
+      preparedReplyParamsWithRunId.resetTriggered &&
+      preparedReplyParamsWithRunId.command?.isAuthorizedSender;
+    if (isAuthorizedResetCommand) {
+      console.log("[runAgentFlow] reset command fast-path: skipping router and model agents");
+      return await runComplexReply({
+        ...preparedReplyParamsWithRunId,
+        provider,
+        model,
+      });
+    }
     const activeOnboardingAgentId =
       ACTIVE_ONBOARDING_BY_SESSION.get(onboardingSessionKey) ??
       ACTIVE_ONBOARDING_BY_USER.get(userScopeKey);
@@ -1254,7 +1265,7 @@ export async function runAgentFlow(
           message: routingBody,
           context: { sessionKey },
         },
-        { recordTrace: true },
+        { recordTrace: true, config: cfg },
       );
       const routedDecision = routerOutput.decision ?? "stay";
       routerDecision = routedDecision;

@@ -9,6 +9,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
+import type { OpenClawConfig } from "../../../infra/config/config.js";
 import { logModelIo } from "../../../logging/model-io.js";
 import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
 import { log } from "../../../runtime/pi-embedded-runner/logger.js";
@@ -20,6 +21,7 @@ import {
   type AgentInput,
   type AgentOutput,
 } from "../../core/agent.js";
+import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
 import { buildSimpleResponderPrompt } from "./prompt.js";
 
 export class SimpleResponderAgent extends Agent {
@@ -76,7 +78,7 @@ export class SimpleResponderAgent extends Agent {
       const modelOverride = input.context?.model as
         | { provider: string; modelId: string; resolved?: Model<Api> }
         | undefined;
-      const cfg = input.context?.config as Parameters<typeof resolveModel>[3];
+      const cfg = input.context?.config as OpenClawConfig | undefined;
 
       let model: Model<Api>;
       if (modelOverride?.resolved) {
@@ -103,25 +105,23 @@ export class SimpleResponderAgent extends Agent {
       }
 
       const modelConfig = this.getModelConfig();
+      const apiKey = await resolveCompleteSimpleApiKey({
+        model,
+        cfg,
+        agentDir: resolveOpenClawAgentDir(),
+      });
 
       const response = await completeSimple(
         model,
         { systemPrompt, messages },
         {
-          apiKey: "no-api-key-needed",
+          apiKey,
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
         },
       );
 
-      let responseText = "";
-      if (Array.isArray(response.content)) {
-        for (const item of response.content) {
-          if (item.type === "text") {
-            responseText += item.text;
-          }
-        }
-      }
+      const responseText = extractCompletionText(response);
 
       logModelIo(log.info.bind(log), "SimpleResponder output", responseText, true);
 
