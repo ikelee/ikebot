@@ -48,6 +48,7 @@ import {
 } from "../agent-runner/session/session-updates.js";
 import { resolveTypingMode } from "../streaming/typing-mode.js";
 import { applySessionHints } from "../utilities/body.js";
+import { buildCalendarProfileSystemPrompt } from "../utilities/calendar-profile-system-prompt.js";
 import { buildGroupIntro } from "../utilities/groups.js";
 import {
   buildInboundMetaSystemPrompt,
@@ -222,7 +223,14 @@ export async function runPreparedReply(
     agentId === "multi" && orchestrateAgents?.length
       ? `For this request, spawn and orchestrate the following agents: ${orchestrateAgents.join(", ")}. Use sessions_spawn with agentId for each. Do not spawn agents not in this list.`
       : "";
-  const extraSystemPrompt = [inboundMetaPrompt, groupIntro, groupSystemPrompt, orchestratePrompt]
+  const calendarProfilePrompt = await buildCalendarProfileSystemPrompt({ agentId, workspaceDir });
+  const extraSystemPrompt = [
+    inboundMetaPrompt,
+    groupIntro,
+    groupSystemPrompt,
+    orchestratePrompt,
+    calendarProfilePrompt,
+  ]
     .filter(Boolean)
     .join("\n\n");
   let baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";

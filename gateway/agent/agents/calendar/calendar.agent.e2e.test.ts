@@ -209,6 +209,27 @@ async function listEventsByQuery(query: string): Promise<Array<{ id: string; sum
     .filter((event) => event.id.length > 0);
 }
 
+async function waitForEventsByQuery(params: {
+  query: string;
+  minCount?: number;
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<Array<{ id: string; summary: string }>> {
+  const minCount = params.minCount ?? 1;
+  const timeoutMs = params.timeoutMs ?? 12_000;
+  const pollMs = params.pollMs ?? 600;
+  const started = Date.now();
+  let last: Array<{ id: string; summary: string }> = [];
+  while (Date.now() - started < timeoutMs) {
+    last = await listEventsByQuery(params.query);
+    if (last.length >= minCount) {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return last;
+}
+
 async function listRawEventsByQuery(
   query: string,
 ): Promise<Array<Record<string, unknown> & { id: string; summary: string }>> {
@@ -862,7 +883,7 @@ describe("calendar agent-level e2e – real model", () => {
           "yes, please",
         );
         assertNotBlockedByMutationSafety(addReply);
-        expect((await listEventsByQuery(summaryV1)).length).toBeGreaterThan(0);
+        expect((await waitForEventsByQuery({ query: summaryV1 })).length).toBeGreaterThan(0);
 
         const updateReply = await sendWithOptionalConfirm(
           `Please update the event whose title contains "${summaryV1}". ` +
@@ -870,7 +891,7 @@ describe("calendar agent-level e2e – real model", () => {
           "yes, please",
         );
         assertNotBlockedByMutationSafety(updateReply);
-        expect((await listEventsByQuery(summaryV2)).length).toBeGreaterThan(0);
+        expect((await waitForEventsByQuery({ query: summaryV2 })).length).toBeGreaterThan(0);
 
         const rescheduleReply = await sendWithOptionalConfirm(
           `Please reschedule the event whose title contains "${summaryV2}". ` +
@@ -878,7 +899,7 @@ describe("calendar agent-level e2e – real model", () => {
           "yes, please",
         );
         assertNotBlockedByMutationSafety(rescheduleReply);
-        expect((await listEventsByQuery(summaryV3)).length).toBeGreaterThan(0);
+        expect((await waitForEventsByQuery({ query: summaryV3 })).length).toBeGreaterThan(0);
 
         const deleteReply = await sendWithOptionalConfirm(
           `Please delete the event whose title contains "${summaryV3}".`,
