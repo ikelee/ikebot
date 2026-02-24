@@ -8,7 +8,12 @@ import { getReplyFromConfig } from "../../pipeline/reply.js";
 
 const execFileAsync = promisify(execFile);
 const OLLAMA_BASE = "http://localhost:11434";
-const MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const LOCAL_ONLY = process.env.OPENCLAW_TEST_LOCAL_ONLY === "1";
+const LOCAL_MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const CLOUD_MODEL = process.env.OPENCLAW_CALENDAR_TEST_CLOUD_MODEL?.trim() || "gpt-5.1-codex-mini";
+const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
+const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
+const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
 const CALENDAR_TEST_ACCOUNT =
   process.env.OPENCLAW_CALENDAR_TEST_ACCOUNT?.trim() || "ikebotai@gmail.com";
 const CALENDAR_TEST_ID = process.env.OPENCLAW_CALENDAR_TEST_ID?.trim() || CALENDAR_TEST_ACCOUNT;
@@ -38,17 +43,53 @@ async function ollamaAvailable(): Promise<boolean> {
 }
 
 async function modelAvailable(): Promise<boolean> {
+  if (!LOCAL_ONLY) {
+    return true;
+  }
   try {
     const tags = await fetch(`${OLLAMA_BASE}/api/tags`, {
       signal: AbortSignal.timeout(2000),
     }).then((r) => r.json());
     const models = (tags?.models ?? []) as Array<{ name?: string; model?: string }>;
     return models.some(
-      (m) => (m.name ?? "").startsWith(MODEL) || (m.model ?? "").startsWith(MODEL),
+      (m) => (m.name ?? "").startsWith(LOCAL_MODEL) || (m.model ?? "").startsWith(LOCAL_MODEL),
     );
   } catch {
     return false;
   }
+}
+
+async function codexAuthAvailable(): Promise<boolean> {
+  if (LOCAL_ONLY) {
+    return true;
+  }
+  const oauthPath = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const authProfilesPath = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    const raw = await fs.readFile(oauthPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["openai-codex"]) {
+      return true;
+    }
+  } catch {}
+  try {
+    const raw = await fs.readFile(authProfilesPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; type?: string }>;
+    };
+    const profiles = parsed.profiles ?? {};
+    return Object.values(profiles).some(
+      (profile) => profile?.provider === "openai-codex" && profile?.type === "oauth",
+    );
+  } catch {}
+  return false;
 }
 
 async function gogCalendarAuthAvailable(): Promise<boolean> {
@@ -272,11 +313,11 @@ function assertNotBlockedByMutationSafety(text: string): void {
 }
 
 function calendarAgentConfig(workspaceDir: string) {
-  return {
+  const base = {
     agents: {
       defaults: {
-        model: `ollama/${MODEL}`,
-        routing: { enabled: false, classifierModel: `ollama/${MODEL}` },
+        model: MODEL_REF,
+        routing: { enabled: false, classifierModel: MODEL_REF },
         workspace: workspaceDir,
       },
       list: [
@@ -290,6 +331,12 @@ function calendarAgentConfig(workspaceDir: string) {
       ],
     },
     channels: { webchat: { allowFrom: ["*"] } },
+  };
+  if (!LOCAL_ONLY) {
+    return base;
+  }
+  return {
+    ...base,
     models: {
       providers: {
         ollama: {
@@ -297,7 +344,7 @@ function calendarAgentConfig(workspaceDir: string) {
           api: "openai-completions",
           models: [
             {
-              id: MODEL,
+              id: LOCAL_MODEL,
               name: "Qwen 2.5",
               api: "openai-completions",
               contextWindow: 32768,
@@ -314,10 +361,11 @@ describe("calendar mutation live e2e – real model", () => {
   let canRunLiveWrites = false;
 
   beforeAll(async () => {
-    const ollamaOk = await ollamaAvailable();
-    const modelOk = ollamaOk && (await modelAvailable());
+    const providerOk = LOCAL_ONLY
+      ? (await ollamaAvailable()) && (await modelAvailable())
+      : await codexAuthAvailable();
     const gogOk = await gogCalendarAuthAvailable();
-    if (modelOk && gogOk && LIVE_WRITE_ENABLED) {
+    if (providerOk && gogOk && LIVE_WRITE_ENABLED) {
       try {
         await runGogJson(["calendar", "calendars", "--account", CALENDAR_TEST_ACCOUNT, "--json"]);
         canRunLiveWrites = true;
