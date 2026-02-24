@@ -164,16 +164,8 @@ describe("trigger handling", () => {
       expect(extra).toContain("Activation: always-on");
     });
   });
-  it("runs a greeting prompt for a bare /new", async () => {
+  it("handles bare /new without running a model", async () => {
     await withTempHome(async (home) => {
-      vi.mocked(runEmbeddedPiAgent).mockResolvedValue({
-        payloads: [{ text: "hello" }],
-        meta: {
-          durationMs: 1,
-          agentMeta: { sessionId: "s", provider: "p", model: "m" },
-        },
-      });
-
       const res = await getReplyFromConfig(
         {
           Body: "/new",
@@ -200,10 +192,43 @@ describe("trigger handling", () => {
         },
       );
       const text = Array.isArray(res) ? res[0]?.text : res?.text;
-      expect(text).toBe("hello");
-      expect(runEmbeddedPiAgent).toHaveBeenCalledOnce();
-      const prompt = vi.mocked(runEmbeddedPiAgent).mock.calls[0]?.[0]?.prompt ?? "";
-      expect(prompt).toContain("A new session was started via /new or /reset");
+      expect(text).toBe("✅ New session started · model: anthropic/claude-opus-4-5");
+      expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  it("handles /new with arguments without running a model", async () => {
+    await withTempHome(async (home) => {
+      const res = await getReplyFromConfig(
+        {
+          Body: "/new take notes",
+          RawBody: "/new take notes",
+          CommandBody: "/new take notes",
+          From: "+1003",
+          To: "+2000",
+          CommandAuthorized: true,
+        },
+        {},
+        {
+          agents: {
+            defaults: {
+              model: "anthropic/claude-opus-4-5",
+              workspace: join(home, "openclaw"),
+            },
+          },
+          channels: {
+            whatsapp: {
+              allowFrom: ["*"],
+            },
+          },
+          session: {
+            store: join(tmpdir(), `openclaw-session-test-${Date.now()}.json`),
+          },
+        },
+      );
+      const text = Array.isArray(res) ? res[0]?.text : res?.text;
+      expect(text).toBe("✅ New session started · model: anthropic/claude-opus-4-5");
+      expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
     });
   });
 });

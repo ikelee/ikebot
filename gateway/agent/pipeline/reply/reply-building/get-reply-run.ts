@@ -274,6 +274,46 @@ export async function runPreparedReply(
     ? baseBodyFinal
     : [baseBodyFinal, inboundUserContext].filter(Boolean).join("\n\n");
   const baseBodyTrimmed = baseBodyForPrompt.trim();
+  if (resetTriggered && command.isAuthorizedSender) {
+    const sessionIdFinal = sessionId ?? crypto.randomUUID();
+    const queueKey = sessionKey ?? sessionIdFinal;
+    const cleared = clearSessionQueues([queueKey, sessionKey, sessionIdFinal]);
+    for (const key of [queueKey, sessionKey, sessionIdFinal]) {
+      const cleaned = key?.trim();
+      if (!cleaned) {
+        continue;
+      }
+      drainSystemEvents(cleaned);
+    }
+    logVerbose(
+      `Reset cleared queues keys=${cleared.keys.join(",")} followupCleared=${cleared.followupCleared} laneCleared=${cleared.laneCleared}`,
+    );
+    // /new and /reset should be deterministic: acknowledge the reset and avoid agent/model calls.
+    const modelLabel = `${provider}/${model}`;
+    const defaultLabel = `${defaultProvider}/${defaultModel}`;
+    const text =
+      modelLabel === defaultLabel
+        ? `✅ New session started · model: ${modelLabel}`
+        : `✅ New session started · model: ${modelLabel} (default: ${defaultLabel})`;
+    // oxlint-disable-next-line typescript/no-explicit-any
+    const channel = ctx.OriginatingChannel || (command.channel as any);
+    const to = ctx.OriginatingTo || command.from || command.to;
+    if (channel && to) {
+      await routeReply({
+        payload: { text },
+        channel,
+        to,
+        sessionKey,
+        accountId: ctx.AccountId,
+        threadId: ctx.MessageThreadId,
+        cfg,
+      });
+      typing.cleanup();
+      return undefined;
+    }
+    typing.cleanup();
+    return { text };
+  }
   if (!baseBodyTrimmed) {
     await typing.onReplyStart();
     logVerbose("Inbound body empty after normalization; skipping agent run");
@@ -362,28 +402,6 @@ export async function runPreparedReply(
       }
     }
   }
-  if (resetTriggered && command.isAuthorizedSender) {
-    // oxlint-disable-next-line typescript/no-explicit-any
-    const channel = ctx.OriginatingChannel || (command.channel as any);
-    const to = ctx.OriginatingTo || command.from || command.to;
-    if (channel && to) {
-      const modelLabel = `${provider}/${model}`;
-      const defaultLabel = `${defaultProvider}/${defaultModel}`;
-      const text =
-        modelLabel === defaultLabel
-          ? `✅ New session started · model: ${modelLabel}`
-          : `✅ New session started · model: ${modelLabel} (default: ${defaultLabel})`;
-      await routeReply({
-        payload: { text },
-        channel,
-        to,
-        sessionKey,
-        accountId: ctx.AccountId,
-        threadId: ctx.MessageThreadId,
-        cfg,
-      });
-    }
-  }
   const sessionIdFinal = sessionId ?? crypto.randomUUID();
   const sessionFile = resolveSessionFilePath(
     sessionIdFinal,
@@ -409,19 +427,6 @@ export async function runPreparedReply(
     logVerbose(`Interrupting ${sessionLaneKey} (cleared ${cleared}, aborted=${aborted})`);
   }
   const queueKey = sessionKey ?? sessionIdFinal;
-  if (resetTriggered && command.isAuthorizedSender) {
-    const cleared = clearSessionQueues([queueKey, sessionKey, sessionIdFinal]);
-    for (const key of [queueKey, sessionKey, sessionIdFinal]) {
-      const cleaned = key?.trim();
-      if (!cleaned) {
-        continue;
-      }
-      drainSystemEvents(cleaned);
-    }
-    logVerbose(
-      `Reset cleared queues keys=${cleared.keys.join(",")} followupCleared=${cleared.followupCleared} laneCleared=${cleared.laneCleared}`,
-    );
-  }
   const isActive = isEmbeddedPiRunActive(sessionIdFinal);
   const isStreaming = isEmbeddedPiRunStreaming(sessionIdFinal);
   const shouldSteer = resolvedQueue.mode === "steer" || resolvedQueue.mode === "steer-backlog";

@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "../../../infra/config/config.js";
 import type { HookHandler } from "../../hooks.js";
 import { makeTempWorkspace, writeWorkspaceFile } from "../../../../test-helpers/workspace.js";
 import { createHookEvent } from "../../hooks.js";
+import { generateSlugViaLLM } from "../../llm-slug-generator.js";
 
 // Avoid calling the embedded Pi agent (global command lane); keep this unit test deterministic.
 vi.mock("../../llm-slug-generator.js", () => ({
@@ -41,6 +42,74 @@ function createMockSessionContent(
 }
 
 describe("session-memory hook", () => {
+  it("does not call LLM slug generation by default", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-session-memory-");
+    const sessionsDir = path.join(tempDir, "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionFile = await writeWorkspaceFile({
+      dir: sessionsDir,
+      name: "test-session.jsonl",
+      content: createMockSessionContent([
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "world" },
+      ]),
+    });
+
+    const cfg: OpenClawConfig = {
+      agents: { defaults: { workspace: tempDir } },
+      hooks: {
+        internal: {
+          entries: {
+            "session-memory": { enabled: true },
+          },
+        },
+      },
+    };
+
+    await handler(
+      createHookEvent("command", "new", "agent:main:main", {
+        cfg,
+        previousSessionEntry: { sessionId: "test-123", sessionFile },
+      }),
+    );
+
+    expect(generateSlugViaLLM).not.toHaveBeenCalled();
+  });
+
+  it("still skips LLM slug generation in test env even when enabled", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-session-memory-");
+    const sessionsDir = path.join(tempDir, "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionFile = await writeWorkspaceFile({
+      dir: sessionsDir,
+      name: "test-session.jsonl",
+      content: createMockSessionContent([
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "world" },
+      ]),
+    });
+
+    const cfg: OpenClawConfig = {
+      agents: { defaults: { workspace: tempDir } },
+      hooks: {
+        internal: {
+          entries: {
+            "session-memory": { enabled: true, llmSlug: true },
+          },
+        },
+      },
+    };
+
+    await handler(
+      createHookEvent("command", "new", "agent:main:main", {
+        cfg,
+        previousSessionEntry: { sessionId: "test-123", sessionFile },
+      }),
+    );
+
+    expect(generateSlugViaLLM).not.toHaveBeenCalled();
+  });
+
   it("skips non-command events", async () => {
     const tempDir = await makeTempWorkspace("openclaw-session-memory-");
 

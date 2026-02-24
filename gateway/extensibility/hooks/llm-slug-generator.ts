@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "../../infra/config/config.js";
+import { resolveDefaultModelForAgent } from "../../models/model-selection.js";
 import {
   resolveDefaultAgentId,
   resolveAgentWorkspaceDir,
@@ -26,6 +27,7 @@ export async function generateSlugViaLLM(params: {
     const agentId = resolveDefaultAgentId(params.cfg);
     const workspaceDir = resolveAgentWorkspaceDir(params.cfg, agentId);
     const agentDir = resolveAgentDir(params.cfg, agentId);
+    const modelRef = resolveDefaultModelForAgent({ cfg: params.cfg, agentId });
 
     // Create a temporary session file for this one-off LLM call
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-slug-"));
@@ -42,6 +44,8 @@ Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", 
       sessionId: `slug-generator-${Date.now()}`,
       sessionKey: "temp:slug-generator",
       agentId,
+      provider: modelRef.provider,
+      model: modelRef.model,
       sessionFile: tempSessionFile,
       workspaceDir,
       agentDir,
