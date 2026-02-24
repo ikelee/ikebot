@@ -166,6 +166,7 @@ export type AppViewState = {
   usageSelectedDays: string[];
   usageSelectedHours: number[];
   usageChartMode: "tokens" | "cost";
+  usageSourceFilter: "both" | "live" | "test";
   usageDailyChartMode: "total" | "by-type";
   usageTimeSeriesMode: "cumulative" | "per-turn";
   usageTimeSeriesBreakdownMode: "total" | "by-type";

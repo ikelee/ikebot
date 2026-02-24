@@ -210,6 +210,8 @@ export type TimeSeriesPoint = {
 };
 
 export type UsageProps = {
+  pageTitle?: string;
+  pageSubtitle?: string;
   loading: boolean;
   error: string | null;
   startDate: string;
@@ -223,6 +225,8 @@ export type UsageProps = {
   selectedDays: string[]; // Support multiple day selection
   selectedHours: number[]; // Support multiple hour selection
   chartMode: "tokens" | "cost";
+  showChartModeToggle?: boolean;
+  sourceFilter: "both" | "live" | "test";
   dailyChartMode: "total" | "by-type";
   timeSeriesMode: "cumulative" | "per-turn";
   timeSeriesBreakdownMode: "total" | "by-type";
@@ -259,6 +263,7 @@ export type UsageProps = {
   onLogFilterClear: () => void;
   onSelectSession: (key: string, shiftKey: boolean) => void;
   onChartModeChange: (mode: "tokens" | "cost") => void;
+  onSourceFilterChange: (mode: "both" | "live" | "test") => void;
   onDailyChartModeChange: (mode: "total" | "by-type") => void;
   onTimeSeriesModeChange: (mode: "cumulative" | "per-turn") => void;
   onTimeSeriesBreakdownChange: (mode: "total" | "by-type") => void;

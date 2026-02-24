@@ -71,11 +71,12 @@ export async function loadUsage(
         const displayName = match?.displayName?.trim() || undefined;
         const derivedTitle = match?.derivedTitle?.trim() || undefined;
         const keyLower = entry.key.toLowerCase();
-        const runKind: "cron" | "test" | "session" = keyLower.includes(":testing")
-          ? "test"
-          : keyLower.includes(":cron:")
-            ? "cron"
-            : "session";
+        const runKind: "cron" | "test" | "session" =
+          entry.sessionSource === "test" || match?.sessionSource === "test"
+            ? "test"
+            : keyLower.includes(":cron:")
+              ? "cron"
+              : "session";
         return {
           ...entry,
           label: entry.label ?? match?.label ?? undefined,
@@ -88,6 +89,72 @@ export async function loadUsage(
     }
     if (costRes) {
       state.usageCostSummary = costRes as CostUsageSummary;
+    }
+  } catch (err) {
+    state.usageError = String(err);
+  } finally {
+    state.usageLoading = false;
+  }
+}
+
+export async function loadTelemetryUsage(
+  state: UsageState,
+  overrides?: {
+    startDate?: string;
+    endDate?: string;
+  },
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  if (state.usageLoading) {
+    return;
+  }
+  state.usageLoading = true;
+  state.usageError = null;
+  try {
+    const startDate = overrides?.startDate ?? state.usageStartDate;
+    const endDate = overrides?.endDate ?? state.usageEndDate;
+    const sessionsRes = await state.client.request("usage.telemetry", {
+      startDate,
+      endDate,
+      limit: 1000,
+    });
+    if (sessionsRes) {
+      const usage = sessionsRes as SessionsUsageResult;
+      usage.sessions = usage.sessions.map((entry) => {
+        const keyLower = entry.key.toLowerCase();
+        const runKind: "cron" | "test" | "session" =
+          entry.sessionSource === "test"
+            ? "test"
+            : keyLower.includes(":cron:")
+              ? "cron"
+              : "session";
+        return {
+          ...entry,
+          runKind,
+        };
+      });
+      state.usageResult = usage;
+      state.usageCostSummary = {
+        updatedAt: usage.updatedAt,
+        days: usage.aggregates.daily.length,
+        daily: usage.aggregates.daily.map((day) => ({
+          date: day.date,
+          input: 0,
+          output: day.tokens,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: day.tokens,
+          totalCost: day.cost,
+          inputCost: 0,
+          outputCost: day.cost,
+          cacheReadCost: 0,
+          cacheWriteCost: 0,
+          missingCostEntries: 0,
+        })),
+        totals: usage.totals,
+      };
     }
   } catch (err) {
     state.usageError = String(err);

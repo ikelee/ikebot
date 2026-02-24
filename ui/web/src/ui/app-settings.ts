@@ -25,6 +25,7 @@ import { loadPresence } from "./controllers/presence.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
 import { loadTestSuites } from "./controllers/test-suites.ts";
+import { loadTelemetryUsage, loadUsage } from "./controllers/usage.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -199,6 +200,12 @@ export async function refreshActiveTab(host: SettingsHost) {
   }
   if (host.tab === "monitor") {
     await loadMonitoring(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "usage") {
+    await loadUsage(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "telemetry") {
+    await loadTelemetryUsage(host as unknown as OpenClawApp);
   }
   if (host.tab === "test-suites") {
     await loadTestSuites(host as unknown as OpenClawApp);

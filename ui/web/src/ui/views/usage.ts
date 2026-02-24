@@ -2544,6 +2544,10 @@ function renderSessionLogsCompact(
 }
 
 export function renderUsage(props: UsageProps) {
+  const pageTitle = props.pageTitle ?? "Usage";
+  const pageSubtitle =
+    props.pageSubtitle ?? "See where tokens go, when sessions spike, and what drives cost.";
+  const showChartModeToggle = props.showChartModeToggle ?? true;
   // Show loading skeleton if loading and no data yet
   if (props.loading && !props.totals) {
     // Use inline styles since main stylesheet hasn't loaded yet on initial render
@@ -2597,12 +2601,18 @@ export function renderUsage(props: UsageProps) {
   }
 
   const isTokenMode = props.chartMode === "tokens";
+  const sourceFilteredSessions =
+    props.sourceFilter === "both"
+      ? props.sessions
+      : props.sessions.filter((s) =>
+          props.sourceFilter === "test" ? s.runKind === "test" : s.runKind !== "test",
+        );
   const hasQuery = props.query.trim().length > 0;
   const hasDraftQuery = props.queryDraft.trim().length > 0;
   // (intentionally no global Clear button in the header; chips + query clear handle this)
 
   // Sort sessions by tokens or cost depending on mode
-  const sortedSessions = [...props.sessions].toSorted((a, b) => {
+  const sortedSessions = [...sourceFilteredSessions].toSorted((a, b) => {
     const valA = isTokenMode ? (a.usage?.totalTokens ?? 0) : (a.usage?.totalCost ?? 0);
     const valB = isTokenMode ? (b.usage?.totalTokens ?? 0) : (b.usage?.totalCost ?? 0);
     return valB - valA;
@@ -2700,7 +2710,7 @@ export function renderUsage(props: UsageProps) {
   // Get first selected session for detail view (timeseries, logs)
   const primarySelectedEntry =
     props.selectedSessions.length === 1
-      ? (props.sessions.find((s) => s.key === props.selectedSessions[0]) ??
+      ? (sourceFilteredSessions.find((s) => s.key === props.selectedSessions[0]) ??
         filteredSessions.find((s) => s.key === props.selectedSessions[0]))
       : null;
 
@@ -2830,7 +2840,7 @@ export function renderUsage(props: UsageProps) {
       : props.costDaily;
 
   const insightStats = buildUsageInsightStats(aggregateSessions, displayTotals, activeAggregates);
-  const isEmpty = !props.loading && !props.totals && props.sessions.length === 0;
+  const isEmpty = !props.loading && !props.totals && sourceFilteredSessions.length === 0;
   const hasMissingCost =
     (displayTotals?.missingCostEntries ?? 0) > 0 ||
     (displayTotals
@@ -2949,8 +2959,8 @@ export function renderUsage(props: UsageProps) {
     <style>${usageStylesString}</style>
 
     <section class="usage-page-header">
-      <div class="usage-page-title">Usage</div>
-      <div class="usage-page-subtitle">See where tokens go, when sessions spike, and what drives cost.</div>
+      <div class="usage-page-title">${pageTitle}</div>
+      <div class="usage-page-subtitle">${pageSubtitle}</div>
     </section>
 
     <section class="card usage-header ${props.headerPinned ? "pinned" : ""}">
@@ -3072,7 +3082,7 @@ export function renderUsage(props: UsageProps) {
             props.selectedDays,
             props.selectedHours,
             props.selectedSessions,
-            props.sessions,
+            sourceFilteredSessions,
             props.onClearDays,
             props.onClearHours,
             props.onClearSessions,
@@ -3109,20 +3119,38 @@ export function renderUsage(props: UsageProps) {
             <option value="local">Local</option>
             <option value="utc">UTC</option>
           </select>
-          <div class="chart-toggle">
-            <button
-              class="toggle-btn ${isTokenMode ? "active" : ""}"
-              @click=${() => props.onChartModeChange("tokens")}
-            >
-              Tokens
-            </button>
-            <button
-              class="toggle-btn ${!isTokenMode ? "active" : ""}"
-              @click=${() => props.onChartModeChange("cost")}
-            >
-              Cost
-            </button>
-          </div>
+          <select
+            title="Source filter"
+            .value=${props.sourceFilter}
+            @change=${(e: Event) =>
+              props.onSourceFilterChange(
+                (e.target as HTMLSelectElement).value as "both" | "live" | "test",
+              )}
+          >
+            <option value="both">Both</option>
+            <option value="live">Live</option>
+            <option value="test">Test</option>
+          </select>
+          ${
+            showChartModeToggle
+              ? html`
+                  <div class="chart-toggle">
+                    <button
+                      class="toggle-btn ${isTokenMode ? "active" : ""}"
+                      @click=${() => props.onChartModeChange("tokens")}
+                    >
+                      Tokens
+                    </button>
+                    <button
+                      class="toggle-btn ${!isTokenMode ? "active" : ""}"
+                      @click=${() => props.onChartModeChange("cost")}
+                    >
+                      Cost
+                    </button>
+                  </div>
+                `
+              : nothing
+          }
           <button
             class="btn btn-sm usage-action-btn usage-primary-btn"
             @click=${props.onRefresh}

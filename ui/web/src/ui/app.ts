@@ -255,6 +255,7 @@ export class OpenClawApp extends LitElement {
   @state() usageSelectedDays: string[] = [];
   @state() usageSelectedHours: number[] = [];
   @state() usageChartMode: "tokens" | "cost" = "tokens";
+  @state() usageSourceFilter: "both" | "live" | "test" = "both";
   @state() usageDailyChartMode: "total" | "by-type" = "by-type";
   @state() usageTimeSeriesMode: "cumulative" | "per-turn" = "per-turn";
   @state() usageTimeSeriesBreakdownMode: "total" | "by-type" = "by-type";

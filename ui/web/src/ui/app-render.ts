@@ -1,7 +1,6 @@
 import { parseAgentSessionKey } from "gateway/infra/routing/session-key.js";
 import { html, nothing } from "lit";
 import type { AppViewState } from "./app-view-state.ts";
-import type { UsageState } from "./controllers/usage.ts";
 import { refreshChatAvatar } from "./app-chat.ts";
 import { renderChatControls, renderTab, renderThemeToggle } from "./app-render.helpers.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
@@ -67,17 +66,25 @@ import {
   runTestSuite,
   toggleTestSuiteFileSelection,
 } from "./controllers/test-suites.ts";
-import { loadUsage, loadSessionTimeSeries, loadSessionLogs } from "./controllers/usage.ts";
+import {
+  loadUsage,
+  loadTelemetryUsage,
+  loadSessionTimeSeries,
+  loadSessionLogs,
+} from "./controllers/usage.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
 
 // Module-scope debounce for usage date changes (avoids type-unsafe hacks on state object)
 let usageDateDebounceTimeout: number | null = null;
-const debouncedLoadUsage = (state: UsageState) => {
+const debouncedLoadUsage = (state: AppViewState) => {
   if (usageDateDebounceTimeout) {
     clearTimeout(usageDateDebounceTimeout);
   }
-  usageDateDebounceTimeout = window.setTimeout(() => void loadUsage(state), 400);
+  usageDateDebounceTimeout = window.setTimeout(
+    () => void (state.tab === "telemetry" ? loadTelemetryUsage(state) : loadUsage(state)),
+    400,
+  );
 };
 import { renderAgentTesting } from "./views/agent-testing.ts";
 import { renderAgents } from "./views/agents.ts";
@@ -225,8 +232,16 @@ export function renderApp(state: AppViewState) {
       <main class="content ${isChat ? "content--chat" : ""}">
         <section class="content-header">
           <div>
-            ${state.tab === "usage" ? nothing : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
-            ${state.tab === "usage" ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
+            ${
+              state.tab === "usage" || state.tab === "telemetry"
+                ? nothing
+                : html`<div class="page-title">${titleForTab(state.tab)}</div>`
+            }
+            ${
+              state.tab === "usage" || state.tab === "telemetry"
+                ? nothing
+                : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`
+            }
           </div>
           <div class="page-meta">
             ${state.lastError ? html`<div class="pill danger">${state.lastError}</div>` : nothing}
@@ -342,8 +357,13 @@ export function renderApp(state: AppViewState) {
         }
 
         ${
-          state.tab === "usage"
+          state.tab === "usage" || state.tab === "telemetry"
             ? renderUsage({
+                pageTitle: state.tab === "telemetry" ? "Telemetry" : "Usage",
+                pageSubtitle:
+                  state.tab === "telemetry"
+                    ? "Structured telemetry from user calls, tool loops, and model calls."
+                    : "See where tokens go, when sessions spike, and what drives cost.",
                 loading: state.usageLoading,
                 error: state.usageError,
                 startDate: state.usageStartDate,
@@ -357,6 +377,8 @@ export function renderApp(state: AppViewState) {
                 selectedDays: state.usageSelectedDays,
                 selectedHours: state.usageSelectedHours,
                 chartMode: state.usageChartMode,
+                showChartModeToggle: state.tab !== "telemetry",
+                sourceFilter: state.usageSourceFilter,
                 dailyChartMode: state.usageDailyChartMode,
                 timeSeriesMode: state.usageTimeSeriesMode,
                 timeSeriesBreakdownMode: state.usageTimeSeriesBreakdownMode,
@@ -394,9 +416,14 @@ export function renderApp(state: AppViewState) {
                   state.usageSelectedSessions = [];
                   debouncedLoadUsage(state);
                 },
-                onRefresh: () => loadUsage(state),
+                onRefresh: () =>
+                  state.tab === "telemetry" ? loadTelemetryUsage(state) : loadUsage(state),
                 onTimeZoneChange: (zone) => {
                   state.usageTimeZone = zone;
+                },
+                onSourceFilterChange: (mode) => {
+                  state.usageSourceFilter = mode;
+                  state.usageSelectedSessions = [];
                 },
                 onToggleContextExpanded: () => {
                   state.usageContextExpanded = !state.usageContextExpanded;
@@ -540,7 +567,7 @@ export function renderApp(state: AppViewState) {
                   }
 
                   // Load timeseries/logs only if exactly one session selected
-                  if (state.usageSelectedSessions.length === 1) {
+                  if (state.tab !== "telemetry" && state.usageSelectedSessions.length === 1) {
                     void loadSessionTimeSeries(state, state.usageSelectedSessions[0]);
                     void loadSessionLogs(state, state.usageSelectedSessions[0]);
                   }

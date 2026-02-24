@@ -10,6 +10,7 @@ export const TAB_GROUPS = [
       "instances",
       "sessions",
       "usage",
+      "telemetry",
       "monitor",
       "test-suites",
       "cron",
@@ -27,6 +28,7 @@ export type Tab =
   | "instances"
   | "sessions"
   | "usage"
+  | "telemetry"
   | "monitor"
   | "test-suites"
   | "cron"
@@ -46,6 +48,7 @@ const TAB_PATHS: Record<Tab, string> = {
   instances: "/instances",
   sessions: "/sessions",
   usage: "/usage",
+  telemetry: "/telemetry",
   monitor: "/monitor",
   "test-suites": "/test-suites",
   cron: "/cron",
@@ -156,6 +159,8 @@ export function iconForTab(tab: Tab): IconName {
       return "fileText";
     case "usage":
       return "barChart";
+    case "telemetry":
+      return "brain";
     case "monitor":
       return "monitor";
     case "test-suites":
@@ -195,6 +200,8 @@ export function titleForTab(tab: Tab) {
       return "Sessions";
     case "usage":
       return "Usage";
+    case "telemetry":
+      return "Telemetry";
     case "monitor":
       return "Monitoring";
     case "test-suites":
@@ -235,6 +242,8 @@ export function subtitleForTab(tab: Tab) {
     case "sessions":
       return "Inspect active sessions and adjust per-session defaults.";
     case "usage":
+      return "";
+    case "telemetry":
       return "";
     case "monitor":
       return "Live operational metrics for model calls and latency.";
