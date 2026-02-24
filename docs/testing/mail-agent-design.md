@@ -238,26 +238,42 @@ Proposed script layout:
   - Scans Thunderbird profile/export roots.
   - Detects `mbox` files, `maildir` folders (`cur/new`), and standalone `.eml`.
 - `scripts/mail/backfill-run.ts`
-  - Main orchestrator for parse -> normalize -> classify -> write outputs.
+  - Main one-pass orchestrator:
+    - parse -> normalize -> dedupe
+    - classify importance
+    - extract attachment binaries
+    - extract attachment text/OCR
+    - write index/events/qmd/review files.
 - `scripts/mail/attachment-extract.ts`
-  - Extracts document/image text and metadata.
-- `scripts/mail/index-rebuild.ts`
-  - Rebuilds `mail-index.json` and qmd docs from `mail-events.jsonl`.
+  - Optional standalone extractor for attachment folders already on disk.
 - `scripts/mail/verify-backfill.ts`
   - Reports counts, failures, dedupe ratio, and confidence checks.
 
 Inputs:
 
-- Thunderbird profile roots (`~/Library/Thunderbird/Profiles/**`).
-- Optional exported archives (`mbox`, `eml`) for explicit backfill runs.
+- Source roots passed to discover (`--roots`), commonly:
+  - Thunderbird profiles
+  - local archive folders in `~/Documents/*`
+- `backfill-run` takes discovered source file via `--sources`.
 
 Outputs:
 
 - `mail-events.jsonl` (append-only, all messages/events)
 - `mail-index.json` (deterministic materialized index; includes important + non-important metadata)
 - `mail-checkpoint.json` (per-source cursors, last run watermark, counters)
-- `mail-jobs.json` (pending/failed extraction jobs, retries)
-- qmd docs/chunks for semantic retrieval (important content only)
+- `qmd/emails/important/*.md` (semantic docs for important messages)
+- `attachments/raw/<recordId>/*` (decoded attachment binaries)
+- `attachments/text/*.txt` (extracted attachment text/OCR output)
+- `attachment-analysis-summary.json` (tool detection + attachment extraction config)
+- `review/attachment-skipped.jsonl` (all skipped attachment analyses)
+- `review/attachment-errors.jsonl` (all attachment/parser errors)
+- `review/risky-dropped.jsonl` (not-important messages that matched high-value keywords; false-negative audit list)
+
+`mail-index.json` per-message record includes:
+
+- Message metadata (`messageId`, sender, subject, date, folder/source)
+- classification (`importance`, `importanceReasons`)
+- attachment linkage (`attachments[]` with file path, text path, analysis status)
 
 Backfill stages:
 
@@ -281,21 +297,23 @@ Backfill stages:
    - Persist extracted text + metadata linked by `messageId`, `attachmentId`, `contentHash`.
 5. Importance classification (high recall)
    - Goal: keep anything remotely important.
-   - `important=true` when any strong signal appears:
-     - finance/legal/travel/account/security keywords
-     - receipt/invoice/order/ticket/tracking entities
-     - has attachments (default keep unless very strong newsletter signal)
-     - sender/domain allowlist
-   - `not_important=true` only on strong combined promo/newsletter signals:
-     - `List-Unsubscribe`, bulk sender patterns, promo subject patterns, no high-value entities, no meaningful attachments.
-   - Uncertain cases default to `important=true`.
+   - `important=true` when strong signals appear:
+     - e-transfer / Interac, receipts/invoices, tax/legal, recruiter/job, realtor, booking/confirmation, DocuSign
+     - attachment present
+     - human-thread indicators (`In-Reply-To`/`References`) when sender does not look bulk
+   - `not_important=true` on strong bulk/promo/newsletter signals:
+     - unsubscribe headers/body markers, bulk sender/domain patterns, promo subject patterns
+     - calendar birthday notifications are explicitly downgraded.
+   - false-negative guardrail:
+     - dropped messages that still match high-value keywords are written to `review/risky-dropped.jsonl`.
    - Always store classification reason codes (for review and tuning).
 6. Write storage layers
    - Always append event row to `mail-events.jsonl`.
    - Always upsert compact deterministic record in `mail-index.json`.
-   - Only write qmd semantic documents for:
+   - qmd semantic documents are written during ingestion for:
      - important messages
      - extracted attachment text linked to important messages.
+   - skipped/error review logs are written during ingestion for audit.
 7. Checkpoint and resume
    - Persist per-source cursor after each batch.
    - Resume safely after interruption without duplicate output rows/chunks.
@@ -318,14 +336,34 @@ Operational controls:
 
 - Batch size controls for message parse and extraction workers.
 - Max attachment bytes per file/job with skip + reason logging.
-- Retry policy for extraction failures with dead-letter records in `mail-jobs.json`.
-- Dry-run mode for classification tuning without writing qmd chunks.
+- Skip/error review files for attachment processing.
+- Risky-drop review file for false-negative triage.
+
+Post-run audit checklist:
+
+1. Core run summary:
+   - Check `processed`, `important`, `not_important`, `failed` from `backfill-run` output.
+2. Deterministic integrity:
+   - Run `scripts/mail/verify-backfill.ts` and confirm totals align with run summary.
+3. Attachment extraction health:
+   - Review `attachment-analysis-summary.json` (tool detection: `pdftotext`, `tesseract`, `unzip`).
+   - Review counts and samples from:
+     - `review/attachment-skipped.jsonl`
+     - `review/attachment-errors.jsonl`
+4. Importance quality:
+   - Spot-check:
+     - random `not_important` rows
+     - random `important` rows
+   - Treat every row in `review/risky-dropped.jsonl` as manual review candidates.
+5. Semantic coverage:
+   - Confirm qmd docs exist under `qmd/emails/important`.
+   - Sample retrieval quality for high-value requests (receipt/tax/booking/interview).
 
 Acceptance criteria for Phase 0:
 
 - Backfill can process full local mailbox and resume safely after interruption.
 - Every parsed message appears in `mail-events.jsonl` and `mail-index.json`.
-- Attachment text extraction works for PDFs/images with explicit success/failure markers.
+- Attachment extraction writes explicit `ok`/`skipped`/`error` markers with review logs.
 - Importance gate keeps high-value mail while suppressing obvious newsletter/promo noise from semantic index.
 - Retrieval can answer key historical queries with evidence fields.
 
