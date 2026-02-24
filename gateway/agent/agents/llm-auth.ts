@@ -1,7 +1,9 @@
 import type { Api, Model } from "@mariozechner/pi-ai";
+import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../infra/config/config.js";
 import { getApiKeyForModel, requireApiKey } from "../../models/model-auth.js";
 import { normalizeProviderId } from "../../models/model-selection.js";
+import { isStreamParamAllowed } from "../../runtime/pi-embedded-runner/stream-params-policy.js";
 
 const NO_API_KEY_PROVIDERS = new Set(["local", "ollama", "lmstudio"]);
 
@@ -24,6 +26,35 @@ export async function resolveCompleteSimpleApiKey(params: {
     return "no-api-key-needed";
   }
   return requireApiKey(auth, params.model.provider);
+}
+
+export function buildCompleteSimpleOptions(params: {
+  model: Model<Api>;
+  apiKey: string;
+  maxTokens: number;
+  temperature?: number;
+  reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh";
+}): SimpleStreamOptions {
+  const provider = normalizeProviderId(params.model.provider);
+  const modelId = `${params.model.id ?? ""}`;
+  const options: SimpleStreamOptions = {
+    apiKey: params.apiKey,
+    maxTokens: params.maxTokens,
+  };
+  if (params.reasoning !== undefined) {
+    options.reasoning = params.reasoning;
+  }
+  if (
+    params.temperature !== undefined &&
+    isStreamParamAllowed({
+      provider,
+      modelId,
+      param: "temperature",
+    })
+  ) {
+    options.temperature = params.temperature;
+  }
+  return options;
 }
 
 export function extractCompletionText(response: unknown): string {

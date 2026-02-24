@@ -7,7 +7,11 @@ import { parseModelRef } from "../../../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
 import { resolveAgentModelPrimary } from "../../../runtime/agent-scope.js";
 import { resolveModel } from "../../../runtime/pi-embedded-runner/model.js";
-import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
+import {
+  buildCompleteSimpleOptions,
+  extractCompletionText,
+  resolveCompleteSimpleApiKey,
+} from "../llm-auth.js";
 import { memoFilenameForIdentifier, parseWorkoutState, type WorkoutState } from "./state.js";
 
 type CoachingStyle = "supportive" | "assertive" | "aggressive";
@@ -183,11 +187,12 @@ If the field is missing/unclear, return {}.`;
         systemPrompt,
         messages: [{ role: "user", content: body, timestamp: Date.now() }],
       },
-      {
+      buildCompleteSimpleOptions({
+        model: resolvedModel.model,
         apiKey,
         temperature: 0,
         maxTokens: 180,
-      },
+      }),
     );
     const text = extractCompletionText(response);
     const parsed = extractJsonObject(text);

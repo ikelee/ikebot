@@ -20,7 +20,11 @@ import {
   type AgentInput,
   type AgentOutput,
 } from "../../core/agent.js";
-import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
+import {
+  buildCompleteSimpleOptions,
+  extractCompletionText,
+  resolveCompleteSimpleApiKey,
+} from "../llm-auth.js";
 import { CLASSIFIER_SYSTEM_PROMPT } from "./prompt.js";
 
 const BASIC_COMMANDS = ["/status", "/help", "/new", "/reset", "/verbose", "/usage"];
@@ -200,14 +204,28 @@ export class RouterAgent extends Agent {
     const response = await completeSimple(
       model,
       { systemPrompt, messages },
-      {
+      buildCompleteSimpleOptions({
+        model,
         apiKey,
         maxTokens: 128,
         temperature: 0,
-      },
+      }),
     );
-
     const accumulatedText = extractCompletionText(response);
+    if (!accumulatedText.trim()) {
+      const contentTypes = Array.isArray((response as { content?: unknown[] }).content)
+        ? ((response as { content?: unknown[] }).content ?? [])
+            .map((item) =>
+              item && typeof item === "object" && "type" in item
+                ? String((item as { type?: unknown }).type ?? "unknown")
+                : "unknown",
+            )
+            .join(",")
+        : "none";
+      console.log(
+        `[Router] classifier returned empty text (stopReason=${String((response as { stopReason?: unknown }).stopReason ?? "unknown")} error=${String((response as { errorMessage?: unknown }).errorMessage ?? "unknown")} contentTypes=${contentTypes || "none"})`,
+      );
+    }
 
     logModelIo(log.info.bind(log), "Router output", accumulatedText, true);
     if (!accumulatedText.trim()) {

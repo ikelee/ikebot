@@ -7,7 +7,11 @@ import { parseModelRef } from "../../../models/model-selection.js";
 import { resolveOpenClawAgentDir } from "../../../runtime/agent-paths.js";
 import { resolveAgentModelPrimary } from "../../../runtime/agent-scope.js";
 import { resolveModel } from "../../../runtime/pi-embedded-runner/model.js";
-import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
+import {
+  buildCompleteSimpleOptions,
+  extractCompletionText,
+  resolveCompleteSimpleApiKey,
+} from "../llm-auth.js";
 
 type MailField = "accountEmail" | "summaryWindowDays";
 type MailState = {
@@ -140,7 +144,12 @@ If unknown return {}.`;
         systemPrompt,
         messages: [{ role: "user", content: body, timestamp: Date.now() }],
       },
-      { apiKey, temperature: 0, maxTokens: 120 },
+      buildCompleteSimpleOptions({
+        model: resolved.model,
+        apiKey,
+        temperature: 0,
+        maxTokens: 120,
+      }),
     );
     const text = extractCompletionText(response);
     const json = extractJsonObject(text);

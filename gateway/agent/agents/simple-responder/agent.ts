@@ -21,7 +21,11 @@ import {
   type AgentInput,
   type AgentOutput,
 } from "../../core/agent.js";
-import { extractCompletionText, resolveCompleteSimpleApiKey } from "../llm-auth.js";
+import {
+  buildCompleteSimpleOptions,
+  extractCompletionText,
+  resolveCompleteSimpleApiKey,
+} from "../llm-auth.js";
 import { buildSimpleResponderPrompt } from "./prompt.js";
 
 export class SimpleResponderAgent extends Agent {
@@ -114,11 +118,12 @@ export class SimpleResponderAgent extends Agent {
       const response = await completeSimple(
         model,
         { systemPrompt, messages },
-        {
+        buildCompleteSimpleOptions({
+          model,
           apiKey,
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
-        },
+        }),
       );
 
       const responseText = extractCompletionText(response);
