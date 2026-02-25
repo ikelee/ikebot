@@ -192,15 +192,14 @@ describe("workouts agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns read+write for workouts agent", () => {
+    it("resolvePiConfig returns minimal workouts prompt defaults", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "workouts");
 
       expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
       expect(result.promptMode).toBe("minimal");
       expect(result.skills).toBe(false);
-      expect(result.toolsAllow).toContain("read");
-      expect(result.toolsAllow).toContain("write");
+      expect(result.toolsAllow).toBeUndefined();
     });
 
     it("runWorkoutsReply passes agentId=workouts to runPreparedReply", async () => {

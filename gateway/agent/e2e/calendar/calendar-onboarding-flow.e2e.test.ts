@@ -61,7 +61,7 @@ function buildConfig(home: string, mainWorkspace: string) {
         {
           id: "calendar",
           skills: ["gog"],
-          tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
         },
       ],
     },

@@ -2,7 +2,7 @@
  * Workouts Agent
  *
  * Purpose: Track workouts, suggest exercises, track weekly progress. File-based storage.
- * Access: read, write – piConfig minimal, read+write only.
+ * Access: governed by runtime tool policy/config.
  *
  * Invoked via runWorkoutsReply when router decision is "workouts".
  */
@@ -18,13 +18,12 @@ import {
 
 export const WORKOUTS_AGENT_ID = "workouts";
 
-/** Pi config: read+write only for workouts.json in workspace. */
+/** Pi config: minimal prompt/bootstrap defaults for workouts workflows. */
 export const WORKOUTS_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
   session: false,
-  tools: { allow: ["read", "write"] },
   skills: false,
   bootstrapMaxChars: 2_500,
   promptSections: {

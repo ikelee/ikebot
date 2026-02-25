@@ -2,7 +2,7 @@
  * Finance Agent
  *
  * Purpose: Track spendings from manual entries and screenshots, categorize spend, weekly totals.
- * Access: read, write, exec (tesseract), cron, sessions_spawn/list.
+ * Access: governed by runtime tool policy/config.
  *
  * Invoked via runFinanceReply when router decision is "finance".
  */
@@ -18,12 +18,11 @@ import {
 
 export const FINANCE_AGENT_ID = "finance";
 
-/** Pi config: read+write+exec+cron and optional reminders handoff via sessions_spawn. */
+/** Pi config: minimal prompt/bootstrap defaults for finance workflows. */
 export const FINANCE_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: { allow: ["read", "write", "exec", "cron", "sessions_spawn", "sessions_list"] },
   skills: false,
 };
 

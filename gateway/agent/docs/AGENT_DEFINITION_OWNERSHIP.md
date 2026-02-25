@@ -19,7 +19,7 @@ Where agent definitions live and why.
 - `default` – default agent for new sessions
 - `skills` – skill allowlist (e.g. `["gog"]` for calendar)
 - `tools` – tool config (e.g. exec allowlist for gog)
-- `pi` – optional override for pi config (bootstrap, prompt mode, tools)
+- `pi` – optional override for pi config (bootstrap, prompt mode)
 
 When `agents.list` is set, `applyBuiltInAgents` ensures `main`, `calendar`, `reminders`, `mail`, `workouts`, `finance`, and `multi` exist if missing. Users can add/remove agents and override any of the above.
 
@@ -36,7 +36,7 @@ Code defines **built-in behavior** that users typically don't need to configure:
 
 ## Why Not Put Everything in Config?
 
-- **Pi config** (bootstrap files, prompt mode, tools allow) is derived from agent type. Calendar needs exec-only; main needs full. Putting `pi: { preset: "exec-only" }` in every user's config would be redundant.
+- **Pi config** (bootstrap files, prompt mode) is derived from agent type. Calendar needs exec-only; main needs full. Putting `pi: { preset: "exec-only" }` in every user's config would be redundant.
 - **Routing** (classifier → calendar vs complex) is implementation detail. Users enable calendar by having it in `agents.list`; they don't configure the router.
 - **Single source of truth**: Config = "what I want"; Code = "how it works". Config overrides code when both exist.
 

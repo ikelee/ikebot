@@ -170,15 +170,14 @@ describe("mail agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns exec+sessions for mail agent", () => {
+    it("resolvePiConfig returns minimal mail prompt defaults", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "mail");
 
       expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
       expect(result.promptMode).toBe("minimal");
       expect(result.skills).toBe(false);
-      expect(result.toolsAllow).toContain("exec");
-      expect(result.toolsAllow).toContain("sessions_spawn");
+      expect(result.toolsAllow).toBeUndefined();
     });
 
     it("runMailReply passes agentId=mail to runPreparedReply", async () => {

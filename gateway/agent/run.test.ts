@@ -461,7 +461,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -703,7 +707,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -755,7 +763,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -809,7 +821,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -883,7 +899,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -973,7 +993,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
           { id: "mail", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
         ],
       },
@@ -1083,7 +1107,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -1118,7 +1146,11 @@ describe("runAgentFlow", () => {
         defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
         list: [
           { id: "main", default: true },
-          { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+          {
+            id: "calendar",
+            skills: ["gog"],
+            tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+          },
         ],
       },
     });
@@ -1181,7 +1213,11 @@ describe("runAgentFlow", () => {
           defaults: { routing: { enabled: true, classifierModel: "ollama/llama-3.2-3b" } },
           list: [
             { id: "main", default: true },
-            { id: "calendar", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
+            {
+              id: "calendar",
+              skills: ["gog"],
+              tools: { allow: ["exec"], exec: { safeBins: ["gog"] } },
+            },
             { id: "mail", skills: ["gog"], tools: { exec: { safeBins: ["gog"] } } },
             { id: "workouts", skills: [], tools: {} },
             { id: "finance", skills: [], tools: {} },

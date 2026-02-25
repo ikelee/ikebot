@@ -2,7 +2,7 @@
  * Reminders Agent
  *
  * Purpose: Track reminders, schedule them via cron, list due reminders.
- * Access: cron, read, write – piConfig for minimal prompt, cron+read+write only.
+ * Access: governed by runtime tool policy/config.
  *
  * Invoked via runRemindersReply when router decision is "reminders".
  */
@@ -18,12 +18,11 @@ import {
 
 export const REMINDERS_AGENT_ID = "reminders";
 
-/** Pi config: cron+read+write only, SOUL+TOOLS, minimal prompt. */
+/** Pi config: minimal prompt/bootstrap defaults for reminders workflows. */
 export const REMINDERS_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: { allow: ["cron", "read", "write"] },
   skills: false,
 };
 

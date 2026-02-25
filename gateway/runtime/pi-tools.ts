@@ -434,6 +434,17 @@ export function createOpenClawCodingTools(options?: {
   const groupPolicyExpanded = resolvePolicy(groupPolicy, "group tools.allow");
   const sandboxPolicyExpanded = expandPolicyWithPluginGroups(sandbox?.tools, pluginGroups);
   const subagentPolicyExpanded = expandPolicyWithPluginGroups(subagentPolicy, pluginGroups);
+  const explicitAllowlistEntries = collectExplicitAllowlist([
+    profilePolicyExpanded,
+    providerProfileExpanded,
+    globalPolicyExpanded,
+    globalProviderExpanded,
+    agentPolicyExpanded,
+    agentProviderExpanded,
+    groupPolicyExpanded,
+    sandboxPolicyExpanded,
+    subagentPolicyExpanded,
+  ]);
 
   const toolsFiltered = profilePolicyExpanded
     ? filterToolsByPolicy(toolsByAuthorization, profilePolicyExpanded)
@@ -462,9 +473,15 @@ export function createOpenClawCodingTools(options?: {
   const subagentFiltered = subagentPolicyExpanded
     ? filterToolsByPolicy(sandboxed, subagentPolicyExpanded)
     : sandboxed;
+  // Enforce explicit tool allowlists: when no allowlist is configured in any resolved
+  // policy layer, expose no tools for this invocation.
+  const explicitlyAllowed =
+    explicitAllowlistEntries.length > 0
+      ? filterToolsByPolicy(subagentFiltered, { allow: explicitAllowlistEntries })
+      : [];
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.
   // Without this, some providers (notably OpenAI) will reject root-level union schemas.
-  const normalized = subagentFiltered.map(normalizeToolParameters);
+  const normalized = explicitlyAllowed.map(normalizeToolParameters);
   const withHooks = normalized.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,

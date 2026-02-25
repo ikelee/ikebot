@@ -178,6 +178,10 @@ function workoutAgentConfig(workspaceDir: string, home: string) {
       };
 
   return {
+    tools: {
+      allow: ["read", "write"],
+      deny: ["exec", "process", "apply_patch"],
+    },
     agents: {
       defaults: {
         model: MODEL_REF,
@@ -191,6 +195,7 @@ function workoutAgentConfig(workspaceDir: string, home: string) {
           workspace: workspaceDir,
           skills: [],
           tools: {
+            allow: ["read", "write"],
             files: {
               allowedPaths: [
                 "workouts.json",
@@ -290,9 +295,14 @@ function stringifyLogArg(value: unknown): string {
   }
 }
 
-function countReqStarts(lines: string[]): number {
+function countToolLoopStarts(lines: string[]): number {
   let count = 0;
   for (const line of lines) {
+    if (/\[telemetry\]\s+tool_loop\.start\b/i.test(line)) {
+      count += 1;
+      continue;
+    }
+    // Backward compatibility for legacy Ollama-only loop logging.
     const match = line.match(/\[ollama-stream-fn\] req#(\d+) start\b/i);
     if (!match) {
       continue;
@@ -341,7 +351,7 @@ async function runWorkoutsAgentWithLoopCount(params: {
       }
       return {
         reply,
-        loops: countReqStarts(capturedLogs),
+        loops: countToolLoopStarts(capturedLogs),
       };
     } finally {
       logSpy.mockRestore();

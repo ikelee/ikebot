@@ -4,7 +4,7 @@
  * Purpose: Orchestrate cross-domain queries (e.g. calendar + workouts) by spawning
  * specialized subagents and synthesizing their results.
  *
- * Access: sessions_spawn, sessions_list, sessions_send, session_status.
+ * Access: governed by runtime tool policy/config.
  * Spawns calendar and workouts subagents; subagents announce results back to chat.
  *
  * Invoked via runMultiReply when router decision is "multi".
@@ -21,14 +21,11 @@ import {
 
 export const MULTI_AGENT_ID = "multi";
 
-/** Pi config: session tools only for orchestration. Spawns calendar + workouts subagents. */
+/** Pi config: minimal prompt/bootstrap defaults for multi-agent orchestration. */
 export const MULTI_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: {
-    allow: ["sessions_spawn", "sessions_list", "sessions_send", "session_status"],
-  },
   skills: false,
 };
 

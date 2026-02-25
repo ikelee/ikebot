@@ -2,7 +2,7 @@
  * Mail Agent
  *
  * Purpose: Gmail read (search, list inbox). Can invoke calendar/reminder via sessions_spawn.
- * Access: exec (gog only), SOUL.md, TOOLS.md – piConfig exec-only.
+ * Access: governed by runtime tool policy/config.
  *
  * Invoked via runMailReply when router decision is "mail".
  */
@@ -18,12 +18,11 @@ import {
 
 export const MAIL_AGENT_ID = "mail";
 
-/** Pi config: exec (gog gmail) + sessions_spawn for calendar/reminder handoff. */
+/** Pi config: minimal prompt/bootstrap defaults for mail workflows. */
 export const MAIL_PI_CONFIG: AgentPiConfig = {
   preset: "exec-only",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: { allow: ["exec", "sessions_spawn", "sessions_list"] },
   skills: false,
 };
 

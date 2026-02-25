@@ -214,9 +214,7 @@ export function resolveAgentDir(cfg: OpenClawConfig, agentId: string) {
 
 const PI_PRESET_DEFAULTS: Record<
   NonNullable<AgentPiConfig["preset"]>,
-  Pick<ResolvedPiConfig, "bootstrapFiles" | "promptMode" | "session" | "skills"> & {
-    toolsAllow?: string[];
-  }
+  Pick<ResolvedPiConfig, "bootstrapFiles" | "promptMode" | "session" | "skills">
 > = {
   full: {
     bootstrapFiles: undefined,
@@ -235,14 +233,12 @@ const PI_PRESET_DEFAULTS: Record<
     promptMode: "minimal",
     session: true,
     skills: false,
-    toolsAllow: ["exec"],
   },
   "messaging-only": {
     bootstrapFiles: ["SOUL", "TOOLS"] as PiBootstrapFileKey[],
     promptMode: "minimal",
     session: true,
     skills: false,
-    toolsAllow: ["message", "sessions_list", "sessions_send"],
   },
 };
 
@@ -262,17 +258,6 @@ export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedP
   const promptMode = pi?.promptMode ?? presetDefaults.promptMode;
   const session = pi?.session ?? presetDefaults.session;
   const skills = pi?.skills ?? presetDefaults.skills;
-
-  let toolsAllow: string[] | undefined = presetDefaults.toolsAllow;
-  let toolsDeny: string[] | undefined;
-  if (pi?.tools) {
-    if (pi.tools.allow && pi.tools.allow.length > 0) {
-      toolsAllow = expandToolGroups(pi.tools.allow);
-    }
-    if (pi.tools.deny && pi.tools.deny.length > 0) {
-      toolsDeny = expandToolGroups(pi.tools.deny);
-    }
-  }
 
   const bootstrapMaxChars = pi?.bootstrapMaxChars ?? cfg.agents?.defaults?.bootstrapMaxChars;
   const promptSections =
@@ -299,8 +284,6 @@ export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedP
     bootstrapFiles,
     promptMode,
     session,
-    toolsAllow,
-    toolsDeny,
     skills,
     bootstrapMaxChars,
     promptSections,

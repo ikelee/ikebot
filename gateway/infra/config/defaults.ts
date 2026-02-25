@@ -304,7 +304,7 @@ const BUILT_IN_AGENTS: Record<
   calendar: {
     id: "calendar",
     skills: ["gog"],
-    tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+    tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
   },
   reminders: {
     id: "reminders",

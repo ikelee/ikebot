@@ -160,20 +160,14 @@ describe("finance agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns finance OCR tool allowlist", () => {
+    it("resolvePiConfig returns minimal finance prompt defaults", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "finance");
 
       expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
       expect(result.promptMode).toBe("minimal");
       expect(result.skills).toBe(false);
-      expect(result.toolsAllow).toContain("read");
-      expect(result.toolsAllow).toContain("write");
-      expect(result.toolsAllow).toContain("exec");
-      expect(result.toolsAllow).toContain("cron");
-      expect(result.toolsAllow).toContain("sessions_spawn");
-      expect(result.toolsAllow).toContain("sessions_list");
-      expect(result.toolsAllow).not.toContain("image");
+      expect(result.toolsAllow).toBeUndefined();
     });
 
     it("runFinanceReply passes agentId=finance to runPreparedReply", async () => {

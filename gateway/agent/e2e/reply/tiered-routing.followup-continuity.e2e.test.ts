@@ -49,7 +49,7 @@ function cfgFor(home: string) {
           id: "calendar",
           workspace: join(home, "calendar"),
           skills: ["gog"],
-          tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
         },
       ],
     },

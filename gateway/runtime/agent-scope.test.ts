@@ -217,7 +217,7 @@ describe("resolveAgentConfig", () => {
     expect(workspace).toBe(path.join(path.resolve(home), ".openclaw", "workspace"));
   });
 
-  it("resolvePiConfig returns exec-only preset for calendar agent (from agent.ts registry)", () => {
+  it("resolvePiConfig returns calendar preset defaults from agent registry", () => {
     const cfg: OpenClawConfig = {
       agents: {
         list: [
@@ -233,7 +233,7 @@ describe("resolveAgentConfig", () => {
     const result = resolvePiConfig(cfg, "calendar");
     expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
     expect(result.promptMode).toBe("minimal");
-    expect(result.toolsAllow).toEqual(["exec"]);
+    expect(result.toolsAllow).toBeUndefined();
     expect(result.skills).toBe(false);
     expect(result.stream?.temperature).toBe(0);
   });

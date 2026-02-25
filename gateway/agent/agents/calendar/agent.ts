@@ -3,7 +3,7 @@
  *
  * Model Tier: Medium (70B local or smaller cloud)
  * Purpose: Schedule/calendar operations via gog CLI
- * Access: exec (gog only), SOUL.md, TOOLS.md – piConfig from PI_CONFIG below (config can override)
+ * Access: governed by runtime tool policy/config.
  *
  * Invoked via runCalendarReply in run.ts when router decision is "calendar".
  * Does not go through the complex path; has its own branch in runAgentFlow.
@@ -23,12 +23,11 @@ import {
 
 export const CALENDAR_AGENT_ID = "calendar";
 
-/** Pi config for calendar agent: exec-only, SOUL+TOOLS bootstrap, minimal prompt. */
+/** Pi config for calendar agent: compact bootstrap and minimal prompt defaults. */
 export const CALENDAR_PI_CONFIG: AgentPiConfig = {
   preset: "exec-only",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: { allow: ["exec"] },
   skills: false,
   promptSections: {
     safety: false,

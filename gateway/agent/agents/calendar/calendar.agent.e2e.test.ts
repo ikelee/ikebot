@@ -25,9 +25,6 @@ const TEST_USER = "calendar-agent-e2e-user";
 const CALENDAR_TEST_ACCOUNT =
   process.env.OPENCLAW_CALENDAR_TEST_ACCOUNT?.trim() || "ikebotai@gmail.com";
 const CALENDAR_TEST_ID = process.env.OPENCLAW_CALENDAR_TEST_ID?.trim() || CALENDAR_TEST_ACCOUNT;
-// Live write tests default to ON for the sandbox calendar account.
-// Set OPENCLAW_CALENDAR_LIVE_WRITE_TEST=0 to disable.
-const LIVE_WRITE_ENABLED = process.env.OPENCLAW_CALENDAR_LIVE_WRITE_TEST !== "0";
 const EMIT_MODEL_LOGS = process.env.OPENCLAW_TEST_EMIT_MODEL_LOGS === "1";
 const AUTH_HOME =
   process.env.OPENCLAW_CALENDAR_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
@@ -465,7 +462,7 @@ function calendarAgentConfig(workspaceDir: string, _home: string) {
           default: true,
           workspace: workspaceDir,
           skills: ["gog"],
-          tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
         },
       ],
     },
@@ -499,7 +496,7 @@ describe("calendar agent-level e2e – real model", () => {
     }
     canRun = modelOk;
     canRunRead = modelOk && calendarReadOk;
-    if (canRun && LIVE_WRITE_ENABLED) {
+    if (canRun) {
       try {
         await runGogJson(["calendar", "calendars", "--account", CALENDAR_TEST_ACCOUNT, "--json"]);
         canRunLiveWrites = true;
@@ -520,7 +517,7 @@ describe("calendar agent-level e2e – real model", () => {
         `[calendar agent e2e] calendar API read preflight failed for account=${CALENDAR_TEST_ACCOUNT}.`,
       );
     }
-    if (modelOk && LIVE_WRITE_ENABLED && !canRunLiveWrites) {
+    if (modelOk && !canRunLiveWrites) {
       throw new Error(
         `[calendar agent e2e] live write preflight failed for account=${CALENDAR_TEST_ACCOUNT}.`,
       );

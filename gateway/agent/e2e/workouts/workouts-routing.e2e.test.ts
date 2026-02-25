@@ -103,6 +103,7 @@ function workoutConfig(workspaceDir: string, home: string) {
           workspace: workspaceDir,
           skills: [],
           tools: {
+            allow: ["read", "write"],
             files: {
               allowedPaths: [
                 "workouts.json",

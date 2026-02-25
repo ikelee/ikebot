@@ -498,14 +498,6 @@ export const AgentEntrySchema = z
           .union([z.literal("full"), z.literal("minimal"), z.literal("none")])
           .optional(),
         session: z.boolean().optional(),
-        tools: z
-          .object({
-            profile: z.string().optional(),
-            allow: z.array(z.string()).optional(),
-            deny: z.array(z.string()).optional(),
-          })
-          .strict()
-          .optional(),
         skills: z.boolean().optional(),
         bootstrapMaxChars: z.number().int().positive().optional(),
         promptSections: z

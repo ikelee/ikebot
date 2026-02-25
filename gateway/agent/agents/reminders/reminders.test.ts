@@ -170,16 +170,14 @@ describe("reminders agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns cron+read+write for reminders agent", () => {
+    it("resolvePiConfig returns minimal reminders prompt defaults", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "reminders");
 
       expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
       expect(result.promptMode).toBe("minimal");
       expect(result.skills).toBe(false);
-      expect(result.toolsAllow).toContain("cron");
-      expect(result.toolsAllow).toContain("read");
-      expect(result.toolsAllow).toContain("write");
+      expect(result.toolsAllow).toBeUndefined();
     });
 
     it("runRemindersReply passes agentId=reminders to runPreparedReply", async () => {

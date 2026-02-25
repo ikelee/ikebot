@@ -82,7 +82,6 @@ export type AgentPiConfig = {
   bootstrapFiles?: PiBootstrapFileKey[];
   promptMode?: "full" | "minimal" | "none";
   session?: boolean;
-  tools?: { profile?: string; allow?: string[]; deny?: string[] };
   skills?: boolean;
   bootstrapMaxChars?: number;
   /** Toggle system prompt sections for leaner local agent prompts. */

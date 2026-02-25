@@ -4,8 +4,7 @@
  * Routing: "what do I have on Friday the 21st", "schedule a meeting with James tomorrow"
  * → classifier returns "calendar" → runCalendarReply invoked.
  *
- * piConfig: When calendar agent runs, exec-only preset applies (SOUL+TOOLS bootstrap,
- * exec tool only, minimal prompt, no skills).
+ * piConfig: When calendar agent runs, compact bootstrap and minimal prompt defaults apply.
  *
  * Mock Google: Future e2e would mock exec to return fake gog calendar output when
  * command matches "gog calendar"; agent would then summarize events.
@@ -51,7 +50,7 @@ const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =
         {
           id: "calendar",
           skills: ["gog"],
-          tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
           /* pi from agent.ts (pi-registry) when not in config */
         },
       ],
@@ -162,15 +161,14 @@ describe("calendar agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns exec-only preset for calendar agent", () => {
+    it("resolvePiConfig returns minimal calendar prompt defaults", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "calendar");
 
       expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
       expect(result.promptMode).toBe("minimal");
       expect(result.skills).toBe(false);
-      expect(result.toolsAllow).toContain("exec");
-      expect(result.toolsAllow?.length).toBe(1);
+      expect(result.toolsAllow).toBeUndefined();
       expect(result.stream?.temperature).toBe(0);
       expect(result.promptSections?.safety).toBe(false);
       expect(result.promptSections?.cliQuickRef).toBe(false);
@@ -187,7 +185,7 @@ describe("calendar agent", () => {
             {
               id: "calendar",
               skills: ["gog"],
-              tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+              tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
               workspace: calendarWorkspace,
             },
           ],

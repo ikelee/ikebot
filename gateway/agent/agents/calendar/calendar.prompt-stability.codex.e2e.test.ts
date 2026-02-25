@@ -141,7 +141,7 @@ function calendarAgentConfig(workspaceDir: string) {
           default: true,
           workspace: workspaceDir,
           skills: ["gog"],
-          tools: { exec: { security: "allowlist", safeBins: ["gog"] } },
+          tools: { allow: ["exec"], exec: { security: "allowlist", safeBins: ["gog"] } },
         },
       ],
     },
