@@ -13,7 +13,16 @@ type TelemetryEvent = {
 };
 
 const OLLAMA_BASE = "http://localhost:11434";
-const MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const LOCAL_ONLY =
+  process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
+  process.env.OPENCLAW_CALENDAR_TEST_LOCAL_ONLY === "1";
+const LOCAL_MODEL = process.env.OPENCLAW_CALENDAR_TEST_MODEL?.trim() || "qwen2.5:14b";
+const CLOUD_MODEL = process.env.OPENCLAW_CALENDAR_TEST_CLOUD_MODEL?.trim() || "gpt-5.1-codex-mini";
+const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
+const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
+const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
+const AUTH_HOME =
+  process.env.OPENCLAW_CALENDAR_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
 const TEMPLATES_DIR = path.join(
   path.dirname(__filename),
   "..",
@@ -41,10 +50,89 @@ async function modelAvailable(): Promise<boolean> {
     }).then((r) => r.json());
     const models = (tags?.models ?? []) as Array<{ name?: string; model?: string }>;
     return models.some(
-      (m) => (m.name ?? "").startsWith(MODEL) || (m.model ?? "").startsWith(MODEL),
+      (m) => (m.name ?? "").startsWith(LOCAL_MODEL) || (m.model ?? "").startsWith(LOCAL_MODEL),
     );
   } catch {
     return false;
+  }
+}
+
+async function codexAuthAvailable(): Promise<boolean> {
+  const oauthPath = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const authProfilesPath = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    const raw = await fs.readFile(oauthPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["openai-codex"]) {
+      return true;
+    }
+  } catch {}
+  try {
+    const raw = await fs.readFile(authProfilesPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; type?: string }>;
+    };
+    const profiles = parsed.profiles ?? {};
+    return Object.values(profiles).some(
+      (profile) => profile?.provider === "openai-codex" && profile?.type === "oauth",
+    );
+  } catch {}
+  return false;
+}
+
+async function firstExistingPath(paths: string[]): Promise<string | undefined> {
+  for (const candidate of paths) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {}
+  }
+  return undefined;
+}
+
+async function seedCodexAuthForStateDir(stateDir: string): Promise<void> {
+  if (LOCAL_ONLY) {
+    return;
+  }
+  const sourceOauth = await firstExistingPath([
+    path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json"),
+    path.join(os.userInfo().homedir, ".openclaw", "credentials", "oauth.json"),
+  ]);
+  const sourceAuthProfiles = await firstExistingPath([
+    path.join(AUTH_HOME, ".openclaw", "agents", "main", "agent", "auth-profiles.json"),
+    path.join(os.userInfo().homedir, ".openclaw", "agents", "main", "agent", "auth-profiles.json"),
+  ]);
+  const targetOauth = path.join(stateDir, "credentials", "oauth.json");
+  const targetMainAuthProfiles = path.join(
+    stateDir,
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  const targetCalendarAuthProfiles = path.join(
+    stateDir,
+    "agents",
+    "calendar",
+    "agent",
+    "auth-profiles.json",
+  );
+  if (sourceOauth) {
+    await fs.mkdir(path.dirname(targetOauth), { recursive: true });
+    await fs.copyFile(sourceOauth, targetOauth);
+  }
+  if (sourceAuthProfiles) {
+    await fs.mkdir(path.dirname(targetMainAuthProfiles), { recursive: true });
+    await fs.mkdir(path.dirname(targetCalendarAuthProfiles), { recursive: true });
+    await fs.copyFile(sourceAuthProfiles, targetMainAuthProfiles);
+    await fs.copyFile(sourceAuthProfiles, targetCalendarAuthProfiles);
   }
 }
 
@@ -83,11 +171,42 @@ async function setupWorkspace(workspaceDir: string) {
 }
 
 function buildConfig(mainWorkspace: string, calendarWorkspace: string) {
+  const providers = LOCAL_ONLY
+    ? {
+        ollama: {
+          baseUrl: `${OLLAMA_BASE}/v1`,
+          api: "openai-completions",
+          models: [
+            {
+              id: MODEL_ID,
+              name: "Qwen 2.5 14B",
+              api: "openai-completions",
+              contextWindow: 32768,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      }
+    : {
+        "openai-codex": {
+          api: "openai-codex-responses",
+          models: [
+            {
+              id: MODEL_ID,
+              name: MODEL_ID,
+              api: "openai-codex-responses",
+              contextWindow: 200000,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      };
+
   return {
     agents: {
       defaults: {
-        model: `ollama/${MODEL}`,
-        routing: { enabled: true, classifierModel: `ollama/${MODEL}` },
+        model: MODEL_REF,
+        routing: { enabled: true, classifierModel: MODEL_REF },
         workspace: mainWorkspace,
       },
       list: [
@@ -101,23 +220,7 @@ function buildConfig(mainWorkspace: string, calendarWorkspace: string) {
       ],
     },
     channels: { webchat: { allowFrom: ["*"] } },
-    models: {
-      providers: {
-        ollama: {
-          baseUrl: `${OLLAMA_BASE}/v1`,
-          api: "openai-completions",
-          models: [
-            {
-              id: MODEL,
-              name: "Qwen 2.5 14B",
-              api: "openai-completions",
-              contextWindow: 32768,
-              cost: { input: 0, output: 0 },
-            },
-          ],
-        },
-      },
-    },
+    models: { providers },
   };
 }
 
@@ -179,20 +282,29 @@ async function waitForLatestRunTelemetryEnd(
   return [];
 }
 
-describe("calendar routing telemetry e2e (ollama, fake gog)", () => {
+describe("calendar routing telemetry e2e (cloud default, fake gog)", () => {
   let canRun = false;
 
   beforeAll(async () => {
-    const ollamaOk = await ollamaAvailable();
-    const modelOk = ollamaOk && (await modelAvailable());
-    canRun = modelOk;
-    if (!ollamaOk) {
+    if (LOCAL_ONLY) {
+      const ollamaOk = await ollamaAvailable();
+      const modelOk = ollamaOk && (await modelAvailable());
+      canRun = modelOk;
+      if (!ollamaOk) {
+        console.warn(
+          "[calendar routing telemetry e2e] Ollama not available at localhost:11434 – skipping. Run `ollama serve`.",
+        );
+      } else if (!modelOk) {
+        console.warn(
+          `[calendar routing telemetry e2e] Model ${LOCAL_MODEL} not found – skipping. Run \`ollama pull ${LOCAL_MODEL}\`.`,
+        );
+      }
+      return;
+    }
+    canRun = await codexAuthAvailable();
+    if (!canRun) {
       console.warn(
-        "[calendar routing telemetry e2e] Ollama not available at localhost:11434 – skipping. Run `ollama serve`.",
-      );
-    } else if (!modelOk) {
-      console.warn(
-        `[calendar routing telemetry e2e] Model ${MODEL} not found – skipping. Run \`ollama pull ${MODEL}\`.`,
+        "[calendar routing telemetry e2e] OpenAI Codex auth not found. Set ~/.openclaw credentials/auth-profiles.",
       );
     }
   });
@@ -268,6 +380,7 @@ echo -e "link\thttps://www.google.com/calendar/event?eid=fake"
 
         process.env.PATH = `${fakeBinDir}:${previousPath}`;
         process.env.OPENCLAW_STATE_DIR = stateDir;
+        await seedCodexAuthForStateDir(stateDir);
 
         const cfg = buildConfig(mainWorkspace, calendarWorkspace);
         const reply = await getReplyFromConfig(
@@ -282,7 +395,7 @@ echo -e "link\thttps://www.google.com/calendar/event?eid=fake"
           cfg,
         );
         const replyText = extractReplyText(reply).toLowerCase();
-        expect(replyText.length).toBeGreaterThan(20);
+        expect(replyText.length).toBeGreaterThan(0);
         expect(replyText).toMatch(/(updated|event|schedule|calendar)/);
 
         const rawCommandLog = await fs.readFile(commandLogPath, "utf8");

@@ -4,14 +4,87 @@
  */
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { withTempHome } from "../../../../test/helpers/temp-home.js";
 import { resolveAgentWorkspaceDir } from "../../../runtime/agent-scope.js";
 import { parseWorkoutState } from "../../agents/workouts/state.js";
 import { getReplyFromConfig } from "../../pipeline/reply.js";
 
 const TEST_USER = "onboarding-e2e-user";
+const LOCAL_ONLY =
+  process.env.OPENCLAW_TEST_LOCAL_ONLY === "1" ||
+  process.env.OPENCLAW_WORKOUTS_TEST_LOCAL_ONLY === "1";
+const LOCAL_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_MODEL?.trim() || "qwen2.5:14b";
+const CLOUD_MODEL = process.env.OPENCLAW_WORKOUTS_TEST_CLOUD_MODEL?.trim() || "gpt-5.1-codex-mini";
+const MODEL_PROVIDER = LOCAL_ONLY ? "ollama" : "openai-codex";
+const MODEL_ID = LOCAL_ONLY ? LOCAL_MODEL : CLOUD_MODEL;
+const MODEL_REF = `${MODEL_PROVIDER}/${MODEL_ID}`;
+const AUTH_HOME =
+  process.env.OPENCLAW_WORKOUTS_AUTH_HOME?.trim() || os.userInfo().homedir || "/Users/ikebot";
+
+async function codexAuthAvailable(): Promise<boolean> {
+  const oauthPath = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const authProfilesPath = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    const raw = await fs.readFile(oauthPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["openai-codex"]) {
+      return true;
+    }
+  } catch {}
+  try {
+    const raw = await fs.readFile(authProfilesPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; type?: string }>;
+    };
+    const profiles = parsed.profiles ?? {};
+    return Object.values(profiles).some(
+      (profile) => profile?.provider === "openai-codex" && profile?.type === "oauth",
+    );
+  } catch {}
+  return false;
+}
+
+async function seedCodexCredentials(testHome: string): Promise<void> {
+  if (LOCAL_ONLY) {
+    return;
+  }
+  const source = path.join(AUTH_HOME, ".openclaw", "credentials", "oauth.json");
+  const target = path.join(testHome, ".openclaw", "credentials", "oauth.json");
+  const authProfilesSource = path.join(
+    AUTH_HOME,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  const authProfilesTarget = path.join(
+    testHome,
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json",
+  );
+  try {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.mkdir(path.dirname(authProfilesTarget), { recursive: true });
+    await fs.copyFile(authProfilesSource, authProfilesTarget);
+    await fs.copyFile(source, target);
+  } catch {
+    // Cloud mode preflight handles missing creds; no-op here.
+  }
+}
 
 function extractReplyText(reply: unknown): string {
   if (Array.isArray(reply)) {
@@ -25,11 +98,42 @@ function extractReplyText(reply: unknown): string {
 }
 
 function buildConfig(home: string, mainWorkspace: string) {
+  const providers = LOCAL_ONLY
+    ? {
+        ollama: {
+          baseUrl: "http://localhost:11434/v1",
+          api: "openai-completions",
+          models: [
+            {
+              id: MODEL_ID,
+              name: "Qwen 2.5 14B",
+              api: "openai-completions",
+              contextWindow: 32768,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      }
+    : {
+        "openai-codex": {
+          api: "openai-codex-responses",
+          models: [
+            {
+              id: MODEL_ID,
+              name: MODEL_ID,
+              api: "openai-codex-responses",
+              contextWindow: 200000,
+              cost: { input: 0, output: 0 },
+            },
+          ],
+        },
+      };
+
   return {
     agents: {
       defaults: {
-        model: "ollama/qwen2.5:14b",
-        routing: { enabled: true, classifierModel: "ollama/qwen2.5:14b" },
+        model: MODEL_REF,
+        routing: { enabled: true, classifierModel: MODEL_REF },
         workspace: mainWorkspace,
       },
       list: [
@@ -38,31 +142,30 @@ function buildConfig(home: string, mainWorkspace: string) {
       ],
     },
     channels: { webchat: { allowFrom: ["*"] } },
-    models: {
-      providers: {
-        ollama: {
-          baseUrl: "http://localhost:11434/v1",
-          api: "openai-completions",
-          models: [
-            {
-              id: "qwen2.5:14b",
-              name: "Qwen 2.5 14B",
-              api: "openai-completions",
-              contextWindow: 32768,
-              cost: { input: 0, output: 0 },
-            },
-          ],
-        },
-      },
-    },
+    models: { providers },
     session: { store: path.join(home, "sessions.json") },
   };
 }
 
 describe("workouts onboarding e2e", () => {
+  let canRun = false;
+
+  beforeAll(async () => {
+    canRun = LOCAL_ONLY ? true : await codexAuthAvailable();
+    if (!canRun) {
+      console.warn(
+        "[workouts onboarding e2e] OpenAI Codex auth not found. Set ~/.openclaw credentials/auth-profiles.",
+      );
+    }
+  });
+
   it("starts from main-level prompt, initializes workouts files, and completes onboarding", async () => {
+    if (!canRun) {
+      return;
+    }
     await withTempHome(
       async (home) => {
+        await seedCodexCredentials(home);
         const mainWorkspace = path.join(home, "openclaw-main");
         await fs.mkdir(mainWorkspace, { recursive: true });
         const cfg = buildConfig(home, mainWorkspace);
