@@ -185,6 +185,40 @@ function writeJson(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function writeQmdDoc(qmdDir: string, record: MailRecord): void {
+  if (record.importance !== "important") {
+    return;
+  }
+  const folder = path.join(qmdDir, "emails", "important");
+  fs.mkdirSync(folder, { recursive: true });
+  const outPath = path.join(folder, `${record.id}.md`);
+  const frontmatter = [
+    "---",
+    `message_id: ${JSON.stringify(record.messageId ?? "")}`,
+    `dedupe_key: ${JSON.stringify(record.dedupeKey)}`,
+    `date: ${JSON.stringify(record.date ?? "")}`,
+    `from: ${JSON.stringify(record.from ?? "")}`,
+    `to: ${JSON.stringify(record.to ?? "")}`,
+    `subject: ${JSON.stringify(record.subject ?? "")}`,
+    `folder: ${JSON.stringify(record.folderHint)}`,
+    `importance: ${JSON.stringify(record.importance)}`,
+    `importance_reasons: ${JSON.stringify(record.importanceReasons)}`,
+    `has_attachment: ${record.hasAttachment ? "true" : "false"}`,
+    `attachment_count: ${record.attachmentCount}`,
+    `attachments: ${JSON.stringify(
+      record.attachments.map((att) => ({
+        fileName: att.fileName,
+        mime: att.mime,
+        analysisStatus: att.analysisStatus,
+      })),
+    )}`,
+    "---",
+    "",
+  ].join("\n");
+  const body = record.bodyText.trim().length > 0 ? record.bodyText : "(no text extracted)";
+  fs.writeFileSync(outPath, `${frontmatter}${body}\n`, "utf8");
+}
+
 function messageDedupeKey(msg: GmailHookMessage, bodyText: string): string {
   const messageId = (msg.messageId ?? msg.id ?? "").trim();
   if (messageId) {
@@ -359,6 +393,7 @@ export async function ingestGmailHookPayload(params: {
   const indexFile = path.join(workspace, "mail-index.json");
   const checkpointFile = path.join(workspace, "mail-checkpoint.json");
   const dedupeFile = path.join(workspace, "mail-dedupe-keys.txt");
+  const qmdDir = path.join(workspace, "qmd");
 
   const seen = dedupeCache.get(workspace) ?? new Set<string>();
   if (!dedupeCache.has(workspace) && fs.existsSync(dedupeFile)) {
@@ -455,6 +490,7 @@ export async function ingestGmailHookPayload(params: {
         }
       }
       appendJsonl(recordsFile, record);
+      writeQmdDoc(qmdDir, record);
       appendJsonl(eventsFile, {
         ts: nowIso(),
         type: "ingested",

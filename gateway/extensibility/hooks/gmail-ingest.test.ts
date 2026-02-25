@@ -116,4 +116,59 @@ describe("gmail hook ingest", () => {
     expect(record.importance).toBe("not_important");
     expect(record.importanceReasons).toContain("promo_combined_signals");
   });
+
+  it("writes qmd docs only for important records", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-gmail-ingest-qmd-"));
+    const cfg = {
+      hooks: {
+        gmail: {
+          storeDir: workspace,
+        },
+      },
+    } as OpenClawConfig;
+
+    await ingestGmailHookPayload({
+      cfg,
+      payload: {
+        messages: [
+          {
+            id: "msg-qmd-important",
+            from: "billing@example.com",
+            subject: "Invoice for your subscription",
+            snippet: "Your invoice is ready",
+          },
+          {
+            id: "msg-qmd-not-important",
+            from: "news@marketing.example.com",
+            subject: "weekly deals",
+            snippet: "sale now on",
+          },
+        ],
+      },
+    });
+
+    const records = fs
+      .readFileSync(path.join(workspace, "mail-records.jsonl"), "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line)) as Array<{
+      id: string;
+      importance: "important" | "not_important";
+    }>;
+    const important = records.find((record) => record.importance === "important");
+    const notImportant = records.find((record) => record.importance === "not_important");
+    expect(important).toBeDefined();
+    expect(notImportant).toBeDefined();
+
+    const importantDoc = path.join(workspace, "qmd", "emails", "important", `${important!.id}.md`);
+    const notImportantDoc = path.join(
+      workspace,
+      "qmd",
+      "emails",
+      "important",
+      `${notImportant!.id}.md`,
+    );
+    expect(fs.existsSync(importantDoc)).toBe(true);
+    expect(fs.existsSync(notImportantDoc)).toBe(false);
+  });
 });
