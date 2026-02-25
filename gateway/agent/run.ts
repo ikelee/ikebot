@@ -40,6 +40,10 @@ import { runCalendarReply } from "./agents/calendar/index.js";
 import { RouterAgent, type RouterAgentModelResolver } from "./agents/classifier/agent.js";
 import { runComplexReply } from "./agents/complex/index.js";
 import { runFinanceReply } from "./agents/finance/index.js";
+import {
+  runFinanceIntakeWorkflow,
+  shouldRunFinanceIntakeWorkflow,
+} from "./agents/finance/intake-workflow.js";
 import { runMailReply } from "./agents/mail/index.js";
 import { runMultiReply } from "./agents/multi/index.js";
 import { runRemindersReply } from "./agents/reminders/index.js";
@@ -180,6 +184,9 @@ const TZ_ABBR_TO_OFFSET_MINUTES: Record<string, number> = {
   PST: -8 * 60,
   PDT: -7 * 60,
 };
+
+const FINANCE_IMAGE_PROCESSING_ACK =
+  "Processing images into spending log. I’ll send the full breakdown when it’s ready.";
 
 type ParsedAnchor = {
   date: Date;
@@ -884,6 +891,33 @@ function extractPayloads(reply: ReplyPayload | ReplyPayload[] | undefined): Repl
   return Array.isArray(reply) ? reply : [reply];
 }
 
+function resolveInboundMediaPaths(
+  ctx: RunAgentFlowParams["runPreparedReplyParams"]["ctx"],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const pushPath = (candidate: unknown): void => {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (!value || seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+    out.push(value);
+  };
+  pushPath(ctx.MediaPath);
+  for (const mediaPath of ctx.MediaPaths ?? []) {
+    pushPath(mediaPath);
+  }
+  return out;
+}
+
+function shouldSendFinanceImageProcessingAck(cleanedBody: string, mediaPaths: string[]): boolean {
+  if (!cleanedBody.trim()) {
+    return false;
+  }
+  return shouldRunFinanceIntakeWorkflow(cleanedBody, mediaPaths);
+}
+
 /**
  * Run the full agent flow: Router → SimpleResponder (if simple) or Complex path (if complex).
  */
@@ -1485,6 +1519,32 @@ export async function runAgentFlow(
       if (onboardingReply) {
         trackOnboardingProgress("finance", complete);
         return onboardingReply;
+      }
+      const inboundMediaPaths = resolveInboundMediaPaths(preparedReplyParamsWithRunId.ctx);
+      if (shouldSendFinanceImageProcessingAck(cleanedBody, inboundMediaPaths)) {
+        try {
+          await preparedReplyParamsWithRunId.opts?.onBlockReply?.({
+            text: FINANCE_IMAGE_PROCESSING_ACK,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[runAgentFlow] finance processing ack failed: ${msg}`);
+        }
+      }
+      const financeWorkspaceDir =
+        resolveAgentWorkspaceDir(cfg, "finance") ??
+        preparedReplyParamsWithRunId.workspaceDir ??
+        process.cwd();
+      const intakeReplyText = await runFinanceIntakeWorkflow({
+        cleanedBody,
+        mediaPaths: inboundMediaPaths,
+        provider: effectiveProvider,
+        model: effectiveModel,
+        cfg,
+        workspaceDir: financeWorkspaceDir,
+      });
+      if (intakeReplyText) {
+        return applyRouterHoldState("finance", { text: intakeReplyText });
       }
       const reply = await runFinanceReply({
         ...preparedReplyParamsWithRunId,

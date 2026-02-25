@@ -1,8 +1,8 @@
 /**
  * Finance Agent
  *
- * Purpose: Track spendings, spending by category, weekly totals. File-based storage.
- * Access: read, write – piConfig minimal, read+write only.
+ * Purpose: Track spendings from manual entries and screenshots, categorize spend, weekly totals.
+ * Access: read, write, exec (tesseract), cron, sessions_spawn/list.
  *
  * Invoked via runFinanceReply when router decision is "finance".
  */
@@ -18,12 +18,12 @@ import {
 
 export const FINANCE_AGENT_ID = "finance";
 
-/** Pi config: read+write only for spendings.json in workspace. */
+/** Pi config: read+write+exec+cron and optional reminders handoff via sessions_spawn. */
 export const FINANCE_PI_CONFIG: AgentPiConfig = {
   preset: "minimal",
   bootstrapFiles: ["SOUL", "TOOLS"],
   promptMode: "minimal",
-  tools: { allow: ["read", "write"] },
+  tools: { allow: ["read", "write", "exec", "cron", "sessions_spawn", "sessions_list"] },
   skills: false,
 };
 
@@ -32,15 +32,15 @@ export class FinanceAgent extends Agent {
     const config: AgentConfig = {
       id: FINANCE_AGENT_ID,
       name: "Finance",
-      purpose: "Track spendings, spending by category, weekly totals",
+      purpose: "Track spendings, categorize spend, weekly audits, and split reminders",
       access: {
         data: [],
         documents: ["SOUL", "TOOLS"],
-        scripts: [],
-        features: [],
+        scripts: ["tesseract"],
+        features: ["exec_allowlist", "cron"],
         skills: [],
-        tools: ["read", "write"],
-        canDelegate: false,
+        tools: ["read", "write", "exec", "cron", "sessions_spawn", "sessions_list"],
+        canDelegate: true,
       },
       model: {
         tier: "medium",

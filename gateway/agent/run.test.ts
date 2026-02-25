@@ -32,6 +32,17 @@ vi.mock("./onboarding/service.js", () => ({
   maybeRunAgentOnboarding: vi.fn(async () => undefined),
 }));
 
+const financeIntakeWorkflowMocks = vi.hoisted(() => ({
+  runFinanceIntakeWorkflow: vi.fn(async () => undefined),
+  shouldRunFinanceIntakeWorkflow: vi.fn(
+    (cleanedBody: string) =>
+      /\[media attached:\s*\d+\s*files?\]/i.test(cleanedBody) &&
+      /\bprocess\b[\s\S]{0,80}\bspending(?:s)?\b/i.test(cleanedBody),
+  ),
+}));
+
+vi.mock("./agents/finance/intake-workflow.js", () => financeIntakeWorkflowMocks);
+
 const createMockConfig = (overrides?: Partial<OpenClawConfig>): OpenClawConfig =>
   ({
     agents: {
@@ -1294,6 +1305,67 @@ describe("runAgentFlow", () => {
       const call = runPreparedReplyMock.mock.calls[0][0];
       expect(call.agentId).toBe("finance");
       expect(call.agentId).not.toBe("multi");
+    });
+
+    it("sends immediate processing ack for finance image batch intake", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"finance"}' }],
+        usage: { input: 24, output: 9 },
+      });
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      const onBlockReply = vi.fn().mockResolvedValue(undefined);
+      params.cfg = cfg;
+      params.opts = { onBlockReply } as any;
+
+      await runAgentFlow({
+        cleanedBody:
+          "[media attached: 11 files]\n[BlueBubbles user:ikelee98@gmail.com] Process these spendings",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(onBlockReply).toHaveBeenCalledWith({
+        text: "Processing images into spending log. I’ll send the full breakdown when it’s ready.",
+      });
+    });
+
+    it("returns finance OCR intake workflow reply without invoking runFinanceReply", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: [{ type: "text", text: '{"decision":"finance"}' }],
+        usage: { input: 24, output: 9 },
+      });
+      financeIntakeWorkflowMocks.runFinanceIntakeWorkflow.mockResolvedValueOnce(
+        "Processed spendings from screenshots. Please confirm.",
+      );
+
+      const cfg = createConfigWithAllAgents();
+      const params = createMinimalRunPreparedReplyParams();
+      params.cfg = cfg;
+
+      const result = await runAgentFlow({
+        cleanedBody:
+          "[media attached: 2 files]\n[media attached 1/2: /tmp/a.png (image/png)]\nProcess these spendings",
+        sessionKey: "main",
+        provider: "ollama",
+        model: "llama-3.2-3b",
+        defaultProvider: "ollama",
+        defaultModel: "llama-3.2-3b",
+        aliasIndex: {},
+        cfg,
+        runPreparedReplyParams: params,
+      });
+
+      expect(result).toEqual({ text: "Processed spendings from screenshots. Please confirm." });
+      expect(financeIntakeWorkflowMocks.runFinanceIntakeWorkflow).toHaveBeenCalledTimes(1);
+      expect(runPreparedReplyMock).not.toHaveBeenCalled();
     });
 
     it("routes workout + schedule to multi agent", async () => {

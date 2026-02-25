@@ -160,7 +160,7 @@ describe("finance agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns read+write for finance agent", () => {
+    it("resolvePiConfig returns finance OCR tool allowlist", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "finance");
 
@@ -169,6 +169,11 @@ describe("finance agent", () => {
       expect(result.skills).toBe(false);
       expect(result.toolsAllow).toContain("read");
       expect(result.toolsAllow).toContain("write");
+      expect(result.toolsAllow).toContain("exec");
+      expect(result.toolsAllow).toContain("cron");
+      expect(result.toolsAllow).toContain("sessions_spawn");
+      expect(result.toolsAllow).toContain("sessions_list");
+      expect(result.toolsAllow).not.toContain("image");
     });
 
     it("runFinanceReply passes agentId=finance to runPreparedReply", async () => {
