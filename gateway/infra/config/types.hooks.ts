@@ -70,6 +70,10 @@ export type HooksGmailConfig = {
   model?: string;
   /** Optional thinking level override for Gmail hook processing. */
   thinking?: "off" | "minimal" | "low" | "medium" | "high";
+  /** Canonical local store directory for Gmail hook ingestion outputs. */
+  storeDir?: string;
+  /** Timeout for optional Qwen importance classification (milliseconds). */
+  qwenTimeoutMs?: number;
 };
 
 export type InternalHookHandlerConfig = {

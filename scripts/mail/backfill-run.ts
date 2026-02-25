@@ -75,16 +75,8 @@ type QwenDecision = {
 
 const RISKY_DROP_PATTERN =
   /docusign|booking|reservation|confirm|confirmation|recruiter|interview|job|application|offer|talent|career|realtor|real estate|e-?transfer|interac|tax|legal|lawyer|attorney|receipt|invoice|delivery|shipped/i;
-const QWEN_SYSTEM_PROMPT = [
-  "You classify one email for retrieval importance.",
-  "Return strict JSON only with keys: importance, confidence, reasons.",
-  'importance must be either "important" or "not_important".',
-  "confidence must be a number between 0 and 1.",
-  "reasons must be a short array of strings.",
-  "Mark important if there is any reasonable chance the message is personally or financially relevant.",
-  "Always mark important for: money movement/e-transfer/interac, receipts/invoices, deliveries/tracking, job/recruiter/interview/application, realtor/property, tax/legal, DocuSign, booking/reservation/confirmation, or human conversation chains.",
-  "Mark not_important for obvious promos/newsletters/flyers/social bulk updates.",
-].join(" ");
+const QWEN_SYSTEM_PROMPT =
+  'Classify email importance for personal retrieval. Return strict JSON only: {"importance":"important|not_important","confidence":0..1}';
 
 function usage(): never {
   console.error(
@@ -440,14 +432,11 @@ function qwenPromptForRecord(
   return [
     "Classify this email.",
     `From: ${record.from ?? ""}`,
-    `To: ${record.to ?? ""}`,
     `Subject: ${record.subject ?? ""}`,
-    `Date: ${record.date ?? ""}`,
     `HasAttachment: ${record.hasAttachment ? "true" : "false"}`,
-    `HeuristicReasons: ${record.importanceReasons.join(",")}`,
     `Body: ${trimForPrompt(record.bodyText, maxBodyChars)}`,
     "",
-    'Respond with JSON: {"importance":"important|not_important","confidence":0..1,"reasons":["..."]}',
+    'Respond with JSON: {"importance":"important|not_important","confidence":0..1}',
   ].join("\n");
 }
 
@@ -644,7 +633,7 @@ async function main(): Promise<void> {
   const qwenMinConfidence =
     typeof args["qwen-min-confidence"] === "string" ? Number(args["qwen-min-confidence"]) : 0.55;
   const qwenMaxBodyChars =
-    typeof args["qwen-max-body-chars"] === "string" ? Number(args["qwen-max-body-chars"]) : 1200;
+    typeof args["qwen-max-body-chars"] === "string" ? Number(args["qwen-max-body-chars"]) : 500;
   if (qwenModel.length > 0 && (!Number.isFinite(qwenTimeoutMs) || qwenTimeoutMs < 500)) {
     throw new Error("--qwen-timeout-ms must be >= 500");
   }
@@ -772,7 +761,7 @@ async function main(): Promise<void> {
         if (
           qwenCfg.enabled &&
           base.importance === "important" &&
-          base.importanceReasons.includes("default_keep_conservative")
+          base.importanceReasons.includes("bucket:maybe")
         ) {
           try {
             const decision = await classifyWithQwen(base, qwenCfg);

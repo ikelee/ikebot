@@ -59,3 +59,4 @@ USER.md
 !.agent/workflows/
 /local/
 tmp/
+mail-store/

@@ -112,6 +112,24 @@ export function cleanHeaderValue(input: string | undefined): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function decodeRfc2047Words(input: string): string {
+  return input.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_m, _charset, enc, text) => {
+    try {
+      if (String(enc).toLowerCase() === "b") {
+        return Buffer.from(String(text), "base64").toString("utf8");
+      }
+      const qp = String(text)
+        .replace(/_/g, " ")
+        .replace(/=([A-Fa-f0-9]{2})/g, (_m2: string, hex: string) =>
+          String.fromCharCode(Number.parseInt(hex, 16)),
+        );
+      return Buffer.from(qp, "binary").toString("utf8");
+    } catch {
+      return String(text);
+    }
+  });
+}
+
 export function parseHeaders(rawMessage: string): Record<string, string> {
   const [rawHeaders] = splitHeadersAndBody(rawMessage);
   const lines = rawHeaders.split(/\r?\n/);
@@ -373,6 +391,32 @@ const BODY_PROMO_MARKERS = [
   /all rights reserved/i,
   /manage (?:email )?preferences/i,
 ];
+const LOW_VALUE_CI_SUBJECT = [/\[.+\/.+\].*run (failed|cancelled|canceled|started)/i, /\bci\b/i];
+const LOW_VALUE_SOCIAL_SUBJECT = [/\btop post:\b/i, /\bneighbors?\b/i, /\bnextdoor\b/i];
+const LEGAL_CLAIM_SIGNALS = [
+  /\bclaim\b/i,
+  /\badditional steps required\b/i,
+  /\bclass action\b/i,
+  /\bsettlement\b/i,
+  /\bvenmo\b/i,
+  /\bpaypal\b/i,
+];
+const FORWARDED_BLOCK_MARKERS = [
+  /forwarded message/i,
+  /original message/i,
+  /from:\s+.+\n\s*sent:\s+.+\n\s*to:\s+.+\n\s*subject:/i,
+];
+const REPLY_SUBJECT_PREFIX = /^\s*re\s*:/i;
+const REPLY_BODY_MARKERS = [/\bon .+wrote:/i, /^\s*>.+/m, /\breply above this line\b/i];
+
+function extractEmails(raw: string): string[] {
+  const matches = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
+  return matches.map((email) => email.toLowerCase());
+}
+
+function isHumanishEmail(email: string): boolean {
+  return !/(^|[._-])(no-?reply|donotreply|mailer-daemon)([._-]|@|$)/i.test(email);
+}
 
 export function classifyImportance(params: {
   subject?: string;
@@ -383,9 +427,12 @@ export function classifyImportance(params: {
 }): { importance: "important" | "not_important"; reasons: string[] } {
   const strongReasons: string[] = [];
   const weakReasons: string[] = [];
-  const subject = params.subject ?? "";
+  const subject = decodeRfc2047Words(params.subject ?? "");
   const from = params.from ?? "";
   const bodyText = params.bodyText;
+  const hasLegalClaimSignal =
+    LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(subject)) ||
+    LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(bodyText));
 
   if (params.hasAttachment) {
     strongReasons.push("has_attachment");
@@ -412,13 +459,32 @@ export function classifyImportance(params: {
   ) {
     weakReasons.push("entity_hint");
   }
+  if (hasLegalClaimSignal) {
+    weakReasons.push("legal_claim_signal");
+  }
 
   const references = params.headers["references"] ?? "";
   const inReplyTo = params.headers["in-reply-to"] ?? "";
   const hasThreading = references.length > 0 || inReplyTo.length > 0;
   const senderLooksBulk =
     PROMO_FROM.some((rx) => rx.test(from)) || BULK_SENDER_DOMAIN.some((rx) => rx.test(from));
-  if (hasThreading && !senderLooksBulk) {
+  const hasForwardedBlock = FORWARDED_BLOCK_MARKERS.some((rx) => rx.test(bodyText));
+  const hasReplySignals =
+    REPLY_SUBJECT_PREFIX.test(subject) || REPLY_BODY_MARKERS.some((rx) => rx.test(bodyText));
+  const participantEmails = new Set<string>([
+    ...extractEmails(from),
+    ...extractEmails(params.headers["to"] ?? ""),
+    ...extractEmails(params.headers["cc"] ?? ""),
+  ]);
+  const humanParticipants = [...participantEmails].filter((email) => isHumanishEmail(email));
+  const hasMultiPartyConversation = new Set(humanParticipants).size >= 2;
+  if (
+    hasThreading &&
+    !senderLooksBulk &&
+    hasReplySignals &&
+    hasMultiPartyConversation &&
+    !hasForwardedBlock
+  ) {
     strongReasons.push("threaded_human_chain");
   }
 
@@ -452,29 +518,71 @@ export function classifyImportance(params: {
 
   // Outlook calendar birthday blasts are almost always low-value for retrieval.
   if (/calendarnotification@outlook\.com/i.test(from) && /\bbirthday\b/i.test(subject)) {
-    return { importance: "not_important", reasons: ["calendar_birthday_notification"] };
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "calendar_birthday_notification"],
+    };
+  }
+
+  if (
+    !params.hasAttachment &&
+    LOW_VALUE_CI_SUBJECT.some((rx) => rx.test(subject)) &&
+    !hasLegalClaimSignal
+  ) {
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "ci_notification_noise"],
+    };
+  }
+  if (
+    !params.hasAttachment &&
+    (LOW_VALUE_SOCIAL_SUBJECT.some((rx) => rx.test(subject)) || /nextdoor/i.test(from)) &&
+    !hasLegalClaimSignal
+  ) {
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "social_digest_noise"],
+    };
   }
 
   if (strongReasons.length > 0) {
-    return { importance: "important", reasons: [...strongReasons, ...weakReasons] };
+    return {
+      importance: "important",
+      reasons: ["bucket:for_sure_important", ...strongReasons, ...weakReasons],
+    };
   }
 
   // Weak hints alone should not override strong bulk/newsletter signals.
-  if (!params.hasAttachment && promoSignals >= 2 && weakReasons.length === 0) {
-    return { importance: "not_important", reasons: ["promo_combined_signals"] };
+  if (
+    !params.hasAttachment &&
+    promoSignals >= 2 &&
+    weakReasons.length === 0 &&
+    !hasLegalClaimSignal
+  ) {
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "promo_combined_signals"],
+    };
   }
-  if (!params.hasAttachment && promoSignals >= 3) {
-    return { importance: "not_important", reasons: ["promo_overrides_weak_signals"] };
+  if (!params.hasAttachment && promoSignals >= 3 && !hasLegalClaimSignal) {
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "promo_overrides_weak_signals"],
+    };
   }
-  if (!params.hasAttachment && promoSignals >= 2) {
-    return { importance: "not_important", reasons: ["default_to_promo_when_bulk"] };
+  if (!params.hasAttachment && promoSignals >= 2 && !hasLegalClaimSignal) {
+    return {
+      importance: "not_important",
+      reasons: ["bucket:for_sure_not_important", "default_to_promo_when_bulk"],
+    };
   }
 
+  // "maybe" bucket defaults to important; optional model pass can demote.
   if (weakReasons.length > 0) {
-    return { importance: "important", reasons: weakReasons };
+    return { importance: "important", reasons: ["bucket:maybe", ...weakReasons] };
   }
 
-  return { importance: "important", reasons: ["default_keep_conservative"] };
+  return { importance: "important", reasons: ["bucket:maybe", "default_keep_conservative"] };
 }
 
 export function messageDedupeKey(headers: Record<string, string>, bodyText: string): string {

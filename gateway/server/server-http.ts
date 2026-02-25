@@ -73,6 +73,14 @@ type HookDispatchers = {
     timeoutSeconds?: number;
     allowUnsafeExternalContent?: boolean;
   }) => string;
+  dispatchGmailIngestHook: (value: { payload: Record<string, unknown> }) => Promise<{
+    outDir: string;
+    ingested: number;
+    duplicates: number;
+    important: number;
+    notImportant: number;
+    failed: number;
+  }>;
 };
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
@@ -146,7 +154,15 @@ export function createHooksRequestHandler(
     logHooks: SubsystemLogger;
   } & HookDispatchers,
 ): HooksRequestHandler {
-  const { getHooksConfig, bindHost, port, logHooks, dispatchAgentHook, dispatchWakeHook } = opts;
+  const {
+    getHooksConfig,
+    bindHost,
+    port,
+    logHooks,
+    dispatchAgentHook,
+    dispatchWakeHook,
+    dispatchGmailIngestHook,
+  } = opts;
   const hookAuthFailures = new Map<string, HookAuthFailure>();
 
   const resolveHookClientKey = (req: IncomingMessage): string => {
@@ -228,7 +244,8 @@ export function createHooksRequestHandler(
       return true;
     }
 
-    const subPath = url.pathname.slice(basePath.length).replace(/^\/+/, "");
+    const subPathRaw = url.pathname.slice(basePath.length).replace(/^\/+/, "");
+    const subPath = subPathRaw.replace(/\/+$/, "");
     if (!subPath) {
       res.statusCode = 404;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -283,6 +300,20 @@ export function createHooksRequestHandler(
       });
       sendJson(res, 202, { ok: true, runId });
       return true;
+    }
+
+    if (subPath === "gmail") {
+      try {
+        const summary = await dispatchGmailIngestHook({
+          payload: payload as Record<string, unknown>,
+        });
+        sendJson(res, 200, { ok: true, mode: "ingest", summary });
+        return true;
+      } catch (err) {
+        logHooks.warn(`gmail hook ingest failed: ${String(err)}`);
+        sendJson(res, 500, { ok: false, error: "gmail hook ingest failed" });
+        return true;
+      }
     }
 
     if (hooksConfig.mappings.length > 0) {

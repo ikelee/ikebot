@@ -4,6 +4,7 @@ import type { CliDeps } from "../../entrypoints/entry/cli/deps.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
 import { runCronIsolatedAgentTurn } from "../../cron/isolated-agent.js";
+import { ingestGmailHookPayload } from "../../extensibility/hooks/gmail-ingest.js";
 import { loadConfig } from "../../infra/config/config.js";
 import { resolveMainSessionKeyFromConfig } from "../../infra/config/sessions.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat/index.js";
@@ -106,6 +107,14 @@ export function createGatewayHooksRequestHandler(params: {
     return runId;
   };
 
+  const dispatchGmailIngestHook = async (value: { payload: Record<string, unknown> }) => {
+    const cfg = loadConfig();
+    return ingestGmailHookPayload({
+      cfg,
+      payload: value.payload,
+    });
+  };
+
   return createHooksRequestHandler({
     getHooksConfig,
     bindHost,
@@ -113,5 +122,6 @@ export function createGatewayHooksRequestHandler(params: {
     logHooks,
     dispatchAgentHook,
     dispatchWakeHook,
+    dispatchGmailIngestHook,
   });
 }

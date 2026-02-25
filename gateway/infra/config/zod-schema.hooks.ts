@@ -130,6 +130,8 @@ export const HooksGmailSchema = z
         z.literal("high"),
       ])
       .optional(),
+    storeDir: z.string().optional(),
+    qwenTimeoutMs: z.number().int().positive().optional(),
   })
   .strict()
   .optional();
