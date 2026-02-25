@@ -192,13 +192,13 @@ describe("workouts agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns minimal workouts prompt defaults", () => {
+    it("resolvePiConfig returns full defaults when workouts pi is omitted", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "workouts");
 
-      expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
-      expect(result.promptMode).toBe("minimal");
-      expect(result.skills).toBe(false);
+      expect(result.bootstrapFiles).toBeUndefined();
+      expect(result.promptMode).toBe("full");
+      expect(result.skills).toBe(true);
       expect(result.toolsAllow).toBeUndefined();
     });
 

@@ -296,6 +296,12 @@ export const AgentToolsSchema = z
       })
       .strict()
       .optional(),
+    files: z
+      .object({
+        allowedPaths: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
     sandbox: z
       .object({
         tools: ToolPolicySchema,
@@ -591,6 +597,12 @@ export const ToolsSchema = z
           })
           .strict()
           .optional(),
+      })
+      .strict()
+      .optional(),
+    files: z
+      .object({
+        allowedPaths: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),

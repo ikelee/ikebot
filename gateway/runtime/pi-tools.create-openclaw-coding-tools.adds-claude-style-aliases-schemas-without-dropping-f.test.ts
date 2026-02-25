@@ -5,6 +5,12 @@ import { describe, expect, it } from "vitest";
 import "./test-helpers/fast-coding-tools.js";
 import { createOpenClawCodingTools } from "./pi-tools.js";
 
+const TEST_CONFIG = {
+  tools: {
+    allow: ["read", "write", "edit"],
+  },
+} as const;
+
 describe("createOpenClawCodingTools", () => {
   it("uses workspaceDir for Read tool path resolution", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-ws-"));
@@ -15,7 +21,7 @@ describe("createOpenClawCodingTools", () => {
       await fs.writeFile(path.join(tmpDir, testFile), testContent, "utf8");
 
       // Create tools with explicit workspaceDir
-      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir });
+      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir, config: TEST_CONFIG });
       const readTool = tools.find((tool) => tool.name === "read");
       expect(readTool).toBeDefined();
 
@@ -40,7 +46,7 @@ describe("createOpenClawCodingTools", () => {
       const testContent = "written via workspace path";
 
       // Create tools with explicit workspaceDir
-      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir });
+      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir, config: TEST_CONFIG });
       const writeTool = tools.find((tool) => tool.name === "write");
       expect(writeTool).toBeDefined();
 
@@ -66,7 +72,7 @@ describe("createOpenClawCodingTools", () => {
       await fs.writeFile(path.join(tmpDir, testFile), originalContent, "utf8");
 
       // Create tools with explicit workspaceDir
-      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir });
+      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir, config: TEST_CONFIG });
       const editTool = tools.find((tool) => tool.name === "edit");
       expect(editTool).toBeDefined();
 
@@ -87,7 +93,7 @@ describe("createOpenClawCodingTools", () => {
   it("accepts Claude Code parameter aliases for read/write/edit", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-alias-"));
     try {
-      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir });
+      const tools = createOpenClawCodingTools({ workspaceDir: tmpDir, config: TEST_CONFIG });
       const readTool = tools.find((tool) => tool.name === "read");
       const writeTool = tools.find((tool) => tool.name === "write");
       const editTool = tools.find((tool) => tool.name === "edit");

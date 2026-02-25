@@ -2,6 +2,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../infra/config/config.js";
 import {
+  resolveAgentAllowedFilePaths,
   resolveAgentConfig,
   resolveAgentDir,
   resolveAgentModelFallbacksOverride,
@@ -217,7 +218,7 @@ describe("resolveAgentConfig", () => {
     expect(workspace).toBe(path.join(path.resolve(home), ".openclaw", "workspace"));
   });
 
-  it("resolvePiConfig returns calendar preset defaults from agent registry", () => {
+  it("resolvePiConfig returns full defaults when agent pi is omitted", () => {
     const cfg: OpenClawConfig = {
       agents: {
         list: [
@@ -231,14 +232,13 @@ describe("resolveAgentConfig", () => {
       },
     };
     const result = resolvePiConfig(cfg, "calendar");
-    expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
-    expect(result.promptMode).toBe("minimal");
+    expect(result.bootstrapFiles).toBeUndefined();
+    expect(result.promptMode).toBe("full");
     expect(result.toolsAllow).toBeUndefined();
-    expect(result.skills).toBe(false);
-    expect(result.stream?.temperature).toBe(0);
+    expect(result.skills).toBe(true);
   });
 
-  it("resolvePiConfig uses config pi when present (overrides agent registry)", () => {
+  it("resolvePiConfig uses config pi when present", () => {
     const cfg: OpenClawConfig = {
       agents: {
         list: [
@@ -266,6 +266,47 @@ describe("resolveAgentConfig", () => {
     expect(result.promptMode).toBe("full");
     expect(result.toolsAllow).toBeUndefined();
     expect(result.skills).toBe(true);
+  });
+
+  it("resolveAgentAllowedFilePaths prefers agent override over global", () => {
+    const cfg: OpenClawConfig = {
+      tools: {
+        files: { allowedPaths: ["global.json"] },
+      },
+      agents: {
+        list: [
+          { id: "main", default: true },
+          {
+            id: "calendar",
+            tools: {
+              files: { allowedPaths: ["calendar.json", "events/"] },
+            },
+          },
+        ],
+      },
+    };
+    expect(resolveAgentAllowedFilePaths(cfg, "calendar")).toEqual(["calendar.json", "events/"]);
+  });
+
+  it("resolveAgentAllowedFilePaths falls back to global", () => {
+    const cfg: OpenClawConfig = {
+      tools: {
+        files: { allowedPaths: ["memory.md"] },
+      },
+      agents: {
+        list: [{ id: "main", default: true }, { id: "mail" }],
+      },
+    };
+    expect(resolveAgentAllowedFilePaths(cfg, "mail")).toEqual(["memory.md"]);
+  });
+
+  it("resolveAgentAllowedFilePaths returns empty when unset", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [{ id: "main", default: true }, { id: "mail" }],
+      },
+    };
+    expect(resolveAgentAllowedFilePaths(cfg, "mail")).toEqual([]);
   });
 
   it("uses OPENCLAW_HOME for default agentDir", () => {

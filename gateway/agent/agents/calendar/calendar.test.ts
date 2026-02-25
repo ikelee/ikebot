@@ -161,18 +161,16 @@ describe("calendar agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns minimal calendar prompt defaults", () => {
+    it("resolvePiConfig returns full defaults when calendar pi is omitted", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "calendar");
 
-      expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
-      expect(result.promptMode).toBe("minimal");
-      expect(result.skills).toBe(false);
+      expect(result.bootstrapFiles).toBeUndefined();
+      expect(result.promptMode).toBe("full");
+      expect(result.skills).toBe(true);
       expect(result.toolsAllow).toBeUndefined();
-      expect(result.stream?.temperature).toBe(0);
-      expect(result.promptSections?.safety).toBe(false);
-      expect(result.promptSections?.cliQuickRef).toBe(false);
-      expect(result.promptSections?.reasoningFormat).toBe(false);
+      expect(result.stream).toBeUndefined();
+      expect(result.promptSections).toBeUndefined();
     });
 
     it("runCalendarReply passes agentId=calendar to runPreparedReply", async () => {

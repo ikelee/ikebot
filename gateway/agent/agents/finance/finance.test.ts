@@ -160,13 +160,13 @@ describe("finance agent", () => {
   });
 
   describe("piConfig", () => {
-    it("resolvePiConfig returns minimal finance prompt defaults", () => {
+    it("resolvePiConfig returns full defaults when finance pi is omitted", () => {
       const cfg = createMockConfig();
       const result = resolvePiConfig(cfg, "finance");
 
-      expect(result.bootstrapFiles).toEqual(["SOUL", "TOOLS"]);
-      expect(result.promptMode).toBe("minimal");
-      expect(result.skills).toBe(false);
+      expect(result.bootstrapFiles).toBeUndefined();
+      expect(result.promptMode).toBe("full");
+      expect(result.skills).toBe(true);
       expect(result.toolsAllow).toBeUndefined();
     });
 

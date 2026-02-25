@@ -117,6 +117,8 @@ export const __testing = {
 
 export function createOpenClawCodingTools(options?: {
   exec?: ExecToolDefaults & ProcessToolDefaults;
+  /** Routed/specialized agent id. Prefer this over inferring from session key. */
+  agentId?: string;
   messageProvider?: string;
   agentAccountId?: string;
   messageTo?: string;
@@ -185,6 +187,7 @@ export function createOpenClawCodingTools(options?: {
   } = resolveEffectiveToolPolicy({
     config: options?.config,
     sessionKey: options?.sessionKey,
+    agentId: options?.agentId,
     modelProvider: options?.modelProvider,
     modelId: options?.modelId,
   });
@@ -260,7 +263,7 @@ export function createOpenClawCodingTools(options?: {
         createOpenClawReadTool(createReadTool(workspaceRoot)),
         workspaceRoot,
       );
-      if (allowedPaths?.length) {
+      if (allowedPaths) {
         readToolInstance = wrapAllowedPathsGuard(readToolInstance, workspaceRoot, allowedPaths);
       }
       return [readToolInstance];
@@ -277,7 +280,7 @@ export function createOpenClawCodingTools(options?: {
         CLAUDE_PARAM_GROUPS.write,
       );
       writeToolInstance = extendOpenClawWriteTool(writeToolInstance, workspaceRoot);
-      if (allowedPaths?.length) {
+      if (allowedPaths) {
         writeToolInstance = wrapAllowedPathsGuard(writeToolInstance, workspaceRoot, allowedPaths);
       }
       return [writeToolInstance];
@@ -290,7 +293,7 @@ export function createOpenClawCodingTools(options?: {
         createEditTool(workspaceRoot),
         CLAUDE_PARAM_GROUPS.edit,
       );
-      if (allowedPaths?.length) {
+      if (allowedPaths) {
         editToolInstance = wrapAllowedPathsGuard(editToolInstance, workspaceRoot, allowedPaths);
       }
       return [editToolInstance];
@@ -406,9 +409,7 @@ export function createOpenClawCodingTools(options?: {
     const resolved = stripPluginOnlyAllowlist(policy, pluginGroups, coreToolNames);
     if (resolved.unknownAllowlist.length > 0) {
       const entries = resolved.unknownAllowlist.join(", ");
-      const suffix = resolved.strippedAllowlist
-        ? "Ignoring allowlist so core tools remain available. Use tools.alsoAllow for additive plugin tool enablement."
-        : "These entries won't match any tool unless the plugin is enabled.";
+      const suffix = "These entries won't match any tool unless the plugin is enabled.";
       logWarn(`tools: ${label} allowlist contains unknown entries (${entries}). ${suffix}`);
     }
     return expandPolicyWithPluginGroups(resolved.policy, pluginGroups);

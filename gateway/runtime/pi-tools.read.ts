@@ -412,6 +412,11 @@ export function wrapAllowedPathsGuard(
       if (typeof filePath === "string" && filePath.trim()) {
         const { relative } = resolveSandboxPath({ filePath, cwd: root, root });
         if (!isPathAllowed(relative, allowedPaths)) {
+          if (allowedPaths.length === 0) {
+            throw new Error(
+              "File access denied: no allowlisted paths configured in openclaw.json (tools.files.allowedPaths or agents.<id>.tools.files.allowedPaths).",
+            );
+          }
           throw new Error(
             `Path not allowed: ${filePath}. This agent may only access: ${allowedPaths.join(", ")}`,
           );
@@ -427,7 +432,7 @@ function applyAllowedPathsIfNeeded(
   root: string,
   allowedPaths?: string[],
 ): AnyAgentTool {
-  if (!allowedPaths || allowedPaths.length === 0) {
+  if (!allowedPaths) {
     return tool;
   }
   return wrapAllowedPathsGuard(tool, root, allowedPaths);

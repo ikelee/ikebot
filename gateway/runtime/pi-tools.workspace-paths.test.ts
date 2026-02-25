@@ -4,6 +4,12 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createOpenClawCodingTools } from "./pi-tools.js";
 
+const TEST_CONFIG = {
+  tools: {
+    allow: ["read", "write", "edit", "exec"],
+  },
+} as const;
+
 vi.mock("../plugins/tools.js", () => ({
   getPluginToolMeta: () => undefined,
   resolvePluginTools: () => [],
@@ -37,7 +43,7 @@ describe("workspace path resolution", () => {
 
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
-          const tools = createOpenClawCodingTools({ workspaceDir });
+          const tools = createOpenClawCodingTools({ workspaceDir, config: TEST_CONFIG });
           const readTool = tools.find((tool) => tool.name === "read");
           expect(readTool).toBeDefined();
 
@@ -58,7 +64,7 @@ describe("workspace path resolution", () => {
 
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
-          const tools = createOpenClawCodingTools({ workspaceDir });
+          const tools = createOpenClawCodingTools({ workspaceDir, config: TEST_CONFIG });
           const writeTool = tools.find((tool) => tool.name === "write");
           expect(writeTool).toBeDefined();
 
@@ -84,7 +90,7 @@ describe("workspace path resolution", () => {
 
         const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(otherDir);
         try {
-          const tools = createOpenClawCodingTools({ workspaceDir });
+          const tools = createOpenClawCodingTools({ workspaceDir, config: TEST_CONFIG });
           const editTool = tools.find((tool) => tool.name === "edit");
           expect(editTool).toBeDefined();
 
@@ -105,7 +111,11 @@ describe("workspace path resolution", () => {
 
   it("defaults exec cwd to workspaceDir when workdir is omitted", async () => {
     await withTempDir("openclaw-ws-", async (workspaceDir) => {
-      const tools = createOpenClawCodingTools({ workspaceDir, exec: { host: "gateway" } });
+      const tools = createOpenClawCodingTools({
+        workspaceDir,
+        exec: { host: "gateway" },
+        config: TEST_CONFIG,
+      });
       const execTool = tools.find((tool) => tool.name === "exec");
       expect(execTool).toBeDefined();
 
@@ -128,7 +138,11 @@ describe("workspace path resolution", () => {
   it("lets exec workdir override the workspace default", async () => {
     await withTempDir("openclaw-ws-", async (workspaceDir) => {
       await withTempDir("openclaw-override-", async (overrideDir) => {
-        const tools = createOpenClawCodingTools({ workspaceDir, exec: { host: "gateway" } });
+        const tools = createOpenClawCodingTools({
+          workspaceDir,
+          exec: { host: "gateway" },
+          config: TEST_CONFIG,
+        });
         const execTool = tools.find((tool) => tool.name === "exec");
         expect(execTool).toBeDefined();
 
@@ -182,7 +196,7 @@ describe("sandboxed workspace paths", () => {
         await fs.writeFile(path.join(sandboxDir, testFile), "sandbox read", "utf8");
         await fs.writeFile(path.join(workspaceDir, testFile), "workspace read", "utf8");
 
-        const tools = createOpenClawCodingTools({ workspaceDir, sandbox });
+        const tools = createOpenClawCodingTools({ workspaceDir, sandbox, config: TEST_CONFIG });
         const readTool = tools.find((tool) => tool.name === "read");
         const writeTool = tools.find((tool) => tool.name === "write");
         const editTool = tools.find((tool) => tool.name === "edit");
@@ -222,6 +236,7 @@ describe("allowedPaths file access gating", () => {
 
       const tools = createOpenClawCodingTools({
         workspaceDir,
+        config: TEST_CONFIG,
         allowedPaths: ["workouts.json", "history/", "*.json"],
       });
       const readTool = tools.find((tool) => tool.name === "read");
@@ -249,6 +264,7 @@ describe("allowedPaths file access gating", () => {
 
       const tools = createOpenClawCodingTools({
         workspaceDir,
+        config: TEST_CONFIG,
         allowedPaths: ["workouts.json"],
       });
       const readTool = tools.find((tool) => tool.name === "read");

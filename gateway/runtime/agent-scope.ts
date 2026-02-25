@@ -5,7 +5,6 @@ import type {
   PiBootstrapFileKey,
   ResolvedPiConfig,
 } from "../infra/config/types.agents.js";
-import { getAgentPiConfig } from "../agent/agents/pi-registry.js";
 import { resolveStateDir } from "../infra/config/paths.js";
 import {
   DEFAULT_AGENT_ID,
@@ -145,6 +144,16 @@ export function resolveAgentConfig(
   };
 }
 
+export function resolveAgentAllowedFilePaths(cfg: OpenClawConfig, agentId: string): string[] {
+  const globalPaths = cfg.tools?.files?.allowedPaths;
+  const agentPaths = resolveAgentConfig(cfg, agentId)?.tools?.files?.allowedPaths;
+  const raw = agentPaths ?? globalPaths;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
 export function resolveAgentSkillsFilter(
   cfg: OpenClawConfig,
   agentId: string,
@@ -243,14 +252,11 @@ const PI_PRESET_DEFAULTS: Record<
 };
 
 /**
- * Resolve Pi runner config for an agent.
- * Agent-defined pi (from agent.ts) is the base; config agents.list[].pi overrides when present.
+ * Resolve Pi runner config for an agent from openclaw.json only.
  */
 export function resolvePiConfig(cfg: OpenClawConfig, agentId: string): ResolvedPiConfig {
-  const agentPi = getAgentPiConfig(agentId);
   const entry = resolveAgentEntry(cfg, agentId);
-  const configPi = entry?.pi;
-  const pi = configPi ?? agentPi;
+  const pi = entry?.pi;
   const preset = pi?.preset ?? "full";
   const presetDefaults = PI_PRESET_DEFAULTS[preset];
 

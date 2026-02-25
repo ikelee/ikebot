@@ -3,7 +3,10 @@ import type { ReplyPayload } from "../../types.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 import { getRemoteSkillEligibility } from "../../../../infra/skills-remote.js";
 import { resolveDefaultModelForAgent } from "../../../../models/model-selection.js";
-import { resolveSessionAgentIds } from "../../../../runtime/agent-scope.js";
+import {
+  resolveAgentAllowedFilePaths,
+  resolveSessionAgentIds,
+} from "../../../../runtime/agent-scope.js";
 import { resolveBootstrapContextForRun } from "../../../../runtime/bootstrap-files.js";
 import { resolveBootstrapMaxChars } from "../../../../runtime/pi-embedded-helpers.js";
 import { createOpenClawCodingTools } from "../../../../runtime/pi-tools.js";
@@ -83,6 +86,11 @@ async function resolveContextReport(
   });
   const tools = (() => {
     try {
+      const { sessionAgentId } = resolveSessionAgentIds({
+        sessionKey: params.sessionKey,
+        config: params.cfg,
+      });
+      const allowedPaths = resolveAgentAllowedFilePaths(params.cfg, sessionAgentId);
       return createOpenClawCodingTools({
         config: params.cfg,
         workspaceDir,
@@ -95,6 +103,7 @@ async function resolveContextReport(
         senderIsOwner: params.command.senderIsOwner,
         modelProvider: params.provider,
         modelId: params.model,
+        allowedPaths,
       });
     } catch {
       return [];
