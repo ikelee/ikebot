@@ -5,6 +5,7 @@ import type { MemorySearchResult } from "../../infra/memory/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { resolveMemoryBackendConfig } from "../../infra/memory/backend-config.js";
 import { getMemorySearchManager } from "../../infra/memory/index.js";
+import { normalizeAgentId } from "../../infra/routing/session-key.js";
 import { parseAgentSessionKey } from "../../infra/routing/session-key.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -25,15 +26,19 @@ const MemoryGetSchema = Type.Object({
 export function createMemorySearchTool(options: {
   config?: OpenClawConfig;
   agentSessionKey?: string;
+  requesterAgentIdOverride?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg) {
     return null;
   }
-  const agentId = resolveSessionAgentId({
-    sessionKey: options.agentSessionKey,
-    config: cfg,
-  });
+  const overrideAgentId = options.requesterAgentIdOverride?.trim();
+  const agentId = overrideAgentId
+    ? normalizeAgentId(overrideAgentId)
+    : resolveSessionAgentId({
+        sessionKey: options.agentSessionKey,
+        config: cfg,
+      });
   if (!resolveMemorySearchConfig(cfg, agentId)) {
     return null;
   }
@@ -90,15 +95,19 @@ export function createMemorySearchTool(options: {
 export function createMemoryGetTool(options: {
   config?: OpenClawConfig;
   agentSessionKey?: string;
+  requesterAgentIdOverride?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg) {
     return null;
   }
-  const agentId = resolveSessionAgentId({
-    sessionKey: options.agentSessionKey,
-    config: cfg,
-  });
+  const overrideAgentId = options.requesterAgentIdOverride?.trim();
+  const agentId = overrideAgentId
+    ? normalizeAgentId(overrideAgentId)
+    : resolveSessionAgentId({
+        sessionKey: options.agentSessionKey,
+        config: cfg,
+      });
   if (!resolveMemorySearchConfig(cfg, agentId)) {
     return null;
   }

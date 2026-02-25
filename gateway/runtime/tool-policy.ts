@@ -129,7 +129,6 @@ export type PluginToolGroups = {
 export type AllowlistResolution = {
   policy: ToolPolicyLike | undefined;
   unknownAllowlist: string[];
-  strippedAllowlist: boolean;
 };
 
 export function expandToolGroups(list?: string[]) {
@@ -233,43 +232,30 @@ export function stripPluginOnlyAllowlist(
   coreTools: Set<string>,
 ): AllowlistResolution {
   if (!policy?.allow || policy.allow.length === 0) {
-    return { policy, unknownAllowlist: [], strippedAllowlist: false };
+    return { policy, unknownAllowlist: [] };
   }
   const normalized = normalizeToolList(policy.allow);
   if (normalized.length === 0) {
-    return { policy, unknownAllowlist: [], strippedAllowlist: false };
+    return { policy, unknownAllowlist: [] };
   }
   const pluginIds = new Set(groups.byPlugin.keys());
   const pluginTools = new Set(groups.all);
   const unknownAllowlist: string[] = [];
-  let hasCoreEntry = false;
   for (const entry of normalized) {
     if (entry === "*") {
-      hasCoreEntry = true;
       continue;
     }
     const isPluginEntry =
       entry === "group:plugins" || pluginIds.has(entry) || pluginTools.has(entry);
     const expanded = expandToolGroups([entry]);
     const isCoreEntry = expanded.some((tool) => coreTools.has(tool));
-    if (isCoreEntry) {
-      hasCoreEntry = true;
-    }
     if (!isCoreEntry && !isPluginEntry) {
       unknownAllowlist.push(entry);
     }
   }
-  const strippedAllowlist = !hasCoreEntry;
-  // When an allowlist contains only plugin tools, we strip it to avoid accidentally
-  // disabling core tools. Users who want additive behavior should prefer `tools.alsoAllow`.
-  if (strippedAllowlist) {
-    // Note: logging happens in the caller (pi-tools/tools-invoke) after this function returns.
-    // We keep this note here for future maintainers.
-  }
   return {
-    policy: strippedAllowlist ? { ...policy, allow: undefined } : policy,
+    policy,
     unknownAllowlist: Array.from(new Set(unknownAllowlist)),
-    strippedAllowlist,
   };
 }
 

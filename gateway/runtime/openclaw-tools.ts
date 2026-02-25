@@ -153,10 +153,12 @@ export function createOpenClawTools(options?: {
       config: options?.config,
       workspaceDir: options?.workspaceDir,
       agentDir: options?.agentDir,
-      agentId: resolveSessionAgentId({
-        sessionKey: options?.agentSessionKey,
-        config: options?.config,
-      }),
+      agentId:
+        options?.requesterAgentIdOverride ??
+        resolveSessionAgentId({
+          sessionKey: options?.agentSessionKey,
+          config: options?.config,
+        }),
       sessionKey: options?.agentSessionKey,
       messageChannel: options?.agentChannel,
       agentAccountId: options?.agentAccountId,

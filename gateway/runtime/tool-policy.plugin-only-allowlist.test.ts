@@ -8,15 +8,15 @@ const pluginGroups: PluginToolGroups = {
 const coreTools = new Set(["read", "write", "exec", "session_status"]);
 
 describe("stripPluginOnlyAllowlist", () => {
-  it("strips allowlist when it only targets plugin tools", () => {
+  it("keeps allowlist when it only targets plugin tools", () => {
     const policy = stripPluginOnlyAllowlist({ allow: ["lobster"] }, pluginGroups, coreTools);
-    expect(policy.policy?.allow).toBeUndefined();
+    expect(policy.policy?.allow).toEqual(["lobster"]);
     expect(policy.unknownAllowlist).toEqual([]);
   });
 
-  it("strips allowlist when it only targets plugin groups", () => {
+  it("keeps allowlist when it only targets plugin groups", () => {
     const policy = stripPluginOnlyAllowlist({ allow: ["group:plugins"] }, pluginGroups, coreTools);
-    expect(policy.policy?.allow).toBeUndefined();
+    expect(policy.policy?.allow).toEqual(["group:plugins"]);
     expect(policy.unknownAllowlist).toEqual([]);
   });
 
@@ -36,10 +36,10 @@ describe("stripPluginOnlyAllowlist", () => {
     expect(policy.unknownAllowlist).toEqual([]);
   });
 
-  it("strips allowlist with unknown entries when no core tools match", () => {
+  it("keeps allowlist with unknown entries when no core tools match", () => {
     const emptyPlugins: PluginToolGroups = { all: [], byPlugin: new Map() };
     const policy = stripPluginOnlyAllowlist({ allow: ["lobster"] }, emptyPlugins, coreTools);
-    expect(policy.policy?.allow).toBeUndefined();
+    expect(policy.policy?.allow).toEqual(["lobster"]);
     expect(policy.unknownAllowlist).toEqual(["lobster"]);
   });
 

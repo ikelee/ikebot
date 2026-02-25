@@ -158,6 +158,41 @@ describe("Agent-specific tool filtering", () => {
     expect(toolNames).not.toContain("apply_patch");
   });
 
+  it("should apply routed agent policy even when session key is legacy/unscoped", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [
+          {
+            id: "main",
+            workspace: "~/openclaw",
+            tools: {
+              allow: ["exec"],
+            },
+          },
+          {
+            id: "mail",
+            workspace: "~/openclaw-mail",
+            tools: {
+              allow: ["memory_search", "memory_get", "cron"],
+            },
+          },
+        ],
+      },
+    };
+
+    const tools = createOpenClawCodingTools({
+      config: cfg,
+      sessionKey: "bluebubbles:direct:ikelee98@gmail.com",
+      agentId: "mail",
+      workspaceDir: "/tmp/test-mail-routed",
+      agentDir: "/tmp/agent-mail-routed",
+    });
+
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).not.toContain("exec");
+    expect(toolNames).not.toContain("process");
+  });
+
   it("should apply provider-specific tool profile overrides", () => {
     const cfg: OpenClawConfig = {
       tools: {

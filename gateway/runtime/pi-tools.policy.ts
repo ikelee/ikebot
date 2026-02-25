@@ -3,6 +3,7 @@ import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxToolPolicy } from "./sandbox.js";
 import { getChannelDock } from "../entrypoints/channels/dock.js";
 import { resolveChannelGroupToolsPolicy } from "../infra/config/group-policy.js";
+import { normalizeAgentId } from "../infra/routing/session-key.js";
 import { resolveThreadParentSessionKey } from "../infra/sessions/session-key-utils.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
 import { resolveAgentConfig, resolveAgentIdFromSessionKey } from "./agent-scope.js";
@@ -230,10 +231,15 @@ function resolveProviderToolPolicy(params: {
 export function resolveEffectiveToolPolicy(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
+  agentId?: string;
   modelProvider?: string;
   modelId?: string;
 }) {
-  const agentId = params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : undefined;
+  const agentId = params.agentId
+    ? normalizeAgentId(params.agentId)
+    : params.sessionKey
+      ? resolveAgentIdFromSessionKey(params.sessionKey)
+      : undefined;
   const agentConfig =
     params.config && agentId ? resolveAgentConfig(params.config, agentId) : undefined;
   const agentTools = agentConfig?.tools;
