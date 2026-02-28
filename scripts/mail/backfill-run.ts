@@ -71,12 +71,13 @@ type QwenDecision = {
   importance: "important" | "not_important";
   confidence: number;
   reasons: string[];
+  spamLikely: boolean;
 };
 
 const RISKY_DROP_PATTERN =
   /docusign|booking|reservation|confirm|confirmation|recruiter|interview|job|application|offer|talent|career|realtor|real estate|e-?transfer|interac|tax|legal|lawyer|attorney|receipt|invoice|delivery|shipped/i;
 const QWEN_SYSTEM_PROMPT =
-  'Classify email importance for personal retrieval. Return strict JSON only: {"importance":"important|not_important","confidence":0..1}';
+  'Classify email importance for personal retrieval. Compare sender+subject against body and flag spoof/phishing mismatches. Return strict JSON only: {"importance":"important|not_important","confidence":0..1,"spamLikely":true|false,"reasons":["short_reason_codes"]}';
 
 function usage(): never {
   console.error(
@@ -432,11 +433,13 @@ function qwenPromptForRecord(
   return [
     "Classify this email.",
     `From: ${record.from ?? ""}`,
+    `To: ${record.to ?? ""}`,
     `Subject: ${record.subject ?? ""}`,
     `HasAttachment: ${record.hasAttachment ? "true" : "false"}`,
     `Body: ${trimForPrompt(record.bodyText, maxBodyChars)}`,
     "",
-    'Respond with JSON: {"importance":"important|not_important","confidence":0..1}',
+    'Important: If subject/sender does not match body intent (for example fake login alerts), set spamLikely=true and include reasons like "subject_body_mismatch", "sender_content_mismatch", or "phishing_signal".',
+    'Respond with JSON: {"importance":"important|not_important","confidence":0..1,"spamLikely":true|false,"reasons":["..."]}',
   ].join("\n");
 }
 
@@ -454,6 +457,7 @@ function parseQwenDecision(raw: string): QwenDecision | undefined {
     importance?: unknown;
     confidence?: unknown;
     reasons?: unknown;
+    spamLikely?: unknown;
   };
   if (obj.importance !== "important" && obj.importance !== "not_important") {
     return undefined;
@@ -465,10 +469,12 @@ function parseQwenDecision(raw: string): QwenDecision | undefined {
   const reasons = Array.isArray(obj.reasons)
     ? obj.reasons.filter((v): v is string => typeof v === "string").slice(0, 6)
     : [];
+  const spamLikely = obj.spamLikely === true;
   return {
     importance: obj.importance,
     confidence,
     reasons,
+    spamLikely,
   };
 }
 
@@ -775,10 +781,19 @@ async function main(): Promise<void> {
               qwenDecision: decision,
             });
             if (decision.confidence >= qwenCfg.minConfidence) {
-              base.importance = decision.importance;
+              const reasonSignals = decision.reasons.map((reason) => reason.toLowerCase());
+              const spamReasonSignal = reasonSignals.some(
+                (reason) =>
+                  reason.includes("subject_body_mismatch") ||
+                  reason.includes("sender_content_mismatch") ||
+                  reason.includes("phishing"),
+              );
+              const spamLikely = decision.spamLikely || spamReasonSignal;
+              base.importance = spamLikely ? "not_important" : decision.importance;
               base.importanceReasons = [
-                `qwen:${decision.importance}`,
+                `qwen:${base.importance}`,
                 `qwen_confidence:${decision.confidence.toFixed(2)}`,
+                ...(spamLikely ? ["qwen:spam_likely"] : []),
                 ...decision.reasons.map((r) => `qwen_reason:${r}`),
                 ...base.importanceReasons,
               ].slice(0, 10);
@@ -786,6 +801,17 @@ async function main(): Promise<void> {
                 base.importance === "important"
                   ? base.bodyText.slice(0, bodyMaxImportant)
                   : base.bodyText.slice(0, bodyMaxNotImportant);
+              if (spamLikely) {
+                appendJsonl(eventsFile, {
+                  ts: nowIso(),
+                  type: "qwen_spam_flagged",
+                  recordId: base.id,
+                  sourceId: source.id,
+                  sourcePath: rawPath,
+                  importance: base.importance,
+                  importanceReasons: base.importanceReasons,
+                });
+              }
             }
           } catch (err) {
             appendJsonl(qwenErrorReviewFile, {

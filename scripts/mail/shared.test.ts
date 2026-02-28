@@ -40,4 +40,28 @@ describe("mail importance classifier", () => {
     });
     expect(result.importance).toBe("not_important");
   });
+
+  it("treats forwarded sender identity as neutral", () => {
+    const result = classifyImportance({
+      subject: "FW: quick note",
+      from: "alerts@bank.example.com",
+      bodyText: "Forwarded message from someone. FYI only.",
+      hasAttachment: false,
+      headers: {},
+    });
+    expect(result.reasons.some((reason) => reason.startsWith("from:"))).toBe(false);
+  });
+
+  it("flags obvious phishing mismatch as not important", () => {
+    const result = classifyImportance({
+      subject: "Chase security alert - verify your account now",
+      from: "alerts@totally-not-chase-security.co",
+      bodyText:
+        "Urgent action required. Your account is suspended. Click this link to verify your password immediately.",
+      hasAttachment: false,
+      headers: {},
+    });
+    expect(result.importance).toBe("not_important");
+    expect(result.reasons).toContain("phishing_signal");
+  });
 });

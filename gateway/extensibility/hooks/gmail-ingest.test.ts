@@ -171,4 +171,65 @@ describe("gmail hook ingest", () => {
     expect(fs.existsSync(importantDoc)).toBe(true);
     expect(fs.existsSync(notImportantDoc)).toBe(false);
   });
+
+  it("treats forwarded sender identity as neutral", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-gmail-ingest-fw-neutral-"));
+    const cfg = {
+      hooks: {
+        gmail: {
+          storeDir: workspace,
+        },
+      },
+    } as OpenClawConfig;
+
+    await ingestGmailHookPayload({
+      cfg,
+      payload: {
+        messages: [
+          {
+            id: "msg-fw-neutral-1",
+            from: "alerts@bank.example.com",
+            subject: "FW: quick note",
+            snippet: "Forwarded message. FYI only.",
+            body: "Forwarded message. FYI only.",
+          },
+        ],
+      },
+    });
+
+    const line = fs.readFileSync(path.join(workspace, "mail-records.jsonl"), "utf8").trim();
+    const record = JSON.parse(line) as { importanceReasons: string[] };
+    expect(record.importanceReasons.some((reason) => reason.startsWith("from:"))).toBe(false);
+  });
+
+  it("flags obvious phishing mismatch as not important", async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-gmail-ingest-phish-"));
+    const cfg = {
+      hooks: {
+        gmail: {
+          storeDir: workspace,
+        },
+      },
+    } as OpenClawConfig;
+
+    await ingestGmailHookPayload({
+      cfg,
+      payload: {
+        messages: [
+          {
+            id: "msg-phish-1",
+            from: "alerts@totally-not-chase-security.co",
+            subject: "Chase security alert - verify your account now",
+            snippet: "Urgent action required",
+            body: "Urgent action required. Your account is suspended. Click this link to verify your password.",
+          },
+        ],
+      },
+    });
+
+    const line = fs.readFileSync(path.join(workspace, "mail-records.jsonl"), "utf8").trim();
+    const record = JSON.parse(line) as { importance: string; importanceReasons: string[] };
+    expect(record.importance).toBe("not_important");
+    expect(record.importanceReasons).toContain("phishing_signal");
+  });
 });

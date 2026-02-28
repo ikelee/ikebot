@@ -125,6 +125,55 @@ function buildPrompt(records, startIso, endIso, maxItems) {
   ].join("\n");
 }
 
+function tryParseDigestJson(raw) {
+  const direct = safeJsonParse(raw);
+  if (direct && typeof direct.summary === "string") {
+    return direct;
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    const parsed = safeJsonParse(fenced[1].trim());
+    if (parsed && typeof parsed.summary === "string") {
+      return parsed;
+    }
+  }
+
+  const objStart = raw.indexOf("{");
+  const objEnd = raw.lastIndexOf("}");
+  if (objStart >= 0 && objEnd > objStart) {
+    const parsed = safeJsonParse(raw.slice(objStart, objEnd + 1));
+    if (parsed && typeof parsed.summary === "string") {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function buildFallbackDigest(records, fallbackReason) {
+  const important = records.filter((r) => r.importance === "important");
+  const source = important.length > 0 ? important : records;
+  const top = source.slice(0, 6).map((r) => {
+    const subject = (r.subject || "(no subject)").replace(/\s+/g, " ").trim();
+    const from = (r.from || "(unknown sender)").replace(/\s+/g, " ").trim();
+    return { title: subject, why: `From ${from}` };
+  });
+
+  const summary =
+    records.length === 0
+      ? "No emails were ingested in the last 24 hours."
+      : `Processed ${records.length} emails in the last 24 hours.` +
+        (important.length > 0 ? ` ${important.length} were marked important.` : "");
+
+  return {
+    summary,
+    importantItems: top,
+    actionItems: [],
+    noiseSummary: `Fallback digest used (${fallbackReason}).`,
+  };
+}
+
 async function summarizeWithQwen(url, model, prompt) {
   const response = await fetch(url, {
     method: "POST",
@@ -149,7 +198,7 @@ async function summarizeWithQwen(url, model, prompt) {
 
   const payload = await response.json();
   const raw = payload?.choices?.[0]?.message?.content?.trim() || "";
-  const parsed = safeJsonParse(raw);
+  const parsed = tryParseDigestJson(raw);
   if (!parsed || typeof parsed.summary !== "string") {
     throw new Error("qwen_invalid_json_output");
   }
@@ -219,7 +268,13 @@ async function main() {
   const records = await loadRecordsById(recordsFile, recordIds);
 
   const prompt = buildPrompt(records, startIso, endIso, args.maxItems);
-  const digest = await summarizeWithQwen(args.qwenUrl, args.qwenModel, prompt);
+  let digest;
+  try {
+    digest = await summarizeWithQwen(args.qwenUrl, args.qwenModel, prompt);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    digest = buildFallbackDigest(records, message);
+  }
 
   fs.mkdirSync(args.outDir, { recursive: true });
   const stamp = endIso.replace(/[:]/g, "").replace(/\.\d{3}Z$/, "Z");

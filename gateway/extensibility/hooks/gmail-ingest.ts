@@ -74,6 +74,7 @@ type QwenDecision = {
   importance: "important" | "not_important";
   confidence: number;
   reasons: string[];
+  spamLikely: boolean;
 };
 
 const dedupeCache = new Map<string, Set<string>>();
@@ -138,8 +139,21 @@ const IMPORTANT_FROM = [
 ];
 const PROMO_SUBJECT = [/newsletter/i, /digest/i, /coupon/i, /sale/i, /deal/i, /promo/i];
 const PROMO_FROM = [/noreply/i, /news/i, /offers?/i, /marketing/i];
+const BODY_PROMO_MARKERS = [
+  /unsubscribe/i,
+  /\bmanage (?:email )?preferences\b/i,
+  /\bview this email online\b/i,
+  /\bsale\b/i,
+  /\bdeals?\b/i,
+];
 const LOW_VALUE_CI_SUBJECT = [/\[.+\/.+\].*run (failed|cancelled|canceled|started)/i, /\bci\b/i];
 const LOW_VALUE_SOCIAL_SUBJECT = [/\btop post:\b/i, /\bneighbors?\b/i, /\bnextdoor\b/i];
+const FORWARDED_BLOCK_MARKERS = [
+  /forwarded message/i,
+  /original message/i,
+  /from:\s+.+\n\s*sent:\s+.+\n\s*to:\s+.+\n\s*subject:/i,
+];
+const FORWARD_SUBJECT_PREFIX = /^\s*fwd?\s*:/i;
 const LEGAL_CLAIM_SIGNALS = [
   /\bclaim\b/i,
   /\badditional steps required\b/i,
@@ -147,6 +161,49 @@ const LEGAL_CLAIM_SIGNALS = [
   /\bsettlement\b/i,
   /\bvenmo\b/i,
   /\bpaypal\b/i,
+];
+const PHISHING_URGENCY_MARKERS = [
+  /\burgent(?: action)? required\b/i,
+  /\bverify (?:your )?account\b/i,
+  /\baccount (?:is )?(?:suspended|locked|disabled)\b/i,
+  /\bunusual (?:sign-?in|login|activity)\b/i,
+  /\bconfirm (?:your )?identity\b/i,
+  /\baction required\b/i,
+  /\bsecurity alert\b/i,
+];
+const PHISHING_CREDENTIAL_MARKERS = [
+  /\bpassword\b/i,
+  /\bpasscode\b/i,
+  /\blog(?:in|on)\b/i,
+  /\bssn\b/i,
+  /\bsocial security\b/i,
+  /\bpin\b/i,
+  /\b2fa\b/i,
+  /\bone[- ]time code\b/i,
+];
+const PHISHING_BRAND_RULES = [
+  { keyword: /\bchase\b/i, senderDomain: /(^|\.)chase\.com$/i },
+  { keyword: /\bpaypal\b/i, senderDomain: /(^|\.)paypal\.com$/i },
+  { keyword: /\bapple\b/i, senderDomain: /(^|\.)apple\.com$/i },
+  {
+    keyword: /\bmicrosoft|outlook|office 365|office365\b/i,
+    senderDomain: /(^|\.)microsoft\.com$/i,
+  },
+  { keyword: /\bgoogle|gmail\b/i, senderDomain: /(^|\.)google\.com$/i },
+  { keyword: /\bamazon\b/i, senderDomain: /(^|\.)amazon\.(com|ca)$/i },
+  { keyword: /\bbank of america|bofa\b/i, senderDomain: /(^|\.)bankofamerica\.com$/i },
+  { keyword: /\bwells fargo\b/i, senderDomain: /(^|\.)wellsfargo\.com$/i },
+];
+const PERSONAL_FORWARDER_DOMAINS = [
+  /(^|\.)hotmail\.com$/i,
+  /(^|\.)outlook\.com$/i,
+  /(^|\.)gmail\.com$/i,
+  /(^|\.)live\.com$/i,
+  /(^|\.)icloud\.com$/i,
+  /(^|\.)me\.com$/i,
+  /(^|\.)msn\.com$/i,
+  /(^|\.)yahoo\.com$/i,
+  /(^|\.)aol\.com$/i,
 ];
 
 function nowIso(): string {
@@ -173,6 +230,70 @@ function decodeRfc2047Words(input: string): string {
       return String(text);
     }
   });
+}
+
+function extractEmails(raw: string): string[] {
+  const matches = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
+  return matches.map((email) => email.toLowerCase());
+}
+
+function senderDomainFromHeader(rawFrom: string): string | undefined {
+  const email = extractEmails(rawFrom)[0];
+  if (!email) {
+    return undefined;
+  }
+  const at = email.lastIndexOf("@");
+  if (at < 0 || at === email.length - 1) {
+    return undefined;
+  }
+  return email.slice(at + 1).toLowerCase();
+}
+
+function getPhishingSuspicion(params: {
+  subject: string;
+  bodyText: string;
+  from: string;
+  forwarded: boolean;
+}): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+  const senderDomain = senderDomainFromHeader(params.from);
+  const text = `${params.subject}\n${params.bodyText}`;
+  const fromPersonalForwarder = Boolean(
+    senderDomain && PERSONAL_FORWARDER_DOMAINS.some((rx) => rx.test(senderDomain)),
+  );
+
+  if (PHISHING_URGENCY_MARKERS.some((rx) => rx.test(text))) {
+    score += 1;
+    reasons.push("phishing_urgency");
+  }
+  if (
+    PHISHING_CREDENTIAL_MARKERS.some((rx) => rx.test(text)) &&
+    /\b(click|open|visit|verify|confirm|update|reset)\b/i.test(text)
+  ) {
+    score += 1;
+    reasons.push("credential_request_pattern");
+  }
+  if (/\b(bit\.ly|tinyurl|t\.co|lnkd\.in)\b/i.test(text)) {
+    score += 1;
+    reasons.push("short_link_pattern");
+  }
+  if (!params.forwarded && senderDomain && !fromPersonalForwarder) {
+    for (const rule of PHISHING_BRAND_RULES) {
+      const subjectMentionsBrand = rule.keyword.test(params.subject);
+      const bodyMentionsBrand = subjectMentionsBrand || rule.keyword.test(params.bodyText);
+      if (!bodyMentionsBrand) {
+        continue;
+      }
+      if (!rule.senderDomain.test(senderDomain)) {
+        score += 2;
+        reasons.push(subjectMentionsBrand ? "subject_sender_mismatch" : "sender_content_mismatch");
+      }
+      break;
+    }
+  }
+
+  return { score, reasons: [...new Set(reasons)] };
 }
 
 function appendJsonl(filePath: string, value: unknown): void {
@@ -239,16 +360,32 @@ function classifyImportance(msg: GmailHookMessage, bodyText: string) {
   const hasLegalClaimSignal =
     LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(subject)) ||
     LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(bodyText));
+  const hasForwardedBlock = FORWARDED_BLOCK_MARKERS.some((rx) => rx.test(bodyText));
+  const isForwarded = FORWARD_SUBJECT_PREFIX.test(subject) || hasForwardedBlock;
+  const phishing = getPhishingSuspicion({ subject, bodyText, from, forwarded: isForwarded });
+  if (phishing.score >= 3) {
+    return {
+      importance: "not_important" as const,
+      reasons: [
+        "bucket:for_sure_not_important",
+        "phishing_signal",
+        `phishing_score:${phishing.score}`,
+        ...phishing.reasons,
+      ],
+    };
+  }
   for (const rx of IMPORTANT_SUBJECT) {
     if (rx.test(subject)) {
       strongReasons.push(`subject:${rx.source}`);
       break;
     }
   }
-  for (const rx of IMPORTANT_FROM) {
-    if (rx.test(from)) {
-      strongReasons.push(`from:${rx.source}`);
-      break;
+  if (!isForwarded) {
+    for (const rx of IMPORTANT_FROM) {
+      if (rx.test(from)) {
+        strongReasons.push(`from:${rx.source}`);
+        break;
+      }
     }
   }
   if (
@@ -263,7 +400,8 @@ function classifyImportance(msg: GmailHookMessage, bodyText: string) {
   }
   const promoSignals =
     Number(PROMO_SUBJECT.some((rx) => rx.test(subject))) +
-    Number(PROMO_FROM.some((rx) => rx.test(from)));
+    Number(!isForwarded && PROMO_FROM.some((rx) => rx.test(from))) +
+    Number(BODY_PROMO_MARKERS.some((rx) => rx.test(bodyText)));
   if (strongReasons.length > 0) {
     return {
       importance: "important" as const,
@@ -314,7 +452,12 @@ function parseQwenDecision(raw: string): QwenDecision | undefined {
   if (!parsed || typeof parsed !== "object") {
     return undefined;
   }
-  const obj = parsed as { importance?: unknown; confidence?: unknown; reasons?: unknown };
+  const obj = parsed as {
+    importance?: unknown;
+    confidence?: unknown;
+    reasons?: unknown;
+    spamLikely?: unknown;
+  };
   if (obj.importance !== "important" && obj.importance !== "not_important") {
     return undefined;
   }
@@ -325,7 +468,8 @@ function parseQwenDecision(raw: string): QwenDecision | undefined {
   const reasons = Array.isArray(obj.reasons)
     ? obj.reasons.filter((v): v is string => typeof v === "string").slice(0, 6)
     : [];
-  return { importance: obj.importance, confidence, reasons };
+  const spamLikely = obj.spamLikely === true;
+  return { importance: obj.importance, confidence, reasons, spamLikely };
 }
 
 async function maybeClassifyWithQwen(params: {
@@ -350,11 +494,20 @@ async function maybeClassifyWithQwen(params: {
           {
             role: "system",
             content:
-              'Classify email importance for personal retrieval. Return strict JSON only: {"importance":"important|not_important","confidence":0..1}',
+              'Classify email importance for personal retrieval. Compare sender+subject against body and flag spoof/phishing mismatches. Return strict JSON only: {"importance":"important|not_important","confidence":0..1,"spamLikely":true|false,"reasons":["short_reason_codes"]}',
           },
           {
             role: "user",
-            content: `From: ${params.record.from ?? ""}\nSubject: ${params.record.subject ?? ""}\nBody: ${params.record.bodyText.slice(0, 500)}`,
+            content: [
+              `From: ${params.record.from ?? ""}`,
+              `To: ${params.record.to ?? ""}`,
+              `Subject: ${params.record.subject ?? ""}`,
+              `HasAttachment: ${params.record.hasAttachment ? "true" : "false"}`,
+              `Body: ${params.record.bodyText.slice(0, 500)}`,
+              "",
+              'Important: If subject/sender does not match body intent (for example fake login alerts), set spamLikely=true and include reasons like "subject_body_mismatch", "sender_content_mismatch", or "phishing_signal".',
+              'Respond with JSON: {"importance":"important|not_important","confidence":0..1,"spamLikely":true|false,"reasons":["..."]}',
+            ].join("\n"),
           },
         ],
       }),
@@ -480,13 +633,34 @@ export async function ingestGmailHookPayload(params: {
           record,
         });
         if (decision) {
-          record.importance = decision.importance;
+          const reasonSignals = decision.reasons.map((reason) => reason.toLowerCase());
+          const spamReasonSignal = reasonSignals.some(
+            (reason) =>
+              reason.includes("subject_body_mismatch") ||
+              reason.includes("sender_content_mismatch") ||
+              reason.includes("phishing"),
+          );
+          const spamLikely = decision.spamLikely || spamReasonSignal;
+          record.importance = spamLikely ? "not_important" : decision.importance;
           record.importanceReasons = [
-            `qwen:${decision.importance}`,
+            `qwen:${record.importance}`,
             `qwen_confidence:${decision.confidence.toFixed(2)}`,
+            ...(spamLikely ? ["qwen:spam_likely"] : []),
             ...decision.reasons.map((r) => `qwen_reason:${r}`),
             ...record.importanceReasons,
           ].slice(0, 10);
+          if (spamLikely) {
+            appendJsonl(eventsFile, {
+              ts: nowIso(),
+              type: "qwen_spam_flagged",
+              source: "gmail-hook",
+              recordId: record.id,
+              dedupeKey: record.dedupeKey,
+              messageId: record.messageId,
+              importance: record.importance,
+              importanceReasons: record.importanceReasons,
+            });
+          }
         }
       }
       appendJsonl(recordsFile, record);

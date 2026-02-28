@@ -406,8 +406,52 @@ const FORWARDED_BLOCK_MARKERS = [
   /original message/i,
   /from:\s+.+\n\s*sent:\s+.+\n\s*to:\s+.+\n\s*subject:/i,
 ];
+const FORWARD_SUBJECT_PREFIX = /^\s*fwd?\s*:/i;
 const REPLY_SUBJECT_PREFIX = /^\s*re\s*:/i;
 const REPLY_BODY_MARKERS = [/\bon .+wrote:/i, /^\s*>.+/m, /\breply above this line\b/i];
+const PHISHING_URGENCY_MARKERS = [
+  /\burgent(?: action)? required\b/i,
+  /\bverify (?:your )?account\b/i,
+  /\baccount (?:is )?(?:suspended|locked|disabled)\b/i,
+  /\bunusual (?:sign-?in|login|activity)\b/i,
+  /\bconfirm (?:your )?identity\b/i,
+  /\baction required\b/i,
+  /\bsecurity alert\b/i,
+];
+const PHISHING_CREDENTIAL_MARKERS = [
+  /\bpassword\b/i,
+  /\bpasscode\b/i,
+  /\blog(?:in|on)\b/i,
+  /\bssn\b/i,
+  /\bsocial security\b/i,
+  /\bpin\b/i,
+  /\b2fa\b/i,
+  /\bone[- ]time code\b/i,
+];
+const PHISHING_BRAND_RULES = [
+  { keyword: /\bchase\b/i, senderDomain: /(^|\.)chase\.com$/i },
+  { keyword: /\bpaypal\b/i, senderDomain: /(^|\.)paypal\.com$/i },
+  { keyword: /\bapple\b/i, senderDomain: /(^|\.)apple\.com$/i },
+  {
+    keyword: /\bmicrosoft|outlook|office 365|office365\b/i,
+    senderDomain: /(^|\.)microsoft\.com$/i,
+  },
+  { keyword: /\bgoogle|gmail\b/i, senderDomain: /(^|\.)google\.com$/i },
+  { keyword: /\bamazon\b/i, senderDomain: /(^|\.)amazon\.(com|ca)$/i },
+  { keyword: /\bbank of america|bofa\b/i, senderDomain: /(^|\.)bankofamerica\.com$/i },
+  { keyword: /\bwells fargo\b/i, senderDomain: /(^|\.)wellsfargo\.com$/i },
+];
+const PERSONAL_FORWARDER_DOMAINS = [
+  /(^|\.)hotmail\.com$/i,
+  /(^|\.)outlook\.com$/i,
+  /(^|\.)gmail\.com$/i,
+  /(^|\.)live\.com$/i,
+  /(^|\.)icloud\.com$/i,
+  /(^|\.)me\.com$/i,
+  /(^|\.)msn\.com$/i,
+  /(^|\.)yahoo\.com$/i,
+  /(^|\.)aol\.com$/i,
+];
 
 function extractEmails(raw: string): string[] {
   const matches = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
@@ -416,6 +460,65 @@ function extractEmails(raw: string): string[] {
 
 function isHumanishEmail(email: string): boolean {
   return !/(^|[._-])(no-?reply|donotreply|mailer-daemon)([._-]|@|$)/i.test(email);
+}
+
+function senderDomainFromHeader(rawFrom: string): string | undefined {
+  const email = extractEmails(rawFrom)[0];
+  if (!email) {
+    return undefined;
+  }
+  const at = email.lastIndexOf("@");
+  if (at < 0 || at === email.length - 1) {
+    return undefined;
+  }
+  return email.slice(at + 1).toLowerCase();
+}
+
+function getPhishingSuspicion(params: {
+  subject: string;
+  bodyText: string;
+  from: string;
+  forwarded: boolean;
+}): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+  const senderDomain = senderDomainFromHeader(params.from);
+  const text = `${params.subject}\n${params.bodyText}`;
+  const fromPersonalForwarder = Boolean(
+    senderDomain && PERSONAL_FORWARDER_DOMAINS.some((rx) => rx.test(senderDomain)),
+  );
+
+  if (PHISHING_URGENCY_MARKERS.some((rx) => rx.test(text))) {
+    score += 1;
+    reasons.push("phishing_urgency");
+  }
+  if (
+    PHISHING_CREDENTIAL_MARKERS.some((rx) => rx.test(text)) &&
+    /\b(click|open|visit|verify|confirm|update|reset)\b/i.test(text)
+  ) {
+    score += 1;
+    reasons.push("credential_request_pattern");
+  }
+  if (/\b(bit\.ly|tinyurl|t\.co|lnkd\.in)\b/i.test(text)) {
+    score += 1;
+    reasons.push("short_link_pattern");
+  }
+  if (!params.forwarded && senderDomain && !fromPersonalForwarder) {
+    for (const rule of PHISHING_BRAND_RULES) {
+      const subjectMentionsBrand = rule.keyword.test(params.subject);
+      const bodyMentionsBrand = subjectMentionsBrand || rule.keyword.test(params.bodyText);
+      if (!bodyMentionsBrand) {
+        continue;
+      }
+      if (!rule.senderDomain.test(senderDomain)) {
+        score += 2;
+        reasons.push(subjectMentionsBrand ? "subject_sender_mismatch" : "sender_content_mismatch");
+      }
+      break;
+    }
+  }
+
+  return { score, reasons: [...new Set(reasons)] };
 }
 
 export function classifyImportance(params: {
@@ -433,6 +536,21 @@ export function classifyImportance(params: {
   const hasLegalClaimSignal =
     LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(subject)) ||
     LEGAL_CLAIM_SIGNALS.some((rx) => rx.test(bodyText));
+  const hasForwardedBlock = FORWARDED_BLOCK_MARKERS.some((rx) => rx.test(bodyText));
+  const isForwarded = FORWARD_SUBJECT_PREFIX.test(subject) || hasForwardedBlock;
+  const phishing = getPhishingSuspicion({ subject, bodyText, from, forwarded: isForwarded });
+
+  if (phishing.score >= 3) {
+    return {
+      importance: "not_important",
+      reasons: [
+        "bucket:for_sure_not_important",
+        "phishing_signal",
+        `phishing_score:${phishing.score}`,
+        ...phishing.reasons,
+      ],
+    };
+  }
 
   if (params.hasAttachment) {
     strongReasons.push("has_attachment");
@@ -445,10 +563,12 @@ export function classifyImportance(params: {
     }
   }
 
-  for (const rx of IMPORTANT_FROM) {
-    if (rx.test(from)) {
-      strongReasons.push(`from:${rx.source}`);
-      break;
+  if (!isForwarded) {
+    for (const rx of IMPORTANT_FROM) {
+      if (rx.test(from)) {
+        strongReasons.push(`from:${rx.source}`);
+        break;
+      }
     }
   }
 
@@ -467,8 +587,8 @@ export function classifyImportance(params: {
   const inReplyTo = params.headers["in-reply-to"] ?? "";
   const hasThreading = references.length > 0 || inReplyTo.length > 0;
   const senderLooksBulk =
-    PROMO_FROM.some((rx) => rx.test(from)) || BULK_SENDER_DOMAIN.some((rx) => rx.test(from));
-  const hasForwardedBlock = FORWARDED_BLOCK_MARKERS.some((rx) => rx.test(bodyText));
+    !isForwarded &&
+    (PROMO_FROM.some((rx) => rx.test(from)) || BULK_SENDER_DOMAIN.some((rx) => rx.test(from)));
   const hasReplySignals =
     REPLY_SUBJECT_PREFIX.test(subject) || REPLY_BODY_MARKERS.some((rx) => rx.test(bodyText));
   const participantEmails = new Set<string>([
@@ -497,10 +617,12 @@ export function classifyImportance(params: {
       break;
     }
   }
-  for (const rx of PROMO_FROM) {
-    if (rx.test(from)) {
-      promoSignals += 1;
-      break;
+  if (!isForwarded) {
+    for (const rx of PROMO_FROM) {
+      if (rx.test(from)) {
+        promoSignals += 1;
+        break;
+      }
     }
   }
   if (hasListUnsubscribe) {
