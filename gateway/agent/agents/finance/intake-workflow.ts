@@ -18,7 +18,8 @@ import {
 const execFileAsync = promisify(execFile);
 
 const FINANCE_IMAGE_BATCH_RE = /\[media attached:\s*\d+\s*files?\]/i;
-const FINANCE_PROCESS_SPENDINGS_RE = /\bprocess\b[\s\S]{0,80}\bspending(?:s)?\b/i;
+const FINANCE_PROCESS_SPENDINGS_RE =
+  /\b(?:process|parse|extract|summari[sz]e|analy[sz]e|log|track)\b[\s\S]{0,120}\b(?:spending(?:s)?|expense(?:s)?|transaction(?:s)?)\b/i;
 const MEDIA_ITEM_RE =
   /\[media attached\s+\d+\/\d+:\s*([^\]\n]+?\.(?:png|jpe?g|webp|heic|heif|bmp|tiff?))\s*\([^)]+\)\s*(?:\|[^\]]*)?\]/gi;
 
@@ -48,11 +49,11 @@ const DATE_LINE_RE =
   /^\s*(?:Jan|January|Feb|February|Mar|March|Apr|April|May|Jun|June|Jul|July|Aug|August|Sep|Sept|September|Oct|October|Nov|November|Dec|December)\s+\d{1,2}(?:,\s*\d{4})?\s*$/i;
 const UI_NOISE_RE =
   /(?:home membership offers account|home rewards pay\/move help profile|available points|pending points|activity since|see details|learn more|pay it|plan it)$/i;
-const AMOUNT_TOKEN_RE = /-?\$?\s*\d{1,4}(?:,\d{3})*\.\d{2}/g;
+const AMOUNT_TOKEN_RE = /-?\$\s*\d{1,4}(?:,\d{3})*(?:\.\d{2})?/g;
 const OWNER_NAME_MINE_RE = /\b(?:ike|ike\s+l|eek\s+seung\s+lee|eek\s+lee|eek\s+l)\b/i;
 const OWNER_NAME_NOT_MINE_RE = /\bhosuk\b/i;
 const NON_EXPENSE_RE =
-  /\b(?:payroll|salary|direct\s*deposit|deposit|payment\s+received|refund|reversal|cashback|interest|venmo|zelle|wire|ach|transfer|autopay|thank you)\b/i;
+  /\b(?:payroll|salary|direct\s*deposit|deposit|payment\s+received|refund|reversal|cashback|interest|venmo|zelle|wire|ach|transfer|xfer|pmt|cash\s*out|cashout|autopay|thank you)\b/i;
 const MONTH_DAY_RE =
   /^\s*(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+(\d{1,2})(?:,\s*(\d{4}))?\s*$/i;
 const MM_DD_RE = /^\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?\s*$/;
@@ -125,12 +126,16 @@ function normalizeSpendingItems(input: unknown[], sourceRef: string): SpendingIt
     }
     const r = row as Record<string, unknown>;
     const amountRaw = r.amount;
-    const amount =
+    const amountValue =
       typeof amountRaw === "number"
         ? amountRaw
         : typeof amountRaw === "string"
           ? Number(amountRaw.replace(/[^0-9.-]/g, ""))
           : undefined;
+    const amount =
+      typeof amountValue === "number" && Number.isFinite(amountValue)
+        ? Math.abs(amountValue)
+        : undefined;
     if (!Number.isFinite(amount) || !amount || amount <= 0) {
       continue;
     }
@@ -250,6 +255,21 @@ function normalizeMerchant(value: string | undefined): string {
   return `${value ?? ""}`.replace(/\s+/g, " ").replace(/[<>]/g, " ").trim();
 }
 
+function cleanMerchantCandidate(value: string): string {
+  return normalizeMerchant(
+    value
+      .replace(/^OCR-[A-Z]+:\s*/i, " ")
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
+      .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ")
+      .replace(/\bcardholder\b.*$/i, " ")
+      .replace(/\b(?:web\s*id|orig\s*id|id)\s*:\s*[a-z0-9-]+/gi, " ")
+      .replace(AMOUNT_TOKEN_RE, " ")
+      .replace(/\b(?:pending|pay it|plan it|dining|lodging|merchandise)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
 function sanitizeOcrLine(line: string): string {
   return line
     .replace(/[“”]/g, '"')
@@ -330,7 +350,7 @@ function parseAmountToken(token: string): number | undefined {
   if (!Number.isFinite(parsed)) {
     return undefined;
   }
-  return parsed;
+  return Math.abs(parsed);
 }
 
 export function extractDeterministicSpendingsFromOcr(params: {
@@ -341,7 +361,11 @@ export function extractDeterministicSpendingsFromOcr(params: {
   const items: SpendingItem[] = [];
   let currentDate: string | undefined;
   let currentSource = normalizeSourceValue(params.ocrText);
-  for (const line of lines) {
+  let lastNarrativeLine = "";
+  const HEADERISH_MERCHANT_RE =
+    /\b(?:card|checking|search|transactions|available points|platinum|sapphire|membership|offers|account)\b/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
     const lineSource = normalizeSourceValue(line);
     if (lineSource !== "unknown") {
       currentSource = lineSource;
@@ -360,6 +384,13 @@ export function extractDeterministicSpendingsFromOcr(params: {
     }
     const amountMatches = Array.from(line.matchAll(AMOUNT_TOKEN_RE)).map((m) => m[0] ?? "");
     if (!amountMatches.length) {
+      if (
+        /[a-z]/i.test(line) &&
+        !/\b(?:pay it|plan it)\b/i.test(line) &&
+        !/\b(?:web\s*id|orig\s*id|id:)\b/i.test(line)
+      ) {
+        lastNarrativeLine = line;
+      }
       continue;
     }
     if (amountMatches.length > 2) {
@@ -370,30 +401,41 @@ export function extractDeterministicSpendingsFromOcr(params: {
     if (!amount || amount <= 0) {
       continue;
     }
-    const merchant = normalizeMerchant(
-      line
-        .replace(/^OCR-[A-Z]+:\s*/i, " ")
-        .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
-        .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ")
-        .replace(/\bcardholder\b.*$/i, " ")
-        .replace(AMOUNT_TOKEN_RE, " ")
-        .replace(/\b(?:pending|pay it|plan it|dining|lodging|merchandise)\b/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
-    );
+    let merchant = cleanMerchantCandidate(line);
+    if (merchant.length < 3 || !/[a-z]/i.test(merchant)) {
+      merchant = cleanMerchantCandidate(lastNarrativeLine);
+    }
+    const nextLineRaw = `${lines[index + 1] ?? ""}`.trim();
+    if (
+      merchant &&
+      HEADERISH_MERCHANT_RE.test(merchant) &&
+      nextLineRaw &&
+      !DATE_LINE_RE.test(nextLineRaw) &&
+      !/-?\$\s*\d{1,4}(?:,\d{3})*(?:\.\d{2})?/.test(nextLineRaw)
+    ) {
+      const nextMerchant = cleanMerchantCandidate(nextLineRaw);
+      if (nextMerchant.length >= 3 && /[a-z]/i.test(nextMerchant)) {
+        merchant = nextMerchant;
+      }
+    }
     if (merchant.length < 3 || !/[a-z]/i.test(merchant)) {
       continue;
     }
+    const description =
+      line !== lastNarrativeLine && lastNarrativeLine
+        ? `${lastNarrativeLine} ${line}`.trim()
+        : line;
+    const lineTextForInference = `${description} ${merchant}`.trim();
     items.push({
       date: currentDate,
       amount,
       merchant,
-      description: line,
+      description,
       source: currentSource,
       spender: lineOwnership.spender,
       ownership: lineOwnership.ownership,
-      transactionType: inferTransactionTypeFromText(line),
-      category: inferCategoryFromText(line),
+      transactionType: inferTransactionTypeFromText(lineTextForInference),
+      category: inferCategoryFromText(lineTextForInference),
       confidence: 0.62,
       sourceRef: params.sourceRef,
     });
@@ -629,11 +671,30 @@ function formatSpendingsConfirmation(items: SpendingItem[]): string {
 }
 
 async function runTesseract(imagePath: string): Promise<string> {
+  const amountTokenCount = (value: string): number =>
+    Array.from(cleanOcrText(value).matchAll(AMOUNT_TOKEN_RE)).length;
   try {
-    const { stdout } = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "6"], {
+    const psm6 = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "6"], {
       maxBuffer: 10 * 1024 * 1024,
     });
-    return `${stdout ?? ""}`.trim();
+    try {
+      const psm4 = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "4"], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const text6 = `${psm6.stdout ?? ""}`.trim();
+      const text4 = `${psm4.stdout ?? ""}`.trim();
+      const count6 = amountTokenCount(text6);
+      const count4 = amountTokenCount(text4);
+      if (count4 > count6) {
+        return text4;
+      }
+      if (count6 > count4) {
+        return text6;
+      }
+      return text4.length > text6.length ? text4 : text6;
+    } catch {
+      return `${psm6.stdout ?? ""}`.trim();
+    }
   } catch {
     try {
       const { stdout } = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "4"], {

@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { cleanOcrText, extractDeterministicSpendingsFromOcr } from "./intake-workflow.js";
+import {
+  cleanOcrText,
+  extractDeterministicSpendingsFromOcr,
+  shouldRunFinanceIntakeWorkflow,
+} from "./intake-workflow.js";
 
 describe("finance intake deterministic parser", () => {
+  it("accepts parse/extract intents in addition to process for screenshot intake", () => {
+    expect(shouldRunFinanceIntakeWorkflow("Parse these spendings", ["/tmp/a.png"])).toBe(true);
+    expect(
+      shouldRunFinanceIntakeWorkflow("Extract my transactions from screenshots", ["/tmp/a.png"]),
+    ).toBe(true);
+    expect(shouldRunFinanceIntakeWorkflow("Process these spendings", ["/tmp/a.png"])).toBe(true);
+    expect(shouldRunFinanceIntakeWorkflow("Show me my budget", ["/tmp/a.png"])).toBe(false);
+  });
+
   it("cleans OCR UI noise while preserving transaction lines", () => {
     const cleaned = cleanOcrText(
       [
@@ -63,7 +76,7 @@ describe("finance intake deterministic parser", () => {
     expect(amazon?.ownership).toBe("mine");
   });
 
-  it("ignores negative payment transactions while keeping positive spend", () => {
+  it("keeps negative payment transactions as non-expense while keeping positive spend", () => {
     const text = [
       "Feb 24, 2026",
       "AUTOPAY PAYMENT -$500.00",
@@ -74,8 +87,11 @@ describe("finance intake deterministic parser", () => {
       ocrText: text,
       sourceRef: "sample.png",
     });
-    expect(rows.some((r) => (r.description ?? "").includes("-$500.00"))).toBe(false);
-    expect(rows.some((r) => (r.description ?? "").includes("-$45.12"))).toBe(false);
+    const paymentRows = rows.filter((r) =>
+      /(AUTOPAY PAYMENT|Payment Thank You)/i.test(r.description ?? ""),
+    );
+    expect(paymentRows.length).toBeGreaterThanOrEqual(1);
+    expect(paymentRows.every((r) => r.transactionType === "non_expense")).toBe(true);
     expect(rows.some((r) => r.merchant?.includes("OSAKA MARKETPLACE") && r.amount === 85.26)).toBe(
       true,
     );
@@ -99,5 +115,44 @@ describe("finance intake deterministic parser", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.ownership).toBe("mine");
+  });
+
+  it("pairs amount-only lines with the prior merchant line", () => {
+    const text = [
+      "Platinum Card",
+      "Feb 22",
+      "$2.81",
+      "SEE Pending",
+      "Feb 21",
+      "$30.82",
+      "JAGALCHI 20",
+    ].join("\n");
+    const rows = extractDeterministicSpendingsFromOcr({
+      ocrText: text,
+      sourceRef: "sample.png",
+    });
+    expect(rows.some((r) => r.amount === 2.81)).toBe(true);
+    expect(rows.some((r) => r.amount === 30.82)).toBe(true);
+  });
+
+  it("treats negative amount tokens as spend magnitude", () => {
+    const text = ["Feb 13, 2026", "COMCAST-XFINITY CABLE SVCS", "$13,233.77 -$111.29 >"].join("\n");
+    const rows = extractDeterministicSpendingsFromOcr({
+      ocrText: text,
+      sourceRef: "sample.png",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.amount).toBe(111.29);
+    expect(rows[0]?.merchant).toContain("COMCAST-XFINITY");
+  });
+
+  it("captures whole-dollar amount tokens without cents", () => {
+    const text = ["Feb 17", "DOORDASH.COM Seal!", "DOORDASH.COM $33"].join("\n");
+    const rows = extractDeterministicSpendingsFromOcr({
+      ocrText: text,
+      sourceRef: "sample.png",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.amount).toBe(33);
   });
 });
